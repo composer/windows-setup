@@ -13,9 +13,9 @@ The Setup program has added the following files to your installation directory:
   -  Added file: composer.bat
   -  Added file: composer.phar
   -  Added file: composer-README.txt
-  
-Technical details: Your computer does not know how to run the composer.phar script, but it does know how to run a batch file, so a composer.bat file has been created. To make this work when you type "composer", your installation directory has probably been added to your path variable. 
+
+Technical details: Your computer does not know how to run the composer.phar script, but it does know how to run a batch file, so a composer.bat file has been created. To make this work when you type "composer", your installation directory will have been added to your path variable.
 
 
 ** Uninstalling Composer **
-There is no uninstall program so you must manually reverse the changes made above by deleting the files (or the entire directory if appropriate). If the installer added your php directory to the path variable, you should only remove it if you no longer want to run PHP from the command line. If your installation directory was added to the path variable, make sure it is not needed by other programs in this directory (if any) before you remove it.
+There is no uninstall program so you must manually reverse the changes made above by deleting the files (or the entire directory if appropriate). If the installer added your php directory to the path variable, you should only remove it if you no longer want to run PHP from the command line. Your installation directory will have been added to the path variable (if it was not already in it), so make sure that it is not needed by other programs in this directory (if any) before you remove it.

@@ -77,7 +77,7 @@ type
 type
   TFlagsRec = record
     DirShown    : Boolean;
-    Usage       : Integer;
+    InstallType : Integer;
     AddPhp      : TPathRec;
     AddBat      : TPathRec;
     PathChanged : Boolean;
@@ -95,7 +95,7 @@ var
   ProgressPage: TOutputProgressWizardPage;
   PhpPage: TInputFileWizardPage;
   PhpErrorPage: TWizardPage;
-  UsagePage: TInputOptionWizardPage;
+  InstallTypePage: TInputOptionWizardPage;
   DownloadMsgPage: TWizardPage;
   PathErrorPage: TWizardPage;
   PathInfoPage: TOutputMsgWizardPage;
@@ -118,10 +118,12 @@ const
   BACK_NEXT = 0;
   BACK_NONE = 1;
   BACK_RETRY = 2;
+  
+  TYPE_FULL = 1;
+  TYPE_SINGLE = 2;
 
-  USAGE_NONE = 0;
-  USAGE_FULL = 1;
-  USAGE_SINGLE = 2;
+  TYPE_NAME_FULL = 'Global';
+  TYPE_NAME_SINGLE = 'Basic';
 
 function GetDefaultDir(Param: String): String;
 begin
@@ -147,14 +149,14 @@ begin
 
   Flags.DirShown := True;
 
-  if Flags.Usage = USAGE_FULL then
+  if Flags.InstallType = TYPE_FULL then
   begin
     
     if ComposerPath <> '' then
       Dir := ComposerPath;
 
   end
-  else if Flags.Usage = USAGE_SINGLE then
+  else if Flags.InstallType = TYPE_SINGLE then
     Dir := HomeDir;
     
   Result := Dir <> '';
@@ -164,7 +166,7 @@ end;
 
 function CheckFull: Boolean;
 begin
-  Result := Flags.usage = USAGE_FULL;
+  Result := Flags.InstallType = TYPE_FULL;
 end;
 
 
@@ -507,7 +509,7 @@ begin
   Result := '';
   PathBat := Rec.Path;
   
-  if Flags.Usage = USAGE_SINGLE then
+  if Flags.InstallType = TYPE_SINGLE then
     Exit;
 
   if PathBat = '' then
@@ -575,7 +577,7 @@ begin
   if Pos('.EXE;', PathExt) = 0 then
     Missing := NewLine + Space + '.EXE';
     
-  if Flags.Usage = USAGE_FULL then
+  if Flags.InstallType = TYPE_FULL then
   begin  
 
     if Pos('.BAT;', PathExt) = 0 then
@@ -1093,23 +1095,23 @@ begin
     'PHP Settings - Error',
     'Composer will not work with your current settings',
     'Please review and fix the issues listed below then try again');
-   
-  UsagePage := CreateInputOptionPage(PhpErrorPage.ID,
-    'Usage Information', 'How would you like to use Composer?',
-    'Please specify how you would like to use Composer, then click Next.',
-    True, False);
-  
-  S := #13#10;
-  S := S + 'Globally - I want to run Composer from inside any directory. Recommended.';
-  S := S + #13#10 + 'Usage: composer [params]';
-  UsagePage.Add(S);
-  
-  S := #13#10;
-  S := S + 'Selectively - I just want to use Composer in a specific directory.';
-  S := S + #13#10 + 'Usage: php composer.phar [params]';
-  UsagePage.Add(S);
 
-  UsagePage.Values[0] := True;
+  InstallTypePage := CreateInputOptionPage(PhpErrorPage.ID,
+    'Installation Type', 'How would you like to use Composer?',
+    'Please specify your installation type, then click Next.',
+    True, False);
+
+  S := #13#10;
+  S := S + TYPE_NAME_FULL + ' - I want to run Composer from inside any directory. Recommended.';
+  S := S + #13#10 + 'Usage: composer';
+  InstallTypePage.Add(S);
+  
+  S := #13#10;
+  S := S + TYPE_NAME_SINGLE + ' - I just want to use Composer in a specific directory.';
+  S := S + #13#10 + 'Usage: php composer.phar';
+  InstallTypePage.Add(S);
+  
+  InstallTypePage.Values[0] := True;
   
   PathErrorPage := CreateMessagePage(wpSelectDir,
     'Path Settings - Error',
@@ -1209,13 +1211,13 @@ begin
       ShowPhpCheckPage;
 
   end
-  else if CurPageID = UsagePage.ID then
+  else if CurPageID = InstallTypePage.ID then
   begin
   
-    if UsagePage.Values[0] then
-      Flags.Usage := USAGE_FULL
+    if InstallTypePage.Values[0] then
+      Flags.InstallType := TYPE_FULL
     else
-      Flags.Usage := USAGE_SINGLE;
+      Flags.InstallType := TYPE_SINGLE;
   
     if GetDefaultDirForPage(S) then
       WizardForm.DirEdit.Text := S;
@@ -1261,16 +1263,16 @@ var
 begin
   
   S := '';
-    
+
   S := S + MemoDirInfo + NewLine;
   S := S + NewLine;
-  S := S + 'Usage Information:' + NewLine + Space;
+  S := S + 'Installation Type:' + NewLine + Space;
   
-  case Flags.Usage of
-    USAGE_FULL: S := S + 'Global. Composer can be used from inside any directory';
-    USAGE_SINGLE: S := S + 'Selective. Composer can only be used from the above location' ;
+  case Flags.InstallType of
+    TYPE_FULL: S := S + TYPE_NAME_FULL + '. Composer can be used from inside any directory';
+    TYPE_SINGLE: S := S + TYPE_NAME_SINGLE + '. Composer can only be used from the above location' ;
   end;
-  
+    
   Env := ' Path environment variable:';
 
   if Flags.AddPhp.Path <> '' then
