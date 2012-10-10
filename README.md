@@ -31,7 +31,7 @@ Composer-Setup is written using the excellent [Inno Setup][inno] tool, which is 
 
 <a name="Usage"></a>
 ## Usage
-Download and run [Composer-Setup][download]. You are first asked for the location of your `php.exe`, which is PHP's command line interpreter. If this value is in your path variable then it will be displayed for you, otherwise you are going to have to hunt around for it. Depending on your setup it could be:
+Download and run [Composer-Setup][download]. You are first asked for the location of your `php.exe`, which is the PHP command line interpreter. If this value is in your path variable then it will be displayed for you, otherwise you are going to have to hunt around for it. Depending on your setup it could be:
 
 * In your root `C:\` directory, maybe under `php` or `xampp` or `WampServer` or `EasyPhp`
 * In your `C:\Program Files` directory, perhaps under one of the above
