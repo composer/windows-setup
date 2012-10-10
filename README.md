@@ -12,7 +12,7 @@ A Windows installer for the [Composer][composer] PHP Dependency Manager. [Downlo
 <a name="About"></a>
 ## About
 
-[Composer][composer] is a wonderful tool but it can sometimes be tricky to install on computers not blessed with a rich development environment coming as standard. Yes, we are looking at you, Windows.
+[Composer][composer] is a wonderful tool but it can sometimes be tricky to install on computers not blessed with the rich development environment that comes as standard on others. Yes, we are looking at you, Windows.
 
 This installer attempts to ease that pain by:
 
@@ -41,7 +41,7 @@ The installer will then check that PHP is set up correctly for Composer. If it f
 
 Next you have to choose your Installation Type, either Global or Basic. A **Global** installation is recommended because this enables Composer to be run from any location by simply typing `composer`.
 
-A **Basic** installation, on the otherhand, requires you to be in the directory you installed it to and typing `php composer.phar`. This might be suitable in certain circumstances, or if you wish to try out Composer quickly.
+A **Basic** installation, however, requires you to be in the directory where you installed it and typing `php composer.phar`. This might be suitable in certain circumstances, or if you wish to try out Composer quickly.
 
 After you have chosen the directory you wish to install to and reviewed the choices you have made, the installer will download Composer and set everything up. Full documentation can be found at [http://getcomposer.org][composer] and a repository of packages can be browsed at [Packagist][packagist].
 
@@ -63,7 +63,7 @@ For a Global install these instructions are in the `composer-README` file in you
 <a name="Compiling"></a>
 ## Compiling
 
-To compile the `src/composer.iss` script you will need to install the unicode version of [Inno Setup Compiler][compiler]. Using the QuickStart Pack is the easiest way to install this. Note that the *Encryption* module it not required and neither is the *Inno Setup Preprocessor*, although the latter may change in the future.
+To compile the `src/composer.iss` script you will need to install the unicode version of [Inno Setup Compiler][compiler]. Using the QuickStart Pack is the easiest way to do this. Note that the *Encryption* module it not required and neither is the *Inno Setup Preprocessor*, although the latter may change in the future.
 
 
 <a name="License"></a>
