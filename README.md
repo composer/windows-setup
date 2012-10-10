@@ -40,20 +40,16 @@ The installer will then check that PHP is set up correctly for Composer. If it f
 
 Next you have to choose your Installation Type, either Global or Basic. A **Global** installation is recommended because this enables Composer to be run from any location by simply typing `composer`, whereas a **Basic** installation requires you to be in the directory you installed it to and typing `php composer.phar`.
 
-After you have chosen the directory you wish to install to and accepted the choices you have made, the installer will proceed with downloading Composing and installing it, ready for you to use.
+After you have chosen the directory you wish to install to and accepted the choices you have made, the installer will download Composer and set everything up.
 
-Full details about using Composer can be found at [http://getcomposer.org][composer] and ready to install and packages can be found at [Packagist][packagist].
+Full details about using Composer can be found at [http://getcomposer.org][composer] and a repository of packages can be found at [Packagist][packagist].
 
 <a name="Uninstalling"></a>
 ## Uninstalling
 
-There is no Uninstall feature so you will have to do things manually, depending on the type of installation you made.
+There is no Uninstall feature so you will have to do things manually. If you chose the **Basic** installation then you just need to delete `composer.phar` from the directory you installed it to.
 
-### Basic install
-If you chose the Basic installation then you just need to delete `composer.phar` from the directory you installed it to.
-
-### Global install
-If you chose the Global installation then you must delete the following files:
+If you chose the **Global** installation then you must delete the following files:
 
 * composer.bat
 * composer.phar
@@ -61,7 +57,7 @@ If you chose the Global installation then you must delete the following files:
 
 If the installer added your PHP directory to the path variable, you should only remove it if you no longer want to run PHP from the command line. Your installation directory will have been added to the path variable, but only if it was not already there. If you are sure that it is not needed by any other programs in this directory, you can remove it .
 
-These instructions can be found in the `composer-README` file in your installation directory.
+For a Global install these instructions are in the `composer-README` file in your installation directory.
 
 <a name="License"></a>
 ## License
