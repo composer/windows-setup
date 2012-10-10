@@ -6,6 +6,7 @@ A Windows installer for the Composer PHP Dependency Manager. [Download it here][
 * [About](#About)
 * [Usage](#Usage)
 * [Uninstalling](#Uninstalling)
+* [Compiling](#Compiling)
 * [License](#License)
 
 <a name="About"></a>
@@ -40,9 +41,9 @@ The installer will then check that PHP is set up correctly for Composer. If it f
 
 Next you have to choose your Installation Type, either Global or Basic. A **Global** installation is recommended because this enables Composer to be run from any location by simply typing `composer`.
 
-A **Basic** installation, on the otherhand, requires you to be in the directory you installed it to and typing `php composer.phar`. This might be required in certain circumstances or if you just want to quickly try Composer out.
+A **Basic** installation, on the otherhand, requires you to be in the directory you installed it to and typing `php composer.phar`. This might be suitable in certain circumstances, or if you wish to try out Composer quickly.
 
-After you have chosen the directory you wish to install to and accepted the choices you have made, the installer will download Composer and set everything up. Full details about using Composer can be found at [http://getcomposer.org][composer] and a repository of packages can be found at [Packagist][packagist].
+After you have chosen the directory you wish to install to and reviewed the choices you have made, the installer will download Composer and set everything up. Full documentation can be found at [http://getcomposer.org][composer] and a repository of packages can be browsed at [Packagist][packagist].
 
 <a name="Uninstalling"></a>
 ## Uninstalling
@@ -59,15 +60,22 @@ If the installer added your PHP directory to the path variable, you should only 
 
 For a Global install these instructions are in the `composer-README` file in your installation directory.
 
+<a name="Compiling"></a>
+## Compiling
+
+To compile the `src/composer.iss` script you will need to install the unicode version of the [Inno Setup Compiler][compiler]. Using the *QuickStart Pack* is the easiest way to install this. Note that the *Encryption* module it not required and neither is the *Inno Setup Preprocessor*, although the latter may change in the future.
+
+
 <a name="License"></a>
 ## License
 
 Composer-Setup is licensed under the MIT License - see the `LICENSE` file for details
 
 
-  [composer]: http://getcomposer.org
-  [download]: https://github.com/johnstevenson/composer-setup/raw/master/Composer-Setup.exe
-  [inno]: http://www.jrsoftware.org/isinfo.php
-  [packagist]: https://packagist.org/
-  [wiki]:https://github.com/johnstevenson/composer-setup/wiki/Home
+  [composer]:   http://getcomposer.org
+  [download]:   https://github.com/johnstevenson/composer-setup/raw/master/Composer-Setup.exe
+  [inno]:       http://www.jrsoftware.org/isinfo.php
+  [packagist]:  https://packagist.org/
+  [wiki]:       https://github.com/johnstevenson/composer-setup/wiki/Home
+  [compiler]:   http://www.jrsoftware.org/isdl.php
 
