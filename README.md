@@ -56,14 +56,14 @@ If you chose the **Global** installation then you must delete the following file
 * composer.phar
 * composer-README.txt
 
-If the installer added your PHP directory to the path variable, you should only remove it if you no longer want to run PHP from the command line. Your installation directory will have been added to the path variable, but only if it was not already there. remove it only if you are sure that it is not needed by any other programs in this directory.
+If the installer added your PHP directory to the path variable, you should only remove it if you no longer want to run PHP from the command line. Your installation directory will have been added to the path variable, but only if it was not already there. Remove it only if you are sure that it is not needed by any other programs in this directory.
 
 For a Global install these instructions are in the `composer-README` file in your installation directory.
 
 <a name="Compiling"></a>
 ## Compiling
 
-To compile the `src/composer.iss` script you will need to install the unicode version of the [Inno Setup Compiler][compiler]. Using the *QuickStart Pack* is the easiest way to install this. Note that the *Encryption* module it not required and neither is the *Inno Setup Preprocessor*, although the latter may change in the future.
+To compile the `src/composer.iss` script you will need to install the unicode version of the [Inno Setup Compiler][compiler]. Using the QuickStart Pack is the easiest way to install this. Note that the *Encryption* module it not required and neither is the *Inno Setup Preprocessor*, although the latter may change in the future.
 
 
 <a name="License"></a>
