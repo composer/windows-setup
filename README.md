@@ -33,12 +33,14 @@ Composer-Setup is written using the excellent [Inno Setup][inno] tool, which is 
 Download and run [Composer-Setup][download]. You are first asked for the location of your `php.exe`, which is the command line interface to PHP. If this value is in your path variable then it will be displayed for you, otherwise you are going to have to hunt around for it. Depending on your setup it could be:
 
 * In your root `C:\` directory, maybe under `php` or `xampp` or `WampServer` or `EasyPhp`
-* In your `C:\Program Files` directory, perhaps under any of the above
+* In your `C:\Program Files` directory, perhaps under one of the above
 * Or wherever else it got installed to
 
 The installer will then check that PHP is set up correctly for Composer. If it finds any errors it will display them and give you the chance to fix them. It will also show the location of the `php.ini` file that is being used, in case of multiple or redundant versions.
 
-Next you have to choose your Installation Type, either Global or Basic. A **Global** installation is recommended because this enables Composer to be run from any location by simply typing `composer`, whereas a **Basic** installation requires you to be in the directory you installed it to and typing `php composer.phar`.
+Next you have to choose your Installation Type, either Global or Basic. A **Global** installation is recommended because this enables Composer to be run from any location by simply typing `composer`.
+
+A **Basic** installation, on the otherhand, requires you to be in the directory you installed it to and typing `php composer.phar`. This might required in certain circumstances or if you just want to quickly try Composer out.
 
 After you have chosen the directory you wish to install to and accepted the choices you have made, the installer will download Composer and set everything up.
 
