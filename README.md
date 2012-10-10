@@ -1,6 +1,6 @@
 # Composer-Setup
 
-A Windows installer for the Composer PHP Dependency Manager. [Download it here][download].
+A Windows installer for the [Composer][composer] PHP Dependency Manager. [Download it here][download].
 
 ## Contents
 * [About](#About)
@@ -33,7 +33,7 @@ Composer-Setup is written using the excellent [Inno Setup][inno] tool, which is 
 ## Usage
 Download and run [Composer-Setup][download]. You are first asked for the location of your `php.exe`, which is the PHP command line interpreter. If this value is in your path variable then it will be displayed for you, otherwise you are going to have to hunt around for it. Depending on your setup it could be:
 
-* In your root `C:\` directory, maybe under `php` or `xampp` or `WampServer` or `EasyPhp`
+* In your root directory, usually `C:\`, maybe under `php` or `xampp` or `WampServer` or `EasyPhp`
 * In your `C:\Program Files` directory, perhaps under one of the above
 * Or wherever else it got installed to
 
@@ -63,7 +63,7 @@ For a Global install these instructions are in the `composer-README` file in you
 <a name="Compiling"></a>
 ## Compiling
 
-To compile the `src/composer.iss` script you will need to install the unicode version of the [Inno Setup Compiler][compiler]. Using the QuickStart Pack is the easiest way to install this. Note that the *Encryption* module it not required and neither is the *Inno Setup Preprocessor*, although the latter may change in the future.
+To compile the `src/composer.iss` script you will need to install the unicode version of [Inno Setup Compiler][compiler]. Using the QuickStart Pack is the easiest way to install this. Note that the *Encryption* module it not required and neither is the *Inno Setup Preprocessor*, although the latter may change in the future.
 
 
 <a name="License"></a>
