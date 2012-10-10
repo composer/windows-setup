@@ -23,7 +23,7 @@ This installer attempts to ease that pain by:
 
 Composer-Setup does **not** write to your registry or do anything unspeakable to your computer other than adding a few files to a folder and updating your path environment variable (but only if you want it to). In fact it is not even a proper installer, in that it has no Uninstall feature, although removal is straightforward and explained [below](#Uninstalling).
 
-> **Tip:** Of course you don't actually need an installer to do any of this. Please see the [Wiki][wiki] for instructions on how to set things up manually or if you are curious.
+> **Tip:** Of course you don't actually need an installer to do any of this. Please see the [Wiki][manual] for instructions on how to set things up manually or if you are curious.
 
 If you just need Composer in a specific directory, the installer will put the Composer script wherever you want.
 
@@ -31,7 +31,7 @@ Composer-Setup is written using the excellent [Inno Setup][inno] tool, which is 
 
 <a name="Usage"></a>
 ## Usage
-Download and run [Composer-Setup][download]. You are first asked for the location of your `php.exe`, which is the command line interface to PHP. If this value is in your path variable then it will be displayed for you, otherwise you are going to have to hunt around for it. Depending on your setup it could be:
+Download and run [Composer-Setup][download]. You are first asked for the location of your `php.exe`, which is PHP's command line interpreter. If this value is in your path variable then it will be displayed for you, otherwise you are going to have to hunt around for it. Depending on your setup it could be:
 
 * In your root `C:\` directory, maybe under `php` or `xampp` or `WampServer` or `EasyPhp`
 * In your `C:\Program Files` directory, perhaps under one of the above
@@ -76,6 +76,6 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
   [download]:   https://github.com/johnstevenson/composer-setup/raw/master/Composer-Setup.exe
   [inno]:       http://www.jrsoftware.org/isinfo.php
   [packagist]:  https://packagist.org/
-  [wiki]:       https://github.com/johnstevenson/composer-setup/wiki/Home
+  [manual]:     https://github.com/johnstevenson/composer-setup/wiki/Manual-installation
   [compiler]:   http://www.jrsoftware.org/isdl.php
 
