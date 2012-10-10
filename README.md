@@ -35,16 +35,23 @@ Composer-Setup is written using the excellent [Inno Setup][inno] tool, which is 
 <a name="Uninstalling"></a>
 ## Uninstalling
 
-There is no Uninstall feature so you will have to do things manually. If you chose the Basic installation then you just need to delete `composer.phar` from the directory you installed it to.
+There is no Uninstall feature so you will have to do things manually, depending on the type of installation you made.
 
+### Basic install
+If you chose the Basic installation then you just need to delete `composer.phar` from the directory you installed it to.
+
+### Global install
 If you chose the Global installation then you must delete the following files:
 
 * composer.bat
 * composer.phar
 * composer-README.txt
 
-If the installer added your php directory to the path variable, you should only remove it if you no longer want to run PHP from the command line. Your installation directory will have been added to the path variable, but only if it was not already in it. You should only remove it if you are sure that it is not needed by any other programs in this directory. These instructions can be found in the `composer-README`.
+If the installer added your PHP directory to the path variable, you should only remove it if you no longer want to run PHP from the command line.
 
+Your installation directory will have been added to the path variable, but only if it was not already there. If you are sure that it is not needed by any other programs in this directory, you can remove it .
+
+These instructions can be found in the `composer-README` file.
 
 <a name="License"></a>
 ## License
