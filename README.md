@@ -24,7 +24,7 @@ Composer-Setup does **not** write to your registry or do anything unspeakable to
 
 > **Tip:** Of course you don't actually need an installer to do any of this. Please see the [Wiki][wiki] for instructions on how to set things up manually or if you are curious.
 
-If you just need Composer in a specific directory, the installer will put the Composer script wherever you want. In this case you will have to type `php composer.phar` to run it.
+If you just need Composer in a specific directory, the installer will put the Composer script wherever you want.
 
 Composer-Setup is written using the excellent [Inno Setup][inno] tool, which is a powerful free installer for Windows programs.
 
@@ -40,11 +40,9 @@ The installer will then check that PHP is set up correctly for Composer. If it f
 
 Next you have to choose your Installation Type, either Global or Basic. A **Global** installation is recommended because this enables Composer to be run from any location by simply typing `composer`.
 
-A **Basic** installation, on the otherhand, requires you to be in the directory you installed it to and typing `php composer.phar`. This might required in certain circumstances or if you just want to quickly try Composer out.
+A **Basic** installation, on the otherhand, requires you to be in the directory you installed it to and typing `php composer.phar`. This might be required in certain circumstances or if you just want to quickly try Composer out.
 
-After you have chosen the directory you wish to install to and accepted the choices you have made, the installer will download Composer and set everything up.
-
-Full details about using Composer can be found at [http://getcomposer.org][composer] and a repository of packages can be found at [Packagist][packagist].
+After you have chosen the directory you wish to install to and accepted the choices you have made, the installer will download Composer and set everything up. Full details about using Composer can be found at [http://getcomposer.org][composer] and a repository of packages can be found at [Packagist][packagist].
 
 <a name="Uninstalling"></a>
 ## Uninstalling
@@ -57,7 +55,7 @@ If you chose the **Global** installation then you must delete the following file
 * composer.phar
 * composer-README.txt
 
-If the installer added your PHP directory to the path variable, you should only remove it if you no longer want to run PHP from the command line. Your installation directory will have been added to the path variable, but only if it was not already there. If you are sure that it is not needed by any other programs in this directory, you can remove it .
+If the installer added your PHP directory to the path variable, you should only remove it if you no longer want to run PHP from the command line. Your installation directory will have been added to the path variable, but only if it was not already there. remove it only if you are sure that it is not needed by any other programs in this directory.
 
 For a Global install these instructions are in the `composer-README` file in your installation directory.
 
