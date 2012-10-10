@@ -21,7 +21,7 @@ WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
 [Files]
 Source: "setup.php"; Flags: dontcopy
 Source: "composer.bat"; DestDir: "{app}"; Flags: ignoreversion; Check: CheckFull
-Source: "readme.txt"; DestDir: "{app}"; DestName: "composer-README.txt";  Flags: isreadme; Check: CheckFull;
+Source: "composer.readme"; DestDir: "{app}"; DestName: "composer-README.txt";  Flags: isreadme; Check: CheckFull;
 Source: "{tmp}\composer.phar"; DestDir: "{app}"; Flags: external ignoreversion;
 
 [Messages]
@@ -592,9 +592,6 @@ end;
 procedure CheckPath;
 var
   Info: TPathInfo;
-  S: String;
-  Env: String;
-  Path: String;
 
 begin
 
@@ -620,7 +617,6 @@ var
 	Params: String;
   ResultCode: Integer;
   Results: TArrayOfString;
-  Success: Boolean;
   I: Integer;
   Len: Integer;
   Error: String;
@@ -818,7 +814,6 @@ var
   Results: TArrayOfString;
   I: Integer;
   Len: Integer;
-  Text: String;
   Switches: String;
       
 begin
@@ -1081,7 +1076,6 @@ end;
 procedure InitializeWizard;
 var
   S: String;
-  Top: Integer;
 
 begin
 
@@ -1135,10 +1129,6 @@ end;
 
 
 procedure CurPageChanged(CurPageID: Integer);
-var
-  S: String;
-  Top: Integer;
-
 begin
 
   if CurPageID = PhpPage.ID then
