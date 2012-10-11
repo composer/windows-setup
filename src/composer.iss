@@ -20,8 +20,10 @@ WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
 
 [Files]
 Source: "setup.php"; Flags: dontcopy
+Source: "composer.sh"; Flags: dontcopy
 Source: "composer.bat"; DestDir: "{app}"; Flags: ignoreversion; Check: CheckFull
 Source: "composer.readme"; DestDir: "{app}"; DestName: "composer-README.txt";  Flags: isreadme; Check: CheckFull;
+Source: "{tmp}\composer"; DestDir: "{app}"; Flags: external ignoreversion;
 Source: "{tmp}\composer.phar"; DestDir: "{app}"; Flags: external ignoreversion;
 
 [Messages]
@@ -54,8 +56,9 @@ type
 
 type
   TTmpFile = record
-    Setup   : String;
-    Result  : String;
+    Setup     : String;
+    Composer  : String;
+    Result    : String;
   end;
 
 type
@@ -1066,6 +1069,9 @@ begin
 
   ExtractTemporaryFile('setup.php');
   TmpFile.Setup := ExpandConstant('{tmp}\setup.php');
+
+  ExtractTemporaryFile('composer.sh');
+  TmpFile.Composer := ExpandConstant('{tmp}\composer.sh');
  
   TmpFile.Result := ExpandConstant('{tmp}\result.txt');
   InitRecordsFromPath;
@@ -1293,6 +1299,11 @@ end;
 
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Lines: TArrayOfString;
+  S: AnsiString;
+  I: Integer;
+
 begin
 
   if Flags.AddPhp.Path <> '' then
@@ -1320,5 +1331,17 @@ begin
     Flags.PathChanged := True;
 
   end;
+  
+  if LoadStringsFromFile(TmpFile.Composer, Lines) then
+  begin
+   
+    S := '';
+    for I := 0 to GetArrayLength(Lines) - 1 do
+      S := S + Lines[I] + #10;
+         
+    SaveStringToFile(TmpDir + '\composer', S, False);
+     
+  end; 
+
   
 end;
