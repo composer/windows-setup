@@ -2,7 +2,7 @@
 [Setup]
 AppName=Composer
 AppVerName=Composer
-DefaultDirName={code:GetDefaultDir}
+DefaultDirName={userappdata}\Composer\bin
 MinVersion=5.1
 OutputDir=..\
 OutputBaseFilename=Composer-Setup
@@ -12,26 +12,28 @@ AppendDefaultDirName=no
 DirExistsWarning=no
 AlwaysShowDirOnReadyPage=yes
 DisableProgramGroupPage=yes
-PrivilegesRequired=none
-Uninstallable=no
+PrivilegesRequired=lowest
 ChangesEnvironment=true
 SetupIconFile=install.ico
 WizardImageFile=WizComposer.bmp
 WizardSmallImageFile=WizComposerSmall.bmp
+UninstallDisplayName=Composer - Php Dependency Manager
 
 [Files]
 Source: "setup.php"; Flags: dontcopy
-Source: "composer.sh"; Flags: dontcopy
-Source: "composer.bat"; DestDir: "{app}"; Flags: ignoreversion; Check: CheckFull
-Source: "composer.readme"; DestDir: "{app}"; DestName: "composer-README.txt";  Flags: isreadme; Check: CheckFull;
+Source: "bin\composer"; Flags: dontcopy
+Source: "bin\composer.bat"; DestDir: "{app}"; Flags: ignoreversion; Check: CheckFull
 Source: "{tmp}\composer"; DestDir: "{app}"; Flags: external ignoreversion; Check: CheckFull
 Source: "{tmp}\composer.phar"; DestDir: "{app}"; Flags: external ignoreversion;
 
+[Icons]
+Name: "{userstartmenu}\Composer\Documentation"; Filename: "http://getcomposer.org/"
+Name: "{userstartmenu}\Composer\Uninstall Composer"; Filename: "{uninstallexe}";
+
 [Messages]
 WelcomeLabel1=[name] Setup
-WelcomeLabel2=This will install the [name] PHP Dependency Manager on your computer.
+WelcomeLabel2=This will download and install the [name] PHP Dependency Manager on your computer.
 FinishedHeadingLabel=Completing [name] Setup
-RunEntryShellExec=View README - contains usage and uninstall information.
 
 [Code]
 type
@@ -133,11 +135,17 @@ function GetDefaultDir(Param: String): String;
 begin
 
   if IsAdminLoggedOn then
-    Result := ExpandConstant('{sd}')
+  begin
+    Result := ExpandConstant('{sd}');
+    Result := AddBackslash(Result) + 'Composer';
+  end
   else
-    Result := HomeDir;
+  begin
+    Result := ExpandConstant('{userappdata}');
+    Result := AddBackslash(Result) + 'Composer\bin';
+   end;
 
-  Result := AddBackslash(Result) + 'composer';
+  //Result := AddBackslash(Result) + 'composer';
         
 end;
 
@@ -156,8 +164,9 @@ begin
   if Flags.InstallType = TYPE_FULL then
   begin
     
-    if ComposerPath <> '' then
-      Dir := ComposerPath;
+    //if ComposerPath <> '' then
+    //  Dir := ComposerPath;
+    Dir := GetDefaultDir('');
 
   end
   else if Flags.InstallType = TYPE_SINGLE then
@@ -1071,8 +1080,8 @@ begin
   ExtractTemporaryFile('setup.php');
   TmpFile.Setup := ExpandConstant('{tmp}\setup.php');
 
-  ExtractTemporaryFile('composer.sh');
-  TmpFile.Composer := ExpandConstant('{tmp}\composer.sh');
+  ExtractTemporaryFile('composer');
+  TmpFile.Composer := ExpandConstant('{tmp}\composer');
  
   TmpFile.Result := ExpandConstant('{tmp}\result.txt');
   InitRecordsFromPath;
@@ -1132,7 +1141,6 @@ begin
   'Please read the following important information before continuing.',
   'Setup has changed your path variable, but existing programs may not be aware of this. ' +
   'To run Composer for the first time, you must open a NEW command window.');
-
   
 end;
 
@@ -1188,6 +1196,8 @@ begin
 
   if PageID = PhpErrorPage.ID then
     Result := PhpRec.Error = ''
+  else if PageID = wpSelectDir then
+    Result := CheckFull
   else if PageID = DownloadMsgPage.ID then
     Result := GetRec.Text = ''
   else if PageID = PathErrorPage.ID then
