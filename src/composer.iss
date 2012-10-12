@@ -15,15 +15,16 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=none
 Uninstallable=no
 ChangesEnvironment=true
-WizardImageFile=compiler:WizModernImage-IS.bmp
-WizardSmallImageFile=compiler:WizModernSmallImage-IS.bmp
+SetupIconFile=setup.ico
+WizardImageFile=WizComposer.bmp
+WizardSmallImageFile=WizComposerSmall.bmp
 
 [Files]
 Source: "setup.php"; Flags: dontcopy
 Source: "composer.sh"; Flags: dontcopy
 Source: "composer.bat"; DestDir: "{app}"; Flags: ignoreversion; Check: CheckFull
 Source: "composer.readme"; DestDir: "{app}"; DestName: "composer-README.txt";  Flags: isreadme; Check: CheckFull;
-Source: "{tmp}\composer"; DestDir: "{app}"; Flags: external ignoreversion;
+Source: "{tmp}\composer"; DestDir: "{app}"; Flags: external ignoreversion; Check: CheckFull
 Source: "{tmp}\composer.phar"; DestDir: "{app}"; Flags: external ignoreversion;
 
 [Messages]
