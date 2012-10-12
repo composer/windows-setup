@@ -15,7 +15,7 @@ DisableProgramGroupPage=yes
 PrivilegesRequired=none
 Uninstallable=no
 ChangesEnvironment=true
-SetupIconFile=setup.ico
+SetupIconFile=install.ico
 WizardImageFile=WizComposer.bmp
 WizardSmallImageFile=WizComposerSmall.bmp
 
