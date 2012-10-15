@@ -153,7 +153,6 @@ function csSetupDownload($force, &$status)
   if ($code = @file_get_contents($src))
   {
 
-    $status = 4;
     file_put_contents($filename, $code);
     putenv('ANSICON');
     $argc = 2;

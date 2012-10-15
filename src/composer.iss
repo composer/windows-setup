@@ -125,6 +125,7 @@ const
   CSIDL_PROFILE = $0028;
   SEP_PATH = ';';
   LF = #13#10;
+  TEST_FLAG = '?';
   
   COMPOSER_URL = 'getcomposer.org/installer';
   ERROR_NONE = 0;
@@ -887,12 +888,6 @@ begin
 end;
 
 
-procedure SetDownloadInternalError(ResultCode: Integer);
-begin
-  SetDownloadStatus(ERROR_CMD);
-  GetRec.Text := GetRec.Text + SysErrorMessage(ResultCode);
-end;
-
 procedure SetDownloadCmdError(ExitCode: Integer; const Filename: string);
 var
   Error: String;
@@ -908,6 +903,49 @@ begin
     Text := Error;
 
   GetRec.Text := GetRec.Text + Text;
+
+end;
+
+
+procedure GetDownloadTests(var ExitCode: Integer; var Results: TArrayOfString);
+var
+  Code: Integer;
+  Count: Integer;
+
+begin
+
+  Count := Length(Test);
+
+  if (Count >= 2) and (Pos('d', Test) = 1) then
+  begin
+
+    Code := StrToIntDef(Copy(Test, 2, Count), -1);
+
+    if Code = -1 then
+      Exit;
+
+    case Code of
+
+      0: DeleteFile(TmpDir + '\composer.phar'); 
+      1: 
+      begin
+        ExitCode := 1;
+        Count := GetArrayLength(Results);
+        SetArrayLength(Results, Count + 1);
+        Results[Count] := 'Dummy error from installer script' + LF;
+      end;
+
+    else
+      ExitCode := Code;      
+    end;
+
+
+
+
+  end;
+
+
+
 
 end;
 
@@ -960,6 +998,9 @@ begin
     Exit;
   end;
   
+  if Test <> '' then
+    GetDownloadTests(ExitCode, Results);
+
   if ExitCode = 0 then
   begin
 
@@ -980,7 +1021,7 @@ begin
     SetDownloadStatus(ERROR_CONNECTION);
     Exit;
   end
-  else if ExitCode = 4 then
+  else if ExitCode <> 1 then
   begin
     SetDownloadStatus(ERROR_COMPOSER);
     Exit;
@@ -997,9 +1038,10 @@ begin
     Exit;
 
   end;
-    
+  
+  // everything looks okay
   SetDownloadStatus(ExitCode);
-
+    
   if Pos('#!', Results[0]) <> 0 then
     StartLine := 1
   else
@@ -1010,7 +1052,11 @@ begin
     AddSeparator(GetRec.Text, LF);      
     GetRec.Text := GetRec.Text + Results[I];
   end;
-                  
+  
+  // final check
+  if (ExitCode = 1) and (GetRec.Text = '') then
+    SetDownloadStatus(ERROR_COMPOSER);
+                    
 end;
 
 
@@ -1237,6 +1283,144 @@ begin
 end;
 
 
+procedure UpdateTestCaption();
+var
+  Id: String;
+  Caption: String;
+  Index: Integer;
+  Value: String;
+  ClearBtn: TNewButton;
+
+begin
+
+  Id := ' /test: ';
+  Caption := WizardForm.Caption;
+  Index := Pos(Id, WizardForm.Caption);
+  Value := '';
+
+  if Test <> TEST_FLAG then
+    Value := Id + Test;
+
+  if Index <> 0 then
+    Caption := Copy(WizardForm.Caption, 1, Index - 1); 
+
+  WizardForm.Caption := Caption + Value;
+  ClearBtn := TNewButton(WizardForm.FindComponent('BtnClear'));
+  ClearBtn.Enabled := Value <> '';
+
+end;
+
+
+procedure TestButtonOnClick(Sender: TObject);
+var
+  Form: TSetupForm;
+  Edit: TNewEdit;
+  Btn: TNewButton;
+  Id: String;
+  TestStr: String;
+  Caption: String;
+  Index: Integer;
+
+begin
+  
+  Form := CreateCustomForm();
+  
+  try
+    Form.ClientWidth := ScaleX(256);
+    Form.ClientHeight := ScaleY(128);
+    Form.Caption := 'Enter Test';
+    Form.CenterInsideControl(WizardForm, False);
+
+    Edit := TNewEdit.Create(Form);
+    Edit.Top := ScaleY(10);
+    Edit.Left := ScaleX(10);
+    Edit.Width := Form.ClientWidth - ScaleX(2 * 10);
+    Edit.Height := ScaleY(23);
+    
+    if Test <> TEST_FLAG then
+      Edit.Text := Test;
+
+    Edit.Parent := Form;
+
+    Btn := TNewButton.Create(Form);
+    Btn.Parent := Form;
+    Btn.Width := ScaleX(75);
+    Btn.Height := ScaleY(23);
+    Btn.Left := Form.ClientWidth - ScaleX(75 + 6 + 75 + 10);
+    Btn.Top := Form.ClientHeight - ScaleY(23 + 10);
+    Btn.Caption := 'OK';
+    Btn.ModalResult := mrOk;
+    Btn.Default := True;
+    
+    Btn := TNewButton.Create(Form);
+    Btn.Parent := Form;
+    Btn.Width := ScaleX(75);
+    Btn.Height := ScaleY(23);
+    Btn.Left := Form.ClientWidth - ScaleX(75 + 10);
+    Btn.Top := Form.ClientHeight - ScaleY(23 + 10);
+    Btn.Caption := 'Cancel';
+    Btn.ModalResult := mrCancel;
+    Btn.Cancel := True;
+
+    Form.ActiveControl := Edit;
+
+    if Form.ShowModal() = mrOk then
+    begin
+
+      if Edit.Text <> '' then
+        Test := Edit.Text
+      else
+        Test := TEST_FLAG;
+      
+      UpdateTestCaption();  
+      
+    end;
+
+  finally
+    Form.Free();
+  end;
+
+end;
+
+
+procedure ClearButtonOnClick(Sender: TObject);
+begin
+  Test := TEST_FLAG;
+  UpdateTestCaption();
+end;
+
+
+procedure CreateTestButtons(ParentForm: TSetupForm; CancelButton: TNewButton);
+var
+  BtnTest: TNewButton;
+  BtnClear: TNewButton;
+
+begin
+
+  BtnTest := TNewButton.Create(ParentForm);
+  BtnTest.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
+  BtnTest.Top := CancelButton.Top;
+  BtnTest.Width := CancelButton.Width;
+  BtnTest.Height := CancelButton.Height;
+  BtnTest.Caption := '&Enter Test';
+  BtnTest.OnClick := @TestButtonOnClick;
+  BtnTest.Parent := ParentForm;
+  
+  BtnClear := TNewButton.Create(ParentForm);
+  BtnClear.Name := 'BtnClear';
+  BtnClear.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
+  BtnClear.Left := BtnTest.Left + BtnTest.Width + ScaleX(10);
+  BtnClear.Top := CancelButton.Top;
+  BtnClear.Width := CancelButton.Width;
+  BtnClear.Height := CancelButton.Height;
+  BtnClear.Caption := '&Clear Test';
+  BtnClear.OnClick := @ClearButtonOnClick;
+  BtnClear.Parent := ParentForm;
+  BtnClear.Enabled := False;
+
+end;
+
+
 function InitializeSetup(): Boolean;
 begin
 
@@ -1260,8 +1444,10 @@ begin
   InitRecordsFromPath;
 
   TmpFile.Install := ExpandConstant('{tmp}\install.txt');
-    
-  Test := ExpandConstant('{param:test|}');
+  
+  if Pos('/test', GetCmdTail) <> 0 then  
+    Test := TEST_FLAG;
+
   Result := True;
    
 end;
@@ -1321,9 +1507,9 @@ begin
   'Setup has changed your path variable, but existing programs may not be aware of this. ' +
   'To run Composer for the first time, you must open a NEW command window.');
   
-  if Test <> '' then
-    WizardForm.Caption := WizardForm.Caption + ' /test=' + Test;
-
+  if Test = TEST_FLAG then
+    CreateTestButtons(WizardForm, WizardForm.CancelButton);
+  
 end;
 
 
