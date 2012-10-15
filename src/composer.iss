@@ -1,8 +1,12 @@
+#define CmdPhp "php.exe"
+#define CmdBat "composer.bat"
+#define CmdShell "composer"
 
 [Setup]
 AppName=Composer
 AppVerName=Composer
-DefaultDirName={userappdata}\Composer\bin
+AppPublisher=http://getcomposer.org
+DefaultDirName={userdocs}
 MinVersion=5.1
 OutputDir=..\
 OutputBaseFilename=Composer-Setup
@@ -14,26 +18,29 @@ AlwaysShowDirOnReadyPage=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 ChangesEnvironment=true
+Uninstallable=CheckGlobal
 SetupIconFile=install.ico
-WizardImageFile=WizComposer.bmp
-WizardSmallImageFile=WizComposerSmall.bmp
+WizardImageFile=wiz.bmp
+WizardSmallImageFile=wizsmall.bmp
 UninstallDisplayName=Composer - Php Dependency Manager
 
 [Files]
 Source: "setup.php"; Flags: dontcopy
-Source: "bin\composer"; Flags: dontcopy
-Source: "bin\composer.bat"; DestDir: "{app}"; Flags: ignoreversion; Check: CheckFull
-Source: "{tmp}\composer"; DestDir: "{app}"; Flags: external ignoreversion; Check: CheckFull
-Source: "{tmp}\composer.phar"; DestDir: "{app}"; Flags: external ignoreversion;
+Source: "shims\{#CmdShell}"; Flags: dontcopy
+Source: "shims\{#CmdBat}"; DestDir: {app}; Flags: ignoreversion; Check: CheckGlobal
+Source: "{tmp}\{#CmdShell}"; DestDir: {app}; Flags: external ignoreversion; Check: CheckGlobal
+Source: "{tmp}\composer.phar"; DestDir: {app}; Flags: external ignoreversion;
 
 [Icons]
-Name: "{userstartmenu}\Composer\Documentation"; Filename: "http://getcomposer.org/"
-Name: "{userstartmenu}\Composer\Uninstall Composer"; Filename: "{uninstallexe}";
+Name: "{userstartmenu}\Composer\Documentation"; Filename: "http://getcomposer.org/"; Check: CheckGlobal
+Name: "{userstartmenu}\Composer\Uninstall Composer"; Filename: "{uninstallexe}"; Check: CheckGlobal
 
 [Messages]
 WelcomeLabel1=[name] Setup
-WelcomeLabel2=This will download and install the [name] PHP Dependency Manager on your computer.
+WelcomeLabel2=This will download and install [name] on your computer.
 FinishedHeadingLabel=Completing [name] Setup
+FinishedLabelNoIcons=Setup has finished installing [name] on your computer.
+FinishedLabel=Setup has finished installing [name] on your computer.
 
 [Code]
 type
@@ -47,14 +54,17 @@ type
   TSearchRec = record
     System  : String;
     User    : String;
+    Cmd     : String;
     Path    : String;
   end;
 
 type
   TPathInfo = record
     Php       : TSearchRec;
-    Composer  : TSearchRec;
-    Paths     : TArrayOfString;
+    Bat       : TSearchRec;
+    Shell     : TSearchRec;
+    EnvPath   : String;
+
   end;
 
 type
@@ -62,6 +72,7 @@ type
     Setup     : String;
     Composer  : String;
     Result    : String;
+    Install   : String;
   end;
 
 type
@@ -82,10 +93,9 @@ type
 
 type
   TFlagsRec = record
-    DirShown    : Boolean;
     InstallType : Integer;
     AddPhp      : TPathRec;
-    AddBat      : TPathRec;
+    AddComposer : TPathRec;
     PathChanged : Boolean;
   end;
 
@@ -96,8 +106,11 @@ var
   PathError: String;
   GetRec: TGetRec;
   Flags: TFlagsRec;
+  DefaultDir: String;
+  LocalDir: String;
   HomeDir: String;
   TmpDir: String;
+  Test: String;
   ProgressPage: TOutputProgressWizardPage;
   PhpPage: TInputFileWizardPage;
   PhpErrorPage: TWizardPage;
@@ -108,78 +121,41 @@ var
 
 
 const
-  CSIDL_PROFILE = $0028;
   CS_SETUP_GUID = '3ECDC245-751A-4962-B580-B8A250EDD1CF';
-
+  CSIDL_PROFILE = $0028;
+  SEP_PATH = ';';
+  LF = #13#10;
+  
   COMPOSER_URL = 'getcomposer.org/installer';
   ERROR_NONE = 0;
   ERROR_INSTALL = 1;
   ERROR_UNKNOWN = 100;
   ERROR_CMD = 101;
-  ERROR_BATCH = 102;
+  ERROR_CMD_EX = 102;
   ERROR_PHP = 200;
   ERROR_COMPOSER = 300;
   ERROR_CONNECTION = 400;
-    
+
+  ERROR_EXIT = 201;
+  ERROR_RESULT = 203;
+  ERROR_EMPTY = 204;
+  ERROR_INVALID = 205;
+  ERROR_LOGIC = 206;
+      
   BACK_NEXT = 0;
   BACK_NONE = 1;
   BACK_RETRY = 2;
   
-  TYPE_FULL = 1;
-  TYPE_SINGLE = 2;
+  IT_GLOBAL = 1;
+  IT_LOCAL = 2;
 
-  TYPE_NAME_FULL = 'Global';
-  TYPE_NAME_SINGLE = 'Basic';
+  IT_GLOBAL_NAME = 'Global';
+  IT_LOCAL_NAME = 'Local';
 
-function GetDefaultDir(Param: String): String;
+
+function CheckGlobal: Boolean;
 begin
-
-  if IsAdminLoggedOn then
-  begin
-    Result := ExpandConstant('{sd}');
-    Result := AddBackslash(Result) + 'Composer';
-  end
-  else
-  begin
-    Result := ExpandConstant('{userappdata}');
-    Result := AddBackslash(Result) + 'Composer\bin';
-   end;
-
-  //Result := AddBackslash(Result) + 'composer';
-        
-end;
-
-
-function GetDefaultDirForPage(var Dir: String): Boolean;
-begin
-
-  Result := False;
-  Dir := '';
-
-  if Flags.DirShown then
-    Exit;
-
-  Flags.DirShown := True;
-
-  if Flags.InstallType = TYPE_FULL then
-  begin
-    
-    //if ComposerPath <> '' then
-    //  Dir := ComposerPath;
-    Dir := GetDefaultDir('');
-
-  end
-  else if Flags.InstallType = TYPE_SINGLE then
-    Dir := HomeDir;
-    
-  Result := Dir <> '';
-    
-end;
-
-
-function CheckFull: Boolean;
-begin
-  Result := Flags.InstallType = TYPE_FULL;
+  Result := Flags.InstallType = IT_GLOBAL;
 end;
 
 
@@ -253,21 +229,19 @@ end;
 function ListPath(var Path: String): TArrayOfString;
 var
   List: TArrayOfString;
-  Count: Integer;
   I: Integer;
   S: String;
   Index: Integer;
 
 begin
    
-  List := Explode(Path, ';');
-  Count := GetArrayLength(List);  
-  SetArrayLength(Result, Count);  
+  List := Explode(Path, SEP_PATH);
+  SetArrayLength(Result, GetArrayLength(List));  
   
   Path := '';
   Index := 0;
     
-  for I := 0 to Count - 1 do
+  for I := 0 to GetArrayLength(List) - 1 do
   begin
        
     if List[I] <> '' then
@@ -290,66 +264,113 @@ function GetPathListFromHiveEx(Hive: Integer; var Key, Path: String): TArrayOfSt
 begin
 
   Key := GetPathKeyForHive(Hive);
-  
+  Path := '';
+
   if RegQueryStringValue(Hive, Key, 'Path', Path) then
     Result := ListPath(Path); 
  
 end;
 
 
-function GetPathListFromHive(Hive: Integer): TArrayOfString;
+function GetPathListFromHive(Hive: Integer; var Path: String): TArrayOfString;
 var
   Key: String;
-  Path: String;
-
+  
 begin
   Result := GetPathListFromHiveEx(Hive, Key, Path);
 end;
 
 
-function InPath(const List: TArrayOfString; var Dir: String): Boolean;
-var
-  Count: Integer;
-  I: Integer;
-  
+function AddSeparator(var Value: String; const Separator: String): String;
 begin
-  
-  Result := False;
-  
-  Dir := RemoveBackslashUnlessRoot(Dir);
 
-  if Dir = '' then
+  if (Value <> '') and (Value[Length(Value)] <> Separator) then
+    Value := Value + Separator;
+
+  Result := Value;
+
+end;
+
+
+function AddPathSeparator(const Path: String): String;
+begin
+
+  Result := Trim(Path);
+  Result := AddSeparator(Result, SEP_PATH);
+
+end;
+
+
+function DirInPath(var Dir: String; const Path: String): Boolean;
+var
+  Haystack: String;
+  Needle: String;
+
+begin
+
+  Dir := RemoveBackslashUnlessRoot(Dir);
+  Needle := Lowercase(AddPathSeparator(Dir));
+  Haystack := Lowercase(AddPathSeparator(Path));
+  Result := Pos(Needle, Haystack) <> 0;
+
+end;
+
+
+function GetPathIndexForRemoval(var Rec: TPathRec): Integer;
+var
+  Dummy: String;
+  List: TArrayOfString;
+  I: Integer;
+
+begin
+
+  Result := -1;
+
+  Rec.Path := RemoveBackslashUnlessRoot(Rec.Path);
+
+  if Rec.Path = '' then
     Exit;
 
-  Count := GetArrayLength(List);
+  List := GetPathListFromHive(Rec.Hive, Dummy);
 
-  for I := 0 to Count - 1 do
+  for I := 0 to GetArrayLength(List) - 1 do
   begin
 
-    if CompareText(List[I], Dir) = 0 then
+    if CompareText(List[I], Rec.Path) = 0 then
     begin
-      Result := True;
+      Result := I;
       Exit;
     end;
 
   end;
-      
+  
+end;
+
+
+function IsPathIn(const BasePath, DestPath: String): Boolean;
+var
+  Haystack: String;
+  Needle: String;
+
+begin
+  
+  Needle := Lowercase(AddBackslash(BasePath));
+  Haystack := Lowercase(AddBackslash(DestPath));
+  Result := Pos(Needle, Haystack) <> 0;
+
 end;
  
 
 function SearchPath(List: TArrayOfString; const Cmd: String): String;
 var
-  Count: Integer;
   I: Integer;
   Filename: String;
 
 begin
 
   Result := '';
-
-  Count := GetArrayLength(List);
-  
-  for I := 0 to Count - 1 do
+    
+  for I := 0 to GetArrayLength(List) - 1 do
   begin
 
     Filename := List[I] + '\' + Cmd;
@@ -369,11 +390,21 @@ procedure SetSearchRec(var Rec: TSearchRec);
 begin
 
   if Rec.System <> '' then
-    Rec.Path := Rec.System
+  begin
+    Rec.Cmd := Rec.System;
+    Rec.Path := ExtractFileDir(Rec.System);
+    Rec.User := '';
+  end
   else if Rec.User <> '' then
-    Rec.Path := Rec.User
+  begin
+    Rec.Cmd := Rec.User;
+    Rec.Path := ExtractFileDir(Rec.User);
+  end
   else
+  begin
+    Rec.Cmd := '';
     Rec.Path := '';
+  end;
 
 end;
 
@@ -382,37 +413,25 @@ function GetPathInfo: TPathInfo;
 var
   List1: TArrayOfString;
   List2: TArrayOfString;
-  PhpCmd: String;
-  ComposerCmd: String;
-  Count1: Integer;
-  Count2: Integer;
-  I: Integer;
+  Path: String;
   
 begin
- 
-  PhpCmd := 'php.exe';
-  ComposerCmd := 'composer.bat';
     
-  List1 := GetPathListFromHive(HKEY_LOCAL_MACHINE);
-  Result.Php.System := SearchPath(List1, PhpCmd);
-  Result.Composer.System := SearchPath(List1, ComposerCmd);
-  
-  List2 := GetPathListFromHive(HKEY_CURRENT_USER);
-  Result.Php.User := SearchPath(List2, PhpCmd);
-  Result.Composer.User := SearchPath(List2, ComposerCmd);
-  
-  Count1 := GetArrayLength(List1);
-  Count2 := GetArrayLength(List2); 
-  SetArrayLength(Result.Paths, Count1 + Count2);
-  
-  for I := 0 to Count1 - 1 do
-    Result.Paths[I] := List1[I];
+  List1 := GetPathListFromHive(HKEY_LOCAL_MACHINE, Path);
+  Result.Php.System := SearchPath(List1, '{#CmdPhp}');
+  Result.Bat.System := SearchPath(List1, '{#CmdBat}');
+  Result.Shell.System := SearchPath(List1, '{#CmdShell}');
+  Result.EnvPath := AddPathSeparator(Path);
 
-  for I := 0 to Count2 - 1 do
-    Result.Paths[Count1 + I] := List2[I];
-    
+  List2 := GetPathListFromHive(HKEY_CURRENT_USER, Path);
+  Result.Php.User := SearchPath(List2, '{#CmdPhp}');
+  Result.Bat.User := SearchPath(List2, '{#CmdBat}');
+  Result.Shell.User := SearchPath(List2, '{#CmdShell}');
+  Result.EnvPath := Result.EnvPath + AddPathSeparator(Path);
+      
   SetSearchRec(Result.Php);
-  SetSearchRec(Result.Composer);
+  SetSearchRec(Result.Bat);
+  SetSearchRec(Result.Shell);
   
 end;
 
@@ -426,8 +445,8 @@ begin
 
   if Rec.Path = '' then
     Exit;
-    
-  if Pos(Lowercase(HomeDir), Lowercase(Path)) = 0 then
+  
+  if not IsPathIn(HomeDir, Path) then  
   begin
       
     if IsAdminLoggedOn then
@@ -448,59 +467,50 @@ var
 begin
 
   Info := GetPathInfo;
-  PhpRec.Exe := Info.Php.Path;
-  ComposerPath := ExtractFileDir(Info.Composer.Path);
-
+  PhpRec.Exe := Info.Php.Cmd;
+  
 end;
 
 
 
-function CheckPhpPath(PathList: TArrayOfString; Rec: TSearchRec): String;
+function CheckPhpPath(EnvPaths: String; Rec: TSearchRec): String;
 var
-  PathExe: String;
   S: String;
   Env: String;
-  Path: String;
+  PhpPath: String;
 
 begin
  
   Result := '';
-  PathExe := Rec.Path;
-  
-  if PathExe = '' then
+    
+  if Rec.Path = '' then
   begin
     
-    Path := ExtractFileDir(PhpRec.Exe);
+    PhpPath := ExtractFileDir(PhpRec.Exe);
     
-    if not InPath(PathList, Path) then
-      SetPathRec(Flags.AddPhp, Path); 
+    if not DirInPath(PhpPath, EnvPaths) then
+      SetPathRec(Flags.AddPhp, PhpPath); 
   
     Exit;
 
   end;
   
-  if CompareText(PathExe, PhpRec.Exe) = 0 then 
+  if CompareText(Rec.Cmd, PhpRec.Exe) = 0 then 
     Exit;
 
   S := 'The php exe you selected does not match the one found in your path.' + #13#10;
   S := S + #13#10;
   S := S + 'Selected: ' + PhpRec.Exe + #13#10;
-  S := S + 'In Path: ' + PathExe + #13#10;
+  S := S + 'In Path: ' + Rec.Cmd + #13#10;
   S := S + #13#10;
   
   if Rec.System <> '' then
-  begin
-    Env := 'System';
-    Path := ExtractFileDir(Rec.System);
-  end
+    Env := 'System'
   else
-  begin
     Env := 'User';
-    Path := ExtractFileDir(Rec.User);
-  end;
 
   S := S + 'Remove the following from your ' + Env + ' Path Environment variable:' #13#10;
-  S := S + '   ' + Path + #13#10;
+  S := S + '   ' + Rec.Path + #13#10;
   S := S + #13#10;
   
   S := S + 'Warning: Only do this if you are sure that it will not affect anything else.';
@@ -510,44 +520,55 @@ begin
 end;
 
 
-function CheckComposerPath(PathList: TArrayOfString; Rec: TSearchRec): String;
+function CheckShim(Rec: TSearchRec; Cmd: String; var Error: String): Boolean;
+begin
+
+  Error := '';
+
+  if (Rec.Path <> '') and (CompareText(Rec.Cmd, Cmd) <> 0) then
+  begin 
+    Error := 'Composer is already installed in the following directory:' + #13#10;
+    Error := Error + Rec.Path + #13#10;
+    Error := Error + #13#10;
+    Error := Error + 'You must remove it first, if you want to continue this installation.' + #13#10;
+  end;
+
+  Result := Error = '';
+
+end;
+
+
+function CheckComposerPath(Info: TPathInfo): String;
 var
-  PathBat: String;
   DirPath: String;
-  UserBat: String;
-  S: String;
-  
+  Cmd: String;
+    
 begin
  
   Result := '';
-  PathBat := Rec.Path;
-  
-  if Flags.InstallType = TYPE_SINGLE then
+      
+  if Flags.InstallType = IT_LOCAL then
     Exit;
 
-  if PathBat = '' then
+  if (Info.Bat.Path = '') and (Info.Shell.Path = '') then
   begin
-   
+    
     DirPath := WizardDirValue;
 
-    if not InPath(PathList, DirPath) then
-      SetPathRec(Flags.AddBat, DirPath);
+    if not DirInPath(DirPath, Info.EnvPath) then
+      SetPathRec(Flags.AddComposer, DirPath);
     
     Exit;
 
   end;
   
-  UserBat := AddBackslash(WizardDirValue) + 'composer.bat';
-
-  if CompareText(PathBat, UserBat) = 0 then 
+  Cmd := AddBackslash(WizardDirValue) + '{#CmdBat}';
+  
+  if not CheckShim(Info.Bat, Cmd, Result) then
     Exit;
 
-  S := 'Composer is already installed in the following directory:' + #13#10;
-  S := S + ExtractFileDir(PathBat) + #13#10;
-  S := S + #13#10;
-  S := S + 'You must remove it first, if you want to continue this installation.' + #13#10;
-    
-  Result := S;
+  Cmd := AddBackslash(WizardDirValue) + '{#CmdShell}';
+  CheckShim(Info.Shell, Cmd, Result);
 
 end;
 
@@ -590,7 +611,7 @@ begin
   if Pos('.EXE;', PathExt) = 0 then
     Missing := NewLine + Space + '.EXE';
     
-  if Flags.InstallType = TYPE_FULL then
+  if Flags.InstallType = IT_GLOBAL then
   begin  
 
     if Pos('.BAT;', PathExt) = 0 then
@@ -611,18 +632,97 @@ var
 begin
 
   SetPathRec(Flags.AddPhp, '');
-  SetPathRec(Flags.AddBat, '');
+  SetPathRec(Flags.AddComposer, '');
   Flags.PathChanged := False;
 
   Info := GetPathInfo;
 
-  PathError := CheckPhpPath(Info.Paths, Info.Php);
+  PathError := CheckPhpPath(Info.EnvPath, Info.Php);
 
   if PathError = '' then
-    PathError := CheckComposerPath(Info.Paths, Info.Composer);
+    PathError := CheckComposerPath(Info);
 
   if PathError = '' then
     PathError := CheckPathExt;
+
+  ComposerPath := '';
+
+  if Info.Bat.Path <> '' then
+  begin
+    
+    if FileExists(Info.Bat.Path + '\composer.phar') then
+      ComposerPath := Info.Bat.Path;
+
+  end;
+
+  if (ComposerPath = '') and (Info.Shell.Path <> '') then
+  begin  
+    
+    if FileExists(Info.Shell.Path + '\composer.phar') then
+      ComposerPath := Info.Shell.Path;    
+    
+  end;
+  
+end;
+
+
+function GetSysError(ExitCode: Integer; const Filename: String; var Error: String): Integer;
+begin
+
+  Error := SysErrorMessage(ExitCode);
+  Result := StringChangeEx(Error, '%1', '%s', True);
+    
+  if Result = 1 then
+    Error := Format(Error, [Filename]);
+
+end;
+
+
+procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String);
+var
+  Text: String;
+  Error: String;
+
+begin
+
+  Text := '';
+
+  case ErrorCode of
+
+    ERROR_CMD:
+    begin
+      
+      if GetSysError(ExitCode, Filename, Error) = 0 then
+        Text := 'The PHP exe file you specified did not execute correctly: ' + Filename + #13#10
+      else
+        Text := Error;
+
+    end;
+
+    ERROR_EXIT, ERROR_RESULT, ERROR_EMPTY, ERROR_INVALID:
+    begin
+      Error := Format('The PHP exe file you specified did not execute correctly: %s%s%s', [LF, Filename, LF]);
+      Error := Error + LF + 'Running it from the command line might highlight the problem.' 
+      Text := 'Internal Error [%d], ' + Format('exit code %d', [ExitCode]);
+      Text := Error + LF + Text;
+    end;
+
+    ERROR_LOGIC:
+    begin
+      Text := Format('An internal script did not run correctly (exit code %d)', [ExitCode]);
+      Text := 'Internal Error [%d]: ' + Text;
+    end;
+
+  else
+    
+    begin
+      ErrorCode := ERROR_UNKNOWN;
+      Text := 'Internal Error [%d]: An unspecified error occurred';
+    end;
+
+  end;
+
+  PhpRec.Error := Format(Text, [ErrorCode]);  
   
 end;
   
@@ -630,37 +730,55 @@ end;
 function CheckPhp(const Filename: String): Boolean;
 var
 	Params: String;
-  ResultCode: Integer;
+  Show: Integer;
+  ExitCode: Integer;
   Results: TArrayOfString;
   I: Integer;
   Len: Integer;
-  Error: String;
-  ErrorPhp: String;
 
 begin
 
   Result := False;
-    
+  
+  {
+   * Possible errors:
+   * Internal error - cmd did not run [ERROR_CMD] 
+   * ExitCode: 0 - Php check passed
+   * ExitCode: 1 - Php check failed
+   * ExitCode: ? - Php program error [ERROR_EXIT] (test=p1, test=p2)
+   * Results file, not found: [ERROR_RESULT] (test=p3)
+   * Results file, empty: [ERROR_EMPTY] (test=p4)
+   * Results file, non-matching guid: [ERROR_INVALID] (test=p5)
+   * Results file, ExitCode 0, multiline [ERROR_LOGIC] (test=p6)
+   * Results file, ExitCode 1, guid only [ERROR_LOGIC] (test=p7)
+  }
+   
   ResetPhp;
-  Error := 'The PHP exe file you specified did not execute correctly: ' + Filename + #13#10;
-  ErrorPhp := Error + 'Running it from the command line might highlight the problem' 
-  
+    
   Params := TmpFile.Setup + ' -- --php';
-  
-  if not Exec(Filename, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+
+  if Test <> '' then
   begin
-    PhpRec.Error := Error + 'Error: ' + SysErrorMessage(ResultCode);
+    Params := Params + ' --test ' + Test;
+    Show := SW_SHOW;
+  end
+  else
+    Show := SW_HIDE;
+  
+  if not Exec(Filename, Params, TmpDir, Show, ewWaitUntilTerminated, ExitCode) then
+  begin
+    SetPhpError(ERROR_CMD, ExitCode, Filename);
     Exit;
   end
-  else if (ResultCode <> 0) and (ResultCode <> 1) then
+  else if (ExitCode <> 0) and (ExitCode <> 1) then
   begin
-    PhpRec.Error := ErrorPhp;
+    SetPhpError(ERROR_EXIT, ExitCode, Filename); 
     Exit;
   end;
    
   if not LoadStringsFromFile(TmpFile.Result, Results) then
   begin
-    PhpRec.Error := ErrorPhp;
+    SetPhpError(ERROR_RESULT, ExitCode, Filename);
     Exit;  
   end;
         
@@ -668,28 +786,33 @@ begin
   
   if Len = 0 then
   begin
-    PhpRec.Error := ErrorPhp;
+    SetPhpError(ERROR_EMPTY, ExitCode, Filename);
     Exit; 
-  end;
-     
-  for I := 0 to Len - 1 do
+  end
+  else if Results[0] <> CS_SETUP_GUID then
   begin
-          
-    if PhpRec.Error <> '' then
-      PhpRec.Error := PhpRec.Error + #13#10;
-
-      PhpRec.Error := PhpRec.Error + Results[I];
-
-  end;
-
-  if ResultCode = 0 then
-  begin
+    SetPhpError(ERROR_INVALID, ExitCode, Filename);
+    Exit;   
+  end; 
         
-    if Results[0] = CS_SETUP_GUID then
-      PhpRec.Error := '';
-       
+  for I := 1 to Len - 1 do
+  begin
+    AddSeparator(PhpRec.Error, LF);      
+    PhpRec.Error := PhpRec.Error + Results[I];
   end;
-          
+  
+  if (ExitCode = 0) and (PhpRec.Error <> '') then
+  begin
+    SetPhpError(ERROR_LOGIC, ExitCode, Filename);
+    Exit;     
+  end;
+
+  if (ExitCode = 1) and (PhpRec.Error = '') then
+  begin
+    SetPhpError(ERROR_LOGIC, ExitCode, Filename);
+    Exit;     
+  end;
+             
   PhpRec.Exe := Filename;
   
   Result := PhpRec.Error = '';
@@ -722,7 +845,7 @@ begin
       Text := 'Internal Error [%d]: '; 
     end;
 
-    ERROR_BATCH:
+    ERROR_CMD_EX: // this one is very unlikely
     begin
       GetRec.Back := BACK_RETRY;
       Text := 'Internal Error [%d]: A command did not run correctly'; 
@@ -770,72 +893,42 @@ begin
   GetRec.Text := GetRec.Text + SysErrorMessage(ResultCode);
 end;
 
-
-function DownloadCheck(LastResultCode: Integer; var Results: TArrayOfString): Boolean;
+procedure SetDownloadCmdError(ExitCode: Integer; const Filename: string);
 var
-	Params: String;
-  ResultCode: Integer;
-  
+  Error: String;
+  Text: String;
+
 begin
-
-  Result := False;
-
-  { At this point we know that LastResultCode is 0 or 1, and
-   if 0 then composer.phar has been downloaded }
-    
-  Params := TmpFile.Setup + ' --install';
   
-  {
-   * Possible errors:
-   * Internal error - cmd did not run [ERROR_CMD] 
-   * ResultCode: 0 - Ok [ERROR_NONE]
-   * ResultCode: 1 - out.txt file not found [ERROR_BATCH] 
-   * ResultCode: 2 - Php script did not run properly [ERROR_PHP]
-  }
+  SetDownloadStatus(ERROR_CMD);
 
-  if not Exec(PhpRec.Exe, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    SetDownloadInternalError(ResultCode); 
-    Exit;
-  end;
-
-  if ResultCode = 1 then
-  begin
-    SetDownloadStatus(ERROR_BATCH);
-    Exit;
-  end
+  if GetSysError(ExitCode, Filename, Error) = 0 then
+    Text := Error + Filename
   else
-  if ResultCode = 2 then
-  begin
-    SetDownloadStatus(ERROR_PHP);
-    Exit;
-  end;
-                 
-  if not LoadStringsFromFile(TmpFile.Result, Results) then
-  begin
-    SetDownloadStatus(ERROR_PHP);
-    Exit;
-  end;
+    Text := Error;
 
-  Result := True;
+  GetRec.Text := GetRec.Text + Text;
 
 end;
 
 
 procedure DownloadWork;
 var
-	Params: String;
-  ResultCode: Integer;
+	Filename: String;
+  Switches: String;
+  Params: String;
+  ExitCode: Integer;
   Results: TArrayOfString;
   I: Integer;
   Len: Integer;
-  Switches: String;
-      
+  StartLine: Integer;
+        
 begin
 
   {
    * Possible errors:
-   * Internal error - cmd did not run [ERROR_CMD] 
+   * Internal error - cmd did not run [ERROR_CMD]
+   * Internal error - cmd did not create output file run [ERROR_CMD_EX] 
    * ResultCode: 0 - Installed, no warnings [ERROR_NONE]
    * ResultCode: 0 - Installed, warnings [ERROR_NONE]
    * ResultCode: 1 - Not Installed, errors [ERROR_INSTALL] 
@@ -844,20 +937,30 @@ begin
    * ResultCode: 4 - Unknown Error in composer installation, didn't return 0 or 1 or install file [ERROR_COMPOSER]
   }
   
+  Filename := ExpandConstant('{cmd}');
   Switches := '-- --download';
   
   if GetRec.Force then
     Switches := Switches + ' --force';
   
-  Params := Format('/c %s %s %s > out.txt', [AddQuotes(PhpRec.Exe), AddQuotes(TmpFile.Setup), Switches]);
+  if Test <> '' then
+    Switches :=Switches + ' --test ' + Test;
   
-  if not Exec(ExpandConstant('{cmd}'), Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  Params := Format('/c %s %s %s > %s', [AddQuotes(PhpRec.Exe), AddQuotes(TmpFile.Setup), Switches, AddQuotes(TmpFile.Install)]);
+  
+  if not Exec(Filename, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, ExitCode) then
   begin
-    SetDownloadInternalError(ResultCode); 
+    SetDownloadCmdError(ExitCode, Filename); 
     Exit;
   end;
   
-  if ResultCode = 0 then
+  if not LoadStringsFromFile(TmpFile.Install, Results) then
+  begin
+    SetDownloadStatus(ERROR_CMD_EX);
+    Exit;
+  end;
+  
+  if ExitCode = 0 then
   begin
 
     if not FileExists(TmpDir + '\composer.phar') then
@@ -867,77 +970,126 @@ begin
     end;
 
   end
-  else if ResultCode = 2 then
+  else if ExitCode = 2 then
   begin
     SetDownloadStatus(ERROR_PHP);
     Exit;
   end
-  else if ResultCode = 3 then
+  else if ExitCode = 3 then
   begin
     SetDownloadStatus(ERROR_CONNECTION);
     Exit;
   end
-  else if ResultCode = 4 then
+  else if ExitCode = 4 then
   begin
     SetDownloadStatus(ERROR_COMPOSER);
     Exit;
   end;
-    
-  if not DownloadCheck(ResultCode, Results) then
-    Exit;
-
+  
   Len := GetArrayLength(Results);
   
-  if (Len = 0) and (ResultCode = 1) then
+  if Len = 0 then
   begin
-    SetDownloadStatus(ERROR_COMPOSER);
-    Exit; 
+
+    if ExitCode = 1 then 
+      SetDownloadStatus(ERROR_COMPOSER);
+
+    Exit;
+
   end;
-  
-  SetDownloadStatus(ResultCode);
-  
-  for I := 0 to Len - 1 do
+    
+  SetDownloadStatus(ExitCode);
+
+  if Pos('#!', Results[0]) <> 0 then
+    StartLine := 1
+  else
+    StartLine := 0;
+
+  for I := StartLine to Len - 1 do
   begin
-          
-    if GetRec.Text <> '' then
-      GetRec.Text := GetRec.Text + #13#10;
-
+    AddSeparator(GetRec.Text, LF);      
     GetRec.Text := GetRec.Text + Results[I];
-
   end;
                   
 end;
 
 
-function AddPath(Rec: TPathRec): Boolean;
+function AddToPath(Rec: TPathRec): Boolean;
 var
-  List: TArrayOfString;
-  Current: String;
+  CurrentPath: String;
   NewPath: String;
   Key: String;
   
 begin
 
   Result := False;
-    
-  List := GetPathListFromHiveEx(Rec.Hive, Key, Current);
-      
-  if InPath(List, Rec.Path) then
+  
+  GetPathListFromHiveEx(Rec.Hive, Key, CurrentPath);
+  
+  if DirInPath(Rec.Path, CurrentPath) then    
   begin
     Result := True;
     Exit;
   end;
 
-  // Current formatted to end with ;
-  NewPath := Current + Rec.Path;
-
-  Result := RegWriteStringValue(Rec.Hive, Key, 'Path', NewPath);
+  // we don't want to mess with existing path entries
+  if RegQueryStringValue(Rec.Hive, Key, 'Path', CurrentPath) then
+  begin
+    NewPath := AddPathSeparator(CurrentPath) + Rec.Path;
+    Result := RegWriteStringValue(Rec.Hive, Key, 'Path', NewPath);
+  end
   
 end;
 
-function GetHomeDir: String;
+
+function RemoveFromPath(Rec: TPathRec): Boolean;
+var
+  Index: Integer;
+  Key: String;
+  List: TArrayOfString;
+  CurrentPath: String;
+  NewPath: String;
+  I: Integer;
+  
 begin
-  Result := GetShellFolderByCSIDL(CSIDL_PROFILE, False);
+
+  Result := False;
+  
+  // we don't want to mess with existing path entries
+  Index := GetPathIndexForRemoval(Rec);
+  
+  if Index = -1 then    
+  begin
+    Result := True;
+    Exit;
+  end;
+    
+  Key := GetPathKeyForHive(Rec.Hive);
+
+  if RegQueryStringValue(Rec.Hive, Key, 'Path', CurrentPath) then
+  begin
+
+    List := Explode(CurrentPath, ';');
+    NewPath := '';
+
+    for I := 0 to GetArrayLength(List) - 1 do
+    begin
+
+      if I = Index then    
+        Continue;
+
+      if NewPath <> '' then
+        NewPath := NewPath + ';';
+
+      NewPath := NewPath + List[I];
+
+    end;
+
+    if NewPath <> '' then
+      Result := RegWriteStringValue(Rec.Hive, Key, 'Path', NewPath);
+
+  end;
+  
 end;
 
 
@@ -1069,11 +1221,30 @@ begin
 end;
 
 
+function CheckDirectory(): Boolean;
+begin
+
+  Result := True;
+    
+  if IsPathIn(ExpandConstant('{userappdata}\Composer'), WizardDirValue) then
+  begin
+    MsgBox('Only a ' + IT_GLOBAL_NAME + ' Installation can use this location.', mbCriticalError, MB_OK);
+    Result := False;    
+  end
+  else
+    LocalDir := WizardDirValue;
+  
+end;
+
+
 function InitializeSetup(): Boolean;
 begin
 
   ResetPhp;
   SetDownloadStatus(ERROR_UNKNOWN);
+
+  DefaultDir := ExpandConstant('{userappdata}\Composer\bin');
+  LocalDir := ExpandConstant('{userdocs}');
   HomeDir := GetShellFolderByCSIDL(CSIDL_PROFILE, False);
   TmpDir := ExpandConstant('{tmp}');
 
@@ -1084,10 +1255,15 @@ begin
   TmpFile.Composer := ExpandConstant('{tmp}\composer');
  
   TmpFile.Result := ExpandConstant('{tmp}\result.txt');
-  InitRecordsFromPath;
-          
-  Result := True;
+  TmpFile.Install := ExpandConstant('{tmp}\install.txt');
 
+  InitRecordsFromPath;
+
+  TmpFile.Install := ExpandConstant('{tmp}\install.txt');
+    
+  Test := ExpandConstant('{param:test|}');
+  Result := True;
+   
 end;
 
 
@@ -1104,9 +1280,12 @@ begin
     'PHP Settings',
     'We need to check your PHP Command Line Executable.',
     'Select where php.exe is located, then click Next.');
-
-  PhpPage.Add('', 'php.exe|php.exe', '.exe');
-      
+  
+  if Test = '' then
+    PhpPage.Add('', 'php.exe|php.exe', '.exe')
+  else
+    PhpPage.Add('', 'All files|*.*', '');
+   
   PhpErrorPage := CreateMessagePage(PhpPage.ID,
     'PHP Settings - Error',
     'Composer will not work with your current settings',
@@ -1118,18 +1297,18 @@ begin
     True, False);
 
   S := #13#10;
-  S := S + TYPE_NAME_FULL + ' - I want to run Composer from inside any directory. Recommended.';
+  S := S + IT_GLOBAL_NAME + ' - I want to run Composer from inside any directory. Recommended.';
   S := S + #13#10 + 'Usage: composer';
   InstallTypePage.Add(S);
   
   S := #13#10;
-  S := S + TYPE_NAME_SINGLE + ' - I just want to use Composer in a specific directory.';
+  S := S + IT_LOCAL_NAME + ' - I just want to use Composer in a specific directory.';
   S := S + #13#10 + 'Usage: php composer.phar';
   InstallTypePage.Add(S);
   
   InstallTypePage.Values[0] := True;
   
-  PathErrorPage := CreateMessagePage(wpSelectDir,
+  PathErrorPage := CreateMessagePage(InstallTypePage.ID,
     'Path Settings - Error',
     'Composer will not work with your current settings',
     'Please review and fix the issues listed below then try again');
@@ -1142,6 +1321,9 @@ begin
   'Setup has changed your path variable, but existing programs may not be aware of this. ' +
   'To run Composer for the first time, you must open a NEW command window.');
   
+  if Test <> '' then
+    WizardForm.Caption := WizardForm.Caption + ' /test=' + Test;
+
 end;
 
 
@@ -1197,7 +1379,7 @@ begin
   if PageID = PhpErrorPage.ID then
     Result := PhpRec.Error = ''
   else if PageID = wpSelectDir then
-    Result := CheckFull
+    Result := CheckGlobal
   else if PageID = DownloadMsgPage.ID then
     Result := GetRec.Text = ''
   else if PageID = PathErrorPage.ID then
@@ -1209,16 +1391,13 @@ end;
 
 
 function NextButtonClick(CurPageID: Integer): Boolean;
-var
-  S: String;
-
 begin
 
   Result := True;
 
   if CurPageID = PhpPage.ID then
   begin
-  
+
     if not FileExists(PhpPage.Values[0]) then
     begin
       MsgBox('The file you specified does not exist.', mbCriticalError, MB_OK);
@@ -1232,21 +1411,28 @@ begin
   begin
   
     if InstallTypePage.Values[0] then
-      Flags.InstallType := TYPE_FULL
+    begin
+      Flags.InstallType := IT_GLOBAL;
+      WizardForm.DirEdit.Text := DefaultDir;
+    end
     else
-      Flags.InstallType := TYPE_SINGLE;
-  
-    if GetDefaultDirForPage(S) then
-      WizardForm.DirEdit.Text := S;
+    begin
+      Flags.InstallType := IT_LOCAL;
+      WizardForm.DirEdit.Text := LocalDir;
+    end;
+
+    CheckPath;
+      
+    if PathError <> '' then
+      UpdatePathErrorPage;
 
   end 
   else if CurPageID = wpSelectDir then
   begin
   
-    CheckPath;
-    if PathError <> '' then
-      UpdatePathErrorPage;
-
+    if (Flags.InstallType = IT_LOCAL) then
+      Result := CheckDirectory;
+    
   end
   else if CurPageID = wpReady then
   begin
@@ -1285,11 +1471,25 @@ begin
   S := S + NewLine;
   S := S + 'Installation Type:' + NewLine + Space;
   
-  case Flags.InstallType of
-    TYPE_FULL: S := S + TYPE_NAME_FULL + '. Composer can be used from inside any directory';
-    TYPE_SINGLE: S := S + TYPE_NAME_SINGLE + '. Composer can only be used from the above location' ;
+  if Flags.InstallType = IT_GLOBAL then
+    S := S + IT_GLOBAL_NAME + ' - Composer can be used from inside any directory.'
+  else
+  begin
+
+    S := S + IT_LOCAL_NAME;
+
+    if ComposerPath = '' then 
+      S := S + ' - Composer can only be used from the above location.'
+    else
+    begin
+      S := S + ' - Use Composer from the above location.'
+      S := S + NewLine + Space;
+      S := S + 'WARNING: ' + IT_GLOBAL_NAME + ' Installation already exists. Why not use this?'
+      S := S + NewLine + Space + 'Location: ' + ComposerPath;
+    end;
+
   end;
-    
+  
   Env := ' Path environment variable:';
 
   if Flags.AddPhp.Path <> '' then
@@ -1298,10 +1498,10 @@ begin
     S := S + NewLine + Space + Flags.AddPhp.Path;
   end;
 
-  if Flags.AddBat.Path <> '' then
+  if Flags.AddComposer.Path <> '' then
   begin
-    S := S + NewLine + NewLine + 'Add to ' + Flags.AddBat.Name + Env;
-    S := S + NewLine + Space + Flags.AddBat.Path;
+    S := S + NewLine + NewLine + 'Add to ' + Flags.AddComposer.Name + Env;
+    S := S + NewLine + Space + Flags.AddComposer.Path;
   end;
     
   Result := S;
@@ -1320,7 +1520,7 @@ begin
   if Flags.AddPhp.Path <> '' then
   begin
     
-    if not AddPath(Flags.AddPhp) then
+    if not AddToPath(Flags.AddPhp) then
     begin
       Result := 'Error setting ' + Flags.AddPhp.Name + ' Path variable';
       Exit;
@@ -1330,12 +1530,12 @@ begin
 
   end;
   
-  if Flags.AddBat.Path <> '' then
+  if Flags.AddComposer.Path <> '' then
   begin
    
-    if not AddPath(Flags.AddBat) then
+    if not AddToPath(Flags.AddComposer) then
     begin
-      Result := 'Error setting ' + Flags.AddBat.Name + ' Path variable';
+      Result := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
       Exit;
     end; 
 

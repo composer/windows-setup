@@ -4,7 +4,6 @@ chdir(dirname(__FILE__));
 define('CS_SETUP_GUID', '3ECDC245-751A-4962-B580-B8A250EDD1CF');
 
 $status = 2;
-$GLOBALS['result'] = '';
 csSetupProcess($argv, $status);
 exit($status);
 
@@ -12,18 +11,18 @@ exit($status);
 function csSetupProcess($argv, &$status)
 {
 
-  $phpCheck = in_array('--php', $argv);
-  $installCheck = in_array('--install', $argv);
+  csSetupInit($argv);
 
-  if ($phpCheck || $installCheck)
+  if (in_array('--php', $argv))
   {
 
     if ($handle = fopen('result.txt', 'wb'))
     {
-      $res = $phpCheck ? csSetupPhpCheck() : csSetupInstallCheck('out.txt');
+      $res = csSetupPhpCheck();
       $status = $res ? 0 : 1;
       fwrite($handle, $GLOBALS['result']);
       fclose($handle);
+      csSetupTest();
     }
 
   }
@@ -76,9 +75,10 @@ function csSetupPhpCheck()
 function csSetupFormatResult($errors, $showIni)
 {
 
+  $GLOBALS['result'] = csSetupGetIdentity();
+
   if (!$errors)
   {
-    $GLOBALS['result'] = CS_SETUP_GUID;
     return true;
   }
 
@@ -90,17 +90,6 @@ function csSetupFormatResult($errors, $showIni)
     switch ($error)
     {
 
-      case 'phar':
-        $text = "The phar extension is missing.".PHP_EOL;
-        $text .= "Install it or recompile php without --disable-phar";
-        break;
-
-      case 'unicode':
-        $text = "The detect_unicode setting must be disabled.".PHP_EOL;
-        $text .= "Add the following to the end of your `php.ini`:".PHP_EOL;
-        $text .= "    detect_unicode = Off";
-        break;
-
       case 'php':
         $text = "Your PHP ({$current}) is too old, you must upgrade to PHP 5.3.2 or higher.";
         break;
@@ -111,6 +100,16 @@ function csSetupFormatResult($errors, $showIni)
         $text .= "    allow_url_fopen = On";
         break;
 
+      case 'unicode':
+        $text = "The detect_unicode setting must be disabled.".PHP_EOL;
+        $text .= "Add the following to the end of your `php.ini`:".PHP_EOL;
+        $text .= "    detect_unicode = Off";
+        break;
+
+      case 'phar':
+        $text = "The phar extension is missing.".PHP_EOL;
+        $text .= "Install it or recompile php without --disable-phar";
+        break;
     }
 
     $list[] = $text;
@@ -153,8 +152,10 @@ function csSetupDownload($force, &$status)
 
   if ($code = @file_get_contents($src))
   {
+
     $status = 4;
     file_put_contents($filename, $code);
+    putenv('ANSICON');
     $argc = 2;
     $argv = array('-', '--', '--quiet');
     eval('?>' . $code);
@@ -168,33 +169,106 @@ function csSetupDownload($force, &$status)
 }
 
 
-function csSetupInstallCheck($filename)
+function csSetupInit($argv)
 {
 
-  if (!file_exists($filename))
+  $GLOBALS['result'] = '';
+  $GLOBALS['test'] = '';
+
+  while ($arg = array_shift($argv))
   {
-    return false;
+
+    if ($arg === '--test')
+    {
+      $test = array_shift($argv);
+      $GLOBALS['test'] = $test ? $test : '';
+      break;
+    }
+
   }
 
-  $out = file_get_contents($filename);
-
-  $patterns = array(
-    '/\\\\033\\[[0-9]{1,2};[0-9]{2}m/',
-    '/\\\\033\\[0m/'
-  );
-
-  $out = preg_replace($patterns, '', $out);
-  $lines = preg_split("/\r\n|\n\r|\r|\n/", $out);
-
-  if ($lines && strpos($lines[0], '#!/') !== false)
-  {
-    array_shift($lines);
-  }
-
-  $GLOBALS['result'] = trim(implode("\r\n", $lines));
-
-  return true;
+  csSetupTest(true);
 
 }
 
+
+function csSetupGetIdentity()
+{
+  return CS_SETUP_GUID.PHP_EOL;
+}
+
+
+function csSetupTest($init = false)
+{
+
+  if (!$GLOBALS['test'])
+  {
+    return;
+  }
+
+  if ($init)
+  {
+
+    switch ($GLOBALS['test'])
+    {
+
+      case 'p1':
+        exit($GLOBALS['status']);
+
+      case 'p2':
+        exit(PHP_INT_MAX);
+
+    }
+
+    return;
+
+  }
+
+  switch ($GLOBALS['test'])
+  {
+
+    case 'p3': // delete result file
+      @unlink('result.txt');
+      break;
+
+    case 'p4': // empty result file
+      file_put_contents('result.txt', '');
+      break;
+
+    case 'p5': // non matching identity
+      file_put_contents('result.txt', 'xxx');
+      break;
+
+    case 'p6':
+      csSetupTestResult($GLOBALS['test']);
+      break;
+
+    case 'p7':
+      csSetupTestResult($GLOBALS['test']);
+      break;
+
+  }
+
+}
+
+
+function csSetupTestResult($test)
+{
+
+  /*
+    p6 - multiline, status 0
+    p7 - first line only, status 1
+  */
+
+  $s = csSetupGetIdentity();
+
+  if ($test === 'p6')
+  {
+    $s .= 'xxx'.PHP_EOL;
+  }
+
+  file_put_contents('result.txt', $s);
+  $GLOBALS['status'] = $test === 'p6' ? 0 : 1;
+
+}
 
