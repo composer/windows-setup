@@ -13,72 +13,106 @@ These tests are for checking the input on the *Php Settings* page. They should d
 
 
 
-#### Invalid Version
+#### Invalid version
 * *Setup:* Select a version of PHP < 5.3.2
 
 * *Expected:* Describes error and shows current version.
 
 
-#### Invalid Settings
+#### Invalid settings
 * *Setup:* Change php.ini, set `allow_url_fopen = off`.
 
 * *Expected:* Describes error and shows the php.ini file used.
 
 
-#### Invalid ExitCode1
+#### Invalid exit code #1
 * *Setup:* Run test: `p1`.
 
-* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [201], exit code 2.
+* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [ERR_STATUS], exit code 2.
 
 
-#### Invalid ExitCode2
+#### Invalid exit code #2
 * *Setup:* Run test: `p2`.
 
-* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [201], exit code is `PHP_INT_MAX`.
+* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [ERR_STATUS], exit code is `PHP_INT_MAX`.
 
 
-#### No Result File
+#### No result file
 * *Setup:* Run test: `p3`.
 
-* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [203], exit code 0
+* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [ERR_RESULT], exit code 0
 
 
-#### Empty Result File
+#### Empty result file
 * *Setup:* Run test: `p4`.
 
-* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [204], exit code 0
+* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [ERR_EMPTY], exit code 0
 
 
-#### Invalid Indentity in File
+#### Invalid indentity in file
 * *Setup:* Run test: `p5`.
 
-* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [205], exit code 0
+* *Expected:* Reports that php.exe did not run correctly and shows the filename. Internal Error [ERR_INVALID], exit code 0
 
 
-#### Success but Lines in File
+#### Success but lines in file
 * *Setup:* Run test: `p6`.
 
-* *Expected:* Reports that an internal script did not run correctly. Internal Error [206], exit code 0
+* *Expected:* Reports that an internal script did not run correctly. Internal Error [ERR_LOGIC], exit code 0
 
 
-#### Failed but No Lines in File
+#### Failed but no lines in file
 * *Setup:* Run test: `p7`.
 
-* *Expected:* Reports that an internal script did not run correctly. Internal Error [206], exit code 1
-
-
-## Download Tests
-Where files in the *Temp* directory need to be modified, this will usually be found at `~/AppData/Local/Temp` and will be one of two directories prefixed `is-xxx.tmp` where *xxx* is a random string. Generally the tests use test-mode and mimic responses from the install script.
-
-
-#### Output File Missing
-* *Setup:* Put a breakpoint in the `DownloadWork` function on the call `LoadStringsFromFile`, using this pause to delete `install.txt` from the *Temp* directory.
-
-* *Expected:* Reports an internal error [102], with Retry button.
-
+* *Expected:* Reports that an internal script did not run correctly. Internal Error [ERR_LOGIC], exit code 1
 
 
 ## Path Tests
 
 Not yet implemented
 
+
+## Download Tests
+Generally the tests use test-mode and mimic responses from the install script. To test responses properly it is necessary to grab the downloaded file from the temp directory and modify accordingly. The temp directory will usually be found at `~/AppData/Local/Temp` and will be one of two directories prefixed `is-xxx.tmp` where *xxx* is a random string.
+
+
+#### Success but no composer.phar
+* *Setup:* Run test: `d0`.
+
+* *Expected:* Reports a Composer error [ERR_DOWNLOAD], with Back and Retry buttons.
+
+
+#### Failed due to php errors
+* *Setup:* Run test: `d1`.
+
+* *Expected:* Reports a dummy error, with Back and disabled Next button
+
+
+#### Failed due to internal php error
+* *Setup:* Run test: `d2`.
+
+* *Expected:* Reports an internal error [ERR_PHP], with Back and Retry buttons.
+
+
+#### Failed connection
+* *Setup:* Run test: `d3`, or disconnect from your network.
+
+* *Expected:* Reports a connection error [ERR_CONNECTION], with Back and Retry buttons.
+
+
+#### Failed due to internal composer error
+* *Setup:* Run test: `d4`.
+
+* *Expected:* Reports a Composer error [ERR_INVALID], with Back and Retry buttons.
+
+
+#### Success with a warning
+* *Setup:* Run test: `d5`.
+
+* *Expected:* Reports the warning, with Back and Next buttons.
+
+
+#### Failed due to unexpected composer response
+* *Setup:* Run test: `dn`, where *n* is a number <0 or >5.
+
+* *Expected:* Reports a Composer error [ERR_STATUS], with Back and Retry buttons and the exit code.

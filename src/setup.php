@@ -207,6 +207,7 @@ function csSetupTest($init = false)
 
   if ($init)
   {
+ini_set('error_log', 'server-errors.log');
 
     switch ($GLOBALS['test'])
     {
@@ -216,6 +217,30 @@ function csSetupTest($init = false)
 
       case 'p2':
         exit(PHP_INT_MAX);
+
+      case 'd0':
+        @unlink('composer.phar');
+        exit(0);
+
+      case 'd1':
+        echo 'Dummy error from installer script'.PHP_EOL;
+        exit(1);
+
+      case 'd4':
+        exit(1);
+
+      case 'd5':
+        ini_set('date.timezone', '');
+        break;
+
+      default:
+
+        $matches = array();
+
+        if (preg_match('/d(-*\\d{1,})/', $GLOBALS['test'], $matches))
+        {
+          exit(intval($matches[1]));
+        }
 
     }
 
