@@ -1,39 +1,67 @@
+#define SetupVersion = "2.1"
+
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
 
+#define AppName "Composer"
+#define AppUrl "http://getcomposer.org"
+#define AppDescription AppName + " - Php Dependency Manager"
+
+
 [Setup]
-AppName=Composer
-AppVerName=Composer
-AppPublisher=http://getcomposer.org
-DefaultDirName={userdocs}
-MinVersion=5.1
+; app name and version
+AppName={#AppName}
+AppVerName={#AppName}
+AppPublisher={#AppUrl}
+
+; compile directives
 OutputDir=..\
-OutputBaseFilename=Composer-Setup
+OutputBaseFilename={#AppName}-Setup
 Compression=lzma
 SolidCompression=yes
+
+; runtime  directives
+MinVersion=5.1
+PrivilegesRequired=lowest
+ChangesEnvironment=true
+
+; directory stuff
+DefaultDirName={userdocs}
 AppendDefaultDirName=no
 DirExistsWarning=no
 AlwaysShowDirOnReadyPage=yes
+
+; group stuff for Start Menu
+DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
-PrivilegesRequired=lowest
-ChangesEnvironment=true
-Uninstallable=CheckGlobal
+AlwaysShowGroupOnReadyPage=yes
+
+; uninstall
+Uninstallable=IsGlobalInstall
+UninstallDisplayName={#AppDescription}
+
+; exe version info
+VersionInfoVersion={#SetupVersion}
+VersionInfoProductVersion=0
+VersionInfoProductName={#AppDescription}
+
+; cosmetic
 SetupIconFile=install.ico
 WizardImageFile=wiz.bmp
 WizardSmallImageFile=wizsmall.bmp
-UninstallDisplayName=Composer - Php Dependency Manager
+
 
 [Files]
 Source: "setup.php"; Flags: dontcopy
 Source: "shims\{#CmdShell}"; Flags: dontcopy
-Source: "shims\{#CmdBat}"; DestDir: {app}; Flags: ignoreversion; Check: CheckGlobal
-Source: "{tmp}\{#CmdShell}"; DestDir: {app}; Flags: external ignoreversion; Check: CheckGlobal
+Source: "shims\{#CmdBat}"; DestDir: {app}; Flags: ignoreversion; Check: IsGlobalInstall
+Source: "{tmp}\{#CmdShell}"; DestDir: {app}; Flags: external ignoreversion; Check: IsGlobalInstall
 Source: "{tmp}\composer.phar"; DestDir: {app}; Flags: external ignoreversion;
 
 [Icons]
-Name: "{userstartmenu}\Composer\Documentation"; Filename: "http://getcomposer.org/"; Check: CheckGlobal
-Name: "{userstartmenu}\Composer\Uninstall Composer"; Filename: "{uninstallexe}"; Check: CheckGlobal
+Name: "{group}\Documentation"; Filename: "{#AppUrl}"; Check: IsGlobalInstall
+Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"; Check: IsGlobalInstall
 
 [Messages]
 WelcomeLabel1=[name] Setup
@@ -43,6 +71,7 @@ FinishedLabelNoIcons=Setup has finished installing [name] on your computer.
 FinishedLabel=Setup has finished installing [name] on your computer.
 
 [Code]
+
 type
   TPhpRec = record
     Exe     : String;
@@ -77,9 +106,8 @@ type
 
 type
   TGetRec = record
-    Done    : Boolean;
     Error   : Integer;
-    Back    : Integer;
+    Next    : Integer;
     Force   : Boolean;
     Text    : String;
   end;
@@ -127,7 +155,6 @@ const
   LF = #13#10;
   TEST_FLAG = '?';
   
-  COMPOSER_URL = 'getcomposer.org/installer';
   ERR_NONE = 0;
   ERR_INSTALL = 1;
   ERR_UNKNOWN = 10;
@@ -142,9 +169,9 @@ const
   ERR_CONN = 30;
   ERR_DOWNLOAD = 31;
         
-  BACK_NEXT = 0;
-  BACK_NONE = 1;
-  BACK_RETRY = 2;
+  NEXT_NONE = 0;
+  NEXT_RETRY = 1;
+  NEXT_OK = 2;
   
   IT_GLOBAL = 1;
   IT_LOCAL = 2;
@@ -153,9 +180,23 @@ const
   IT_LOCAL_NAME = 'Local';
 
 
-function CheckGlobal: Boolean;
+function IsGlobalInstall: Boolean;
 begin
   Result := Flags.InstallType = IT_GLOBAL;
+end;
+
+
+procedure ResetGetRec(Full: Boolean);
+begin
+
+  GetRec.Error := ERR_NONE;
+  GetRec.Next := NEXT_NONE;
+
+  if Full then
+    GetRec.Force := False;
+
+  GetRec.Text := '';
+
 end;
 
 
@@ -168,7 +209,7 @@ begin
   if FileExists(TmpFile.Result) then
     DeleteFile(TmpFile.Result);
     
-  GetRec.Done := False; 
+  ResetGetRec(True); 
 
 end;
 
@@ -316,7 +357,7 @@ begin
 end;
 
 
-function GetPathIndexForRemoval(var Rec: TPathRec): Integer;
+function GetPathIndexForRemoval(var Rec: TPathRec; var Count: Integer): Integer;
 var
   Dummy: String;
   List: TArrayOfString;
@@ -332,8 +373,9 @@ begin
     Exit;
 
   List := GetPathListFromHive(Rec.Hive, Dummy);
+  Count := GetArrayLength(List);
 
-  for I := 0 to GetArrayLength(List) - 1 do
+  for I := 0 to Count - 1 do
   begin
 
     if CompareText(List[I], Rec.Path) = 0 then
@@ -472,7 +514,6 @@ begin
 end;
 
 
-
 function CheckPhpPath(EnvPaths: String; Rec: TSearchRec): String;
 var
   S: String;
@@ -547,7 +588,7 @@ begin
  
   Result := '';
       
-  if Flags.InstallType = IT_LOCAL then
+  if not IsGlobalInstall then
     Exit;
 
   if (Info.Bat.Path = '') and (Info.Shell.Path = '') then
@@ -611,7 +652,7 @@ begin
   if Pos('.EXE;', PathExt) = 0 then
     Missing := NewLine + Space + '.EXE';
     
-  if Flags.InstallType = IT_GLOBAL then
+  if IsGlobalInstall then
   begin  
 
     if Pos('.BAT;', PathExt) = 0 then
@@ -840,69 +881,65 @@ var
 begin
 
   Text := '';
-
-  GetRec.Done := False;
-  GetRec.Error := Code;
-  GetRec.Back := BACK_NEXT;
-  GetRec.Force := False
-  GetRec.Text := '';
+  ResetGetRec(True);
 
   case Code of
 
-    ERR_NONE: GetRec.Done := True;
-    ERR_INSTALL: GetRec.Back := BACK_NONE;
+    ERR_NONE: GetRec.Next := NEXT_OK;
+        
+    ERR_INSTALL: GetRec.Next := NEXT_NONE;
   
     ERR_CMD:
     begin
-      GetRec.Back := BACK_RETRY;
+      GetRec.Next := NEXT_RETRY;
       Text := 'Internal Error [ERR_CMD]: '; 
     end;
 
     ERR_CMD_EX: // this one is very unlikely
     begin
-      GetRec.Back := BACK_RETRY;
+      GetRec.Next := NEXT_RETRY;
       Text := 'Internal Error [ERR_CMDEX]: A command did not run correctly'; 
     end;
 
     ERR_PHP:
     begin
-      GetRec.Back := BACK_RETRY;
+      GetRec.Next := NEXT_RETRY;
       Text := 'Internal Error [ERR_PHP]: An internal script did not run correctly'; 
     end;
 
     ERR_STATUS:
     begin
-      GetRec.Back := BACK_RETRY;
+      GetRec.Next := NEXT_RETRY;
       GetRec.Force := True;
       Text := 'Composer Error [ERR_STATUS]: Unexpected exit code from Composer'; 
     end;
 
     ERR_DOWNLOAD:
     begin
-      GetRec.Back := BACK_RETRY;
+      GetRec.Next := NEXT_RETRY;
       GetRec.Force := True;
       Text := 'Composer Error [ERR_DOWNLOAD]: Composer was not downloaded'; 
     end;
     
     ERR_INVALID:
     begin
-      GetRec.Back := BACK_RETRY;
+      GetRec.Next := NEXT_RETRY;
       GetRec.Force := True;
       Text := 'Composer Error [ERR_INVALID]: The script did not run correctly'; 
     end;
 
     ERR_CONN:
     begin
-      GetRec.Back := BACK_RETRY;
+      GetRec.Next := NEXT_RETRY;
       GetRec.Force := True;
-      Text := 'Connection Error [ERR_CONNECTION]: Unable to connect to ' + COMPOSER_URL; 
+      Text := 'Connection Error [ERR_CONNECTION]: Unable to connect to {#AppUrl}'; 
     end;
 
   else
     
     begin
       Code := ERR_UNKNOWN;
-      GetRec.Back := BACK_RETRY;
+      GetRec.Next := NEXT_RETRY;
       Text := 'Internal Error [ERR_UNKNOWN]: An unspecified error occurred';
     end;
 
@@ -1055,25 +1092,31 @@ begin
   
   GetPathListFromHiveEx(Rec.Hive, Key, CurrentPath);
   
-  if DirInPath(Rec.Path, CurrentPath) then    
+  if CurrentPath <> '' then
   begin
-    Result := True;
-    Exit;
+
+    if DirInPath(Rec.Path, CurrentPath) then    
+    begin
+      Result := True;
+      Exit;
+    end;
+
+    if not RegQueryStringValue(Rec.Hive, Key, 'Path', CurrentPath) then
+      Exit;
+
   end;
 
-  // we don't want to mess with existing path entries
-  if RegQueryStringValue(Rec.Hive, Key, 'Path', CurrentPath) then
-  begin
-    NewPath := AddPathSeparator(CurrentPath) + Rec.Path;
-    Result := RegWriteStringValue(Rec.Hive, Key, 'Path', NewPath);
-  end
-  
+  // mysgit needs the path to end ; for it to work !
+  NewPath := AddPathSeparator(CurrentPath) + AddPathSeparator(Rec.Path);
+  Result := RegWriteExpandStringValue(Rec.Hive, Key, 'Path', NewPath);
+    
 end;
 
 
 function RemoveFromPath(Rec: TPathRec): Boolean;
 var
   Index: Integer;
+  Entries: Integer;
   Key: String;
   List: TArrayOfString;
   CurrentPath: String;
@@ -1085,7 +1128,7 @@ begin
   Result := False;
   
   // we don't want to mess with existing path entries
-  Index := GetPathIndexForRemoval(Rec);
+  Index := GetPathIndexForRemoval(Rec, Entries);
   
   if Index = -1 then    
   begin
@@ -1095,30 +1138,31 @@ begin
     
   Key := GetPathKeyForHive(Rec.Hive);
 
-  if RegQueryStringValue(Rec.Hive, Key, 'Path', CurrentPath) then
+  if (Entries = 1) and (Index = 0) then
+  begin
+    Result := RegDeleteValue(Rec.Hive, Key, 'Path');
+    Exit;
+  end;
+     
+  if not RegQueryStringValue(Rec.Hive, Key, 'Path', CurrentPath) then
+    Exit;
+
+  List := Explode(CurrentPath, SEP_PATH);
+  NewPath := '';
+    
+  for I := 0 to GetArrayLength(List) - 1 do
   begin
 
-    List := Explode(CurrentPath, ';');
-    NewPath := '';
-
-    for I := 0 to GetArrayLength(List) - 1 do
+    if I <> Index then    
     begin
-
-      if I = Index then    
-        Continue;
-
-      if NewPath <> '' then
-        NewPath := NewPath + ';';
-
+      AddSeparator(NewPath, SEP_PATH);
       NewPath := NewPath + List[I];
-
     end;
 
-    if NewPath <> '' then
-      Result := RegWriteStringValue(Rec.Hive, Key, 'Path', NewPath);
-
   end;
-  
+ 
+  Result := RegWriteExpandStringValue(Rec.Hive, Key, 'Path', NewPath);
+
 end;
 
 
@@ -1225,12 +1269,12 @@ begin
 
   Result := True;
 
-  if GetRec.Done then
+  if GetRec.Next = NEXT_OK then
     Exit;
  
   ProgressPage.Caption := 'Downloading Composer';
   ProgressPage.Description := 'Please wait';
-  ProgressPage.SetText('Downloading from:', COMPOSER_URL);
+  ProgressPage.SetText('Downloading from:', '{#AppUrl}');
   ProgressPage.SetProgress(25, 100);
   ProgressPage.Show;
     
@@ -1266,7 +1310,7 @@ begin
 end;
 
 
-procedure UpdateTestCaption();
+procedure TestUpdateCaption();
 var
   Id: String;
   Caption: String;
@@ -1294,16 +1338,12 @@ begin
 end;
 
 
-procedure TestButtonOnClick(Sender: TObject);
+procedure TestButtonClick(Sender: TObject);
 var
   Form: TSetupForm;
   Edit: TNewEdit;
   Btn: TNewButton;
-  Id: String;
-  TestStr: String;
-  Caption: String;
-  Index: Integer;
-
+  
 begin
   
   Form := CreateCustomForm();
@@ -1311,7 +1351,7 @@ begin
   try
     Form.ClientWidth := ScaleX(256);
     Form.ClientHeight := ScaleY(128);
-    Form.Caption := 'Enter Test';
+    Form.Caption := 'Enter Test Identifier';
     Form.CenterInsideControl(WizardForm, False);
 
     Edit := TNewEdit.Create(Form);
@@ -1355,7 +1395,7 @@ begin
       else
         Test := TEST_FLAG;
       
-      UpdateTestCaption();  
+      TestUpdateCaption();  
       
     end;
 
@@ -1366,14 +1406,14 @@ begin
 end;
 
 
-procedure ClearButtonOnClick(Sender: TObject);
+procedure TestClearButtonClick(Sender: TObject);
 begin
   Test := TEST_FLAG;
-  UpdateTestCaption();
+  TestUpdateCaption();
 end;
 
 
-procedure CreateTestButtons(ParentForm: TSetupForm; CancelButton: TNewButton);
+procedure TestCreateButtons(ParentForm: TSetupForm; CancelButton: TNewButton);
 var
   BtnTest: TNewButton;
   BtnClear: TNewButton;
@@ -1386,7 +1426,7 @@ begin
   BtnTest.Width := CancelButton.Width;
   BtnTest.Height := CancelButton.Height;
   BtnTest.Caption := '&Enter Test';
-  BtnTest.OnClick := @TestButtonOnClick;
+  BtnTest.OnClick := @TestButtonClick;
   BtnTest.Parent := ParentForm;
   
   BtnClear := TNewButton.Create(ParentForm);
@@ -1397,42 +1437,49 @@ begin
   BtnClear.Width := CancelButton.Width;
   BtnClear.Height := CancelButton.Height;
   BtnClear.Caption := '&Clear Test';
-  BtnClear.OnClick := @ClearButtonOnClick;
+  BtnClear.OnClick := @TestClearButtonClick;
   BtnClear.Parent := ParentForm;
   BtnClear.Enabled := False;
 
 end;
 
 
-function InitializeSetup(): Boolean;
+procedure InitializeCommon(Setup: Boolean);
 begin
 
-  ResetPhp;
-  SetDownloadStatus(ERR_UNKNOWN);
-
   DefaultDir := ExpandConstant('{userappdata}\Composer\bin');
-  LocalDir := ExpandConstant('{userdocs}');
   HomeDir := GetShellFolderByCSIDL(CSIDL_PROFILE, False);
-  TmpDir := ExpandConstant('{tmp}');
 
-  ExtractTemporaryFile('setup.php');
-  TmpFile.Setup := ExpandConstant('{tmp}\setup.php');
+  if Setup then
+  begin
+    
+    LocalDir := ExpandConstant('{userdocs}');
+    TmpDir := ExpandConstant('{tmp}');
 
-  ExtractTemporaryFile('composer');
-  TmpFile.Composer := ExpandConstant('{tmp}\composer');
+    ExtractTemporaryFile('setup.php');
+    TmpFile.Setup := ExpandConstant('{tmp}\setup.php');
+
+    ExtractTemporaryFile('composer');
+    TmpFile.Composer := ExpandConstant('{tmp}\composer');
  
-  TmpFile.Result := ExpandConstant('{tmp}\result.txt');
-  TmpFile.Install := ExpandConstant('{tmp}\install.txt');
+    TmpFile.Result := ExpandConstant('{tmp}\result.txt');
+    TmpFile.Install := ExpandConstant('{tmp}\install.txt');
 
-  InitRecordsFromPath;
+    ResetPhp();
+    InitRecordsFromPath();
+      
+    if Pos('/test', GetCmdTail) <> 0 then  
+      Test := TEST_FLAG;
 
-  TmpFile.Install := ExpandConstant('{tmp}\install.txt');
-  
-  if Pos('/test', GetCmdTail) <> 0 then  
-    Test := TEST_FLAG;
+  end;
 
-  Result := True;
-   
+end;
+
+
+function InitializeSetup(): Boolean;
+begin
+  InitializeCommon(True);
+  Result := True;   
 end;
 
 
@@ -1491,7 +1538,7 @@ begin
   'To run Composer for the first time, you must open a NEW command window.');
   
   if Test = TEST_FLAG then
-    CreateTestButtons(WizardForm, WizardForm.CancelButton);
+    TestCreateButtons(WizardForm, WizardForm.CancelButton);
   
 end;
 
@@ -1524,15 +1571,18 @@ begin
   end
   else if CurPageID = wpPreparing then
   begin
+    
+    // only shown for a major error
     WizardForm.BackButton.Enabled := False;
+
   end
   else if CurPageID = DownloadMsgPage.ID then
   begin
     
     WizardForm.ActiveControl := nil;
-    WizardForm.NextButton.Enabled := GetRec.Back <> BACK_NONE;
+    WizardForm.NextButton.Enabled := GetRec.Next <> NEXT_NONE;
     
-    if GetRec.Back = BACK_RETRY then
+    if GetRec.Next = NEXT_RETRY then
       WizardForm.NextButton.Caption := 'Retry';
 
   end;  
@@ -1548,7 +1598,7 @@ begin
   if PageID = PhpErrorPage.ID then
     Result := PhpRec.Error = ''
   else if PageID = wpSelectDir then
-    Result := CheckGlobal
+    Result := IsGlobalInstall
   else if PageID = DownloadMsgPage.ID then
     Result := GetRec.Text = ''
   else if PageID = PathErrorPage.ID then
@@ -1599,7 +1649,7 @@ begin
   else if CurPageID = wpSelectDir then
   begin
   
-    if (Flags.InstallType = IT_LOCAL) then
+    if not IsGlobalInstall then
       Result := CheckDirectory;
     
   end
@@ -1612,6 +1662,16 @@ begin
   else if CurPageID = DownloadMsgPage.ID then
     Result := ShowDownloadPage(CurPageID);
   
+end;
+
+function BackButtonClick(CurPageID: Integer): Boolean;
+begin
+
+  Result := True;
+
+  if CurPageID = DownloadMsgPage.ID then
+    ResetGetRec(False);
+
 end;
 
 procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
@@ -1638,9 +1698,16 @@ begin
 
   S := S + MemoDirInfo + NewLine;
   S := S + NewLine;
+
+  if IsGlobalInstall and (MemoGroupInfo <> '') then
+  begin
+    S := S + MemoGroupInfo + NewLine;
+    S := S + NewLine;
+  end;
+
   S := S + 'Installation Type:' + NewLine + Space;
   
-  if Flags.InstallType = IT_GLOBAL then
+  if IsGlobalInstall then
     S := S + IT_GLOBAL_NAME + ' - Composer can be used from inside any directory.'
   else
   begin
@@ -1652,7 +1719,7 @@ begin
     else
     begin
       S := S + ' - Use Composer from the above location.'
-      S := S + NewLine + Space;
+      S := S + NewLine + NewLine + Space;
       S := S + 'WARNING: ' + IT_GLOBAL_NAME + ' Installation already exists. Why not use this?'
       S := S + NewLine + Space + 'Location: ' + ComposerPath;
     end;
@@ -1722,6 +1789,35 @@ begin
     SaveStringToFile(TmpDir + '\composer', S, False);
      
   end; 
-
-  
+   
 end;
+
+
+function InitializeUninstall(): Boolean;
+begin
+  InitializeCommon(False);
+  Result := True;   
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Rec: TPathRec;
+
+begin
+  
+  if CurUninstallStep = usPostUninstall then
+  begin
+    
+    if CompareText(DefaultDir, ExpandConstant('{app}')) <> 0 then
+      Exit;
+        
+    if not DirExists(DefaultDir) then
+    begin
+      SetPathRec(Rec, DefaultDir);
+      RemoveFromPath(Rec)
+    end;
+
+  end;
+
+end;
+

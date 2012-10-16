@@ -17,9 +17,8 @@ A Windows installer for the [Composer][composer] PHP Dependency Manager. [Downlo
 This installer attempts to ease that pain by:
 
 * helping you set up PHP so it can be used from the command line
-* checking that your PHP is compatible, no matter how many php.ini files you have lying around
-* downloading and installing Composer so that you can use it from any location
-* enabling you to run Composer by typing: `composer`
+* checking that your PHP is compatible
+* installing Composer so that you can use it from any location by typing: `composer`
 
 Composer-Setup does **not** write to your registry or do anything unspeakable to your computer other than adding a few files to a folder and updating your path environment variable (but only if you want it to). In fact it is not even a proper installer, in that it has no Uninstall feature, although removal is straightforward and explained [below](#Uninstalling).
 
@@ -39,9 +38,9 @@ Download and run [Composer-Setup][download]. You are first asked for the locatio
 
 The installer will then check that PHP is set up correctly for Composer. If it finds any errors it will display them and give you the chance to fix them. It will also show the location of the `php.ini` file that is being used, in case of multiple or redundant versions.
 
-Next you have to choose your Installation Type, either Global or Basic. A **Global** installation is recommended because this enables Composer to be run from any location by simply typing `composer`.
+Next you have to choose your Installation Type, either Global or Local. A **Global** installation is recommended because this enables Composer to be run from any location by simply typing `composer`.
 
-A **Basic** installation, however, requires you to be in the directory where you installed it and typing `php composer.phar`. This might be suitable in certain circumstances, or if you wish to try out Composer quickly.
+A **Local** installation, however, requires you to be in the directory where you installed it and typing `php composer.phar`. This might be suitable in certain circumstances, or if you wish to try out Composer quickly.
 
 After you have chosen the directory you wish to install to and reviewed the choices you have made, the installer will download Composer and set everything up. Full documentation can be found at [http://getcomposer.org][composer] and a repository of packages can be browsed at [Packagist][packagist].
 
@@ -63,7 +62,7 @@ For a Global install these instructions are in the `composer-README` file in you
 <a name="Compiling"></a>
 ## Compiling
 
-To compile the `src/composer.iss` script you will need to install the unicode version of [Inno Setup Compiler][compiler]. Using the QuickStart Pack is the easiest way to do this. Note that the *Encryption* module it not required and neither is the *Inno Setup Preprocessor*, although the latter may change in the future.
+To compile the `src/composer.iss` script you will need to install the unicode version of [Inno Setup Compiler][compiler]. Using the QuickStart Pack is the easiest way to do this. Note that *Inno Setup Preprocessor* is the only extra that is required.
 
 
 <a name="License"></a>

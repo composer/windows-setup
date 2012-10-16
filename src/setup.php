@@ -16,18 +16,22 @@ function csSetupProcess($argv, &$status)
   if (in_array('--php', $argv))
   {
 
+    csSetupTestPhp(true);
+
     if ($handle = fopen('result.txt', 'wb'))
     {
       $res = csSetupPhpCheck();
       $status = $res ? 0 : 1;
       fwrite($handle, $GLOBALS['result']);
       fclose($handle);
-      csSetupTest();
     }
+
+    csSetupTestPhp(false);
 
   }
   elseif (in_array('--download', $argv))
   {
+    csSetupTestDownload();
     $force = in_array('--force', $argv);
     csSetupDownload($force, $status);
   }
@@ -149,7 +153,7 @@ function csSetupDownload($force, &$status)
   {
     $src = (extension_loaded('openssl') ? 'https' : 'http') . '://getcomposer.org/installer';
   }
-
+  error_log($src);
   if ($code = @file_get_contents($src))
   {
 
@@ -186,8 +190,6 @@ function csSetupInit($argv)
 
   }
 
-  csSetupTest(true);
-
 }
 
 
@@ -197,7 +199,7 @@ function csSetupGetIdentity()
 }
 
 
-function csSetupTest($init = false)
+function csSetupTestPhp($before)
 {
 
   if (!$GLOBALS['test'])
@@ -205,9 +207,8 @@ function csSetupTest($init = false)
     return;
   }
 
-  if ($init)
+  if ($before)
   {
-ini_set('error_log', 'server-errors.log');
 
     switch ($GLOBALS['test'])
     {
@@ -218,65 +219,83 @@ ini_set('error_log', 'server-errors.log');
       case 'p2':
         exit(PHP_INT_MAX);
 
-      case 'd0':
-        @unlink('composer.phar');
-        exit(0);
-
-      case 'd1':
-        echo 'Dummy error from installer script'.PHP_EOL;
-        exit(1);
-
-      case 'd4':
-        exit(1);
-
-      case 'd5':
-        ini_set('date.timezone', '');
-        break;
-
-      default:
-
-        $matches = array();
-
-        if (preg_match('/d(-*\\d{1,})/', $GLOBALS['test'], $matches))
-        {
-          exit(intval($matches[1]));
-        }
-
     }
 
-    return;
-
   }
-
-  switch ($GLOBALS['test'])
+  else
   {
 
-    case 'p3': // delete result file
-      @unlink('result.txt');
-      break;
+    switch ($GLOBALS['test'])
+    {
 
-    case 'p4': // empty result file
-      file_put_contents('result.txt', '');
-      break;
+      case 'p3': // delete result file
+        @unlink('result.txt');
+        break;
 
-    case 'p5': // non matching identity
-      file_put_contents('result.txt', 'xxx');
-      break;
+      case 'p4': // empty result file
+        file_put_contents('result.txt', '');
+        break;
 
-    case 'p6':
-      csSetupTestResult($GLOBALS['test']);
-      break;
+      case 'p5': // non matching identity
+        file_put_contents('result.txt', 'xxx');
+        break;
 
-    case 'p7':
-      csSetupTestResult($GLOBALS['test']);
-      break;
+      case 'p6':
+        csSetupTestPhpResult($GLOBALS['test']);
+        break;
+
+      case 'p7':
+        csSetupTestPhpResult($GLOBALS['test']);
+        break;
+
+    }
 
   }
 
 }
 
 
-function csSetupTestResult($test)
+function csSetupTestDownload()
+{
+
+  if (!$GLOBALS['test'])
+  {
+    return;
+  }
+
+  switch ($GLOBALS['test'])
+  {
+
+    case 'd0':
+      @unlink('composer.phar');
+      exit(0);
+
+    case 'd1':
+      echo 'Dummy error from installer script'.PHP_EOL;
+      exit(1);
+
+    case 'd4':
+      exit(1);
+
+    case 'd5':
+      ini_set('date.timezone', '');
+      break;
+
+    default:
+
+      $matches = array();
+
+      if (preg_match('/d(-*\\d{1,})/', $GLOBALS['test'], $matches))
+      {
+        exit(intval($matches[1]));
+      }
+
+  }
+
+}
+
+
+function csSetupTestPhpResult($test)
 {
 
   /*
