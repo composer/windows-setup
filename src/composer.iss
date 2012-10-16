@@ -1106,7 +1106,7 @@ begin
 
   end;
 
-  // mysgit needs the path to end ; for it to work !
+  // add trailing separator (mysgit needs this is certain situations)
   NewPath := AddPathSeparator(CurrentPath) + AddPathSeparator(Rec.Path);
   Result := RegWriteExpandStringValue(Rec.Hive, Key, 'Path', NewPath);
     
@@ -1161,6 +1161,8 @@ begin
 
   end;
  
+  // add trailing separator (mysgit needs this is certain situations)
+  AddSeparator(NewPath, SEP_PATH);
   Result := RegWriteExpandStringValue(Rec.Hive, Key, 'Path', NewPath);
 
 end;
@@ -1701,8 +1703,13 @@ begin
 
   if IsGlobalInstall and (MemoGroupInfo <> '') then
   begin
-    S := S + MemoGroupInfo + NewLine;
-    S := S + NewLine;
+    
+    if not DirExists(ExpandConstant('{group}')) then
+    begin
+      S := S + MemoGroupInfo + NewLine;
+      S := S + NewLine;
+    end;
+
   end;
 
   S := S + 'Installation Type:' + NewLine + Space;
@@ -1798,6 +1805,7 @@ begin
   InitializeCommon(False);
   Result := True;   
 end;
+
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
