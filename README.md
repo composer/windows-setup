@@ -4,7 +4,7 @@ A Windows installer for the [Composer][composer] PHP Dependency Manager. [Downlo
 
 ## Contents
 * [About](#About)
-* [Installation](#Installation)
+* [Details](#Details)
 * [Uninstalling](#Uninstalling)
 * [Compiling](#Compiling)
 * [License](#License)
@@ -17,16 +17,15 @@ A Windows installer for the [Composer][composer] PHP Dependency Manager. [Downlo
 This installer attempts to ease that pain by:
 
 * helping you set up PHP so it can be used from the command line
-* checking that your PHP is compatible
 * installing Composer so that you can use it from any location by typing: `composer`
 * setting it up so you can also use it from Git Bash and Cygwin
 
-Composer-Setup comes complete with an uninstaller. [Download][download] and run it, and in the majority of cases this is all you need to do. The section below explains the install process in more detail, while the [Wiki][manual] describes how to do it manually.
+[Download][download] and run it, and in the majority of cases this is all you need to do. The install process is described in more detail below, while the [Wiki][manual] describes how to do it manually.
 
 Composer-Setup is written with [Inno Setup][inno], which is a powerful free installer for Windows programs.
 
-<a name="Installation"></a>
-## Installation
+<a name="Details"></a>
+## Details
 
 You are first asked for the location of your `php.exe`, which is the PHP command line interpreter. If this value is in your path then it will be displayed, otherwise you are going to have to hunt around. Depending on your setup it could be:
 
@@ -38,7 +37,7 @@ The installer will then check that PHP and your path are set up correctly. If it
 
 The installation directory depends on whether you are an Administrator or not and is non-negotiable:
 
-* `%ALLUSERSPROFILE%\Composer\bin` for an Admin install
+* `%ALLUSERSPROFILE%\Composer\bin` for an Admin install for all users
 * `%APPDATA%\Composer\bin` for a User install
 
 After you have accepted these choices, the installer will download Composer and set everything up. Full usage documentation can be found at [http://getcomposer.org][composer] and a repository of packages can be browsed at [Packagist][packagist].
