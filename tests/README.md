@@ -4,7 +4,7 @@ These are not automated, so the following is a list of manual tests. In most cas
 
 ## Php Tests
 
-These tests are for checking the input on the *Php Settings* page. They should display the *Php Settings - Error* page with the Next button disabled.
+These tests are for checking the input on the *Php Settings* page. They should display the *Php Settings Error* page with the Next button disabled.
 
 #### Invalid php.exe
 * *Setup:* Run test-mode and select a file which isn't php.exe.
@@ -73,7 +73,7 @@ Not yet implemented
 
 
 ## Download Tests
-The tests use test-mode and mimic responses from the install script. However, to test responses properly it is necessary to grab the downloaded file from the temp directory and modify it accordingly. The temp directory will usually be found at `~/AppData/Local/Temp` and will be one of two directories prefixed `is-xxx.tmp`, where *xxx* is a random string.
+The tests use test-mode and mimic responses from the install script. However, to test responses properly it is necessary to grab the downloaded file from the temp directory and modify it accordingly. The temp directory will usually be found at `~/AppData/Local/Temp` and will be one of two directories prefixed `is-xxx.tmp`, where *xxx* is a random string. These should display the the *Composer Download Error*, except for test `d5` which should show the *Composer Warning* page.
 
 
 #### Success but no composer.phar
@@ -109,10 +109,10 @@ The tests use test-mode and mimic responses from the install script. However, to
 #### Success with a warning
 * *Setup:* Run test: `d5`.
 
-* *Expected:* Reports the warning, with a Next buttons.
+* *Expected:* Reports the warning, with a Next button.
 
 
 #### Failed due to unexpected composer response
-* *Setup:* Run test: `dn`, where *n* is a number less then 0 or greater than 5.
+* *Setup:* Run test: `dn`, where *n* is the exit code (a number less then 0 or greater than 5).
 
 * *Expected:* Reports a Composer error [ERR_STATUS] showing the exit code, with a Retry button.

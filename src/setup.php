@@ -134,7 +134,8 @@ function csSetupFormatResult($errors, $showIni)
 
   }
 
-  $GLOBALS['result'] = implode(PHP_EOL.PHP_EOL, $list);
+  $GLOBALS['result'] .= implode(PHP_EOL.PHP_EOL, $list);
+
   return false;
 
 }
@@ -195,7 +196,7 @@ function csSetupInit($argv)
 
 function csSetupGetIdentity()
 {
-  return CS_SETUP_GUID.PHP_EOL;
+  return CS_SETUP_GUID.PHP_VERSION.PHP_EOL;
 }
 
 

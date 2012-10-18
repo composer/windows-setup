@@ -7,6 +7,7 @@
 #define AppName "Composer"
 #define AppUrl "http://getcomposer.org"
 #define AppDescription AppName + " - Php Dependency Manager"
+#define BinDir "bin"
 
 
 [Setup]
@@ -23,11 +24,12 @@ SolidCompression=yes
 
 ; runtime  directives
 MinVersion=5.1
-PrivilegesRequired=lowest
+PrivilegesRequired=none
 ChangesEnvironment=true
 
 ; directory stuff
-DefaultDirName={userdocs}
+DefaultDirName={commonappdata}{#AppName}
+DisableDirPage=yes
 AppendDefaultDirName=no
 DirExistsWarning=no
 AlwaysShowDirOnReadyPage=yes
@@ -38,8 +40,9 @@ DisableProgramGroupPage=yes
 AlwaysShowGroupOnReadyPage=yes
 
 ; uninstall
-Uninstallable=IsGlobalInstall
+Uninstallable=yes
 UninstallDisplayName={#AppDescription}
+UninstallFilesDir={app}\bin
 
 ; exe version info
 VersionInfoVersion={#SetupVersion}
@@ -55,27 +58,37 @@ WizardSmallImageFile=wizsmall.bmp
 [Files]
 Source: "setup.php"; Flags: dontcopy
 Source: "shims\{#CmdShell}"; Flags: dontcopy
-Source: "shims\{#CmdBat}"; DestDir: {app}; Flags: ignoreversion; Check: IsGlobalInstall
-Source: "{tmp}\{#CmdShell}"; DestDir: {app}; Flags: external ignoreversion; Check: IsGlobalInstall
-Source: "{tmp}\composer.phar"; DestDir: {app}; Flags: external ignoreversion;
+Source: "shims\{#CmdBat}"; DestDir: {app}\{#BinDir}; Flags: ignoreversion
+Source: "{tmp}\{#CmdShell}"; DestDir: {app}\{#BinDir}; Flags: external ignoreversion
+Source: "{tmp}\composer.phar"; DestDir: {app}\{#BinDir}; Flags: external ignoreversion
+
+[Dirs]
+Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
+
+; to force deletion of Composer\bin, Composer if empty.
+[UninstallDelete]
+Type: dirifempty; Name: "{app}\{#BinDir}"
+Type: dirifempty; Name: "{app}"
+
 
 [Icons]
-Name: "{group}\Documentation"; Filename: "{#AppUrl}"; Check: IsGlobalInstall
-Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"; Check: IsGlobalInstall
+Name: "{group}\Documentation"; Filename: "{#AppUrl}"
+Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
 [Messages]
 WelcomeLabel1=[name] Setup
-WelcomeLabel2=This will download and install [name] on your computer.
+WelcomeLabel2=This will download and install [name] on your computer
 FinishedHeadingLabel=Completing [name] Setup
 FinishedLabelNoIcons=Setup has finished installing [name] on your computer.
 FinishedLabel=Setup has finished installing [name] on your computer.
+
 
 [Code]
 
 type
   TPhpRec = record
     Exe     : String;
-    Checked : Boolean;
+    Version : String;
     Error   : String;
   end;
 
@@ -121,10 +134,10 @@ type
 
 type
   TFlagsRec = record
-    InstallType : Integer;
     AddPhp      : TPathRec;
     AddComposer : TPathRec;
     PathChanged : Boolean;
+    Installed   : Boolean;
   end;
 
 var
@@ -134,18 +147,14 @@ var
   PathError: String;
   GetRec: TGetRec;
   Flags: TFlagsRec;
-  DefaultDir: String;
-  LocalDir: String;
   HomeDir: String;
   TmpDir: String;
   Test: String;
+  SettingsPage: TInputFileWizardPage;
   ProgressPage: TOutputProgressWizardPage;
-  PhpPage: TInputFileWizardPage;
-  PhpErrorPage: TWizardPage;
-  InstallTypePage: TInputOptionWizardPage;
-  DownloadMsgPage: TWizardPage;
-  PathErrorPage: TWizardPage;
-  PathInfoPage: TOutputMsgWizardPage;
+  ErrorPage: TWizardPage;
+  DownloadInfoPage: TWizardPage;
+  FinishedInfoPage: TOutputMsgWizardPage;
 
 
 const
@@ -173,18 +182,6 @@ const
   NEXT_RETRY = 1;
   NEXT_OK = 2;
   
-  IT_GLOBAL = 1;
-  IT_LOCAL = 2;
-
-  IT_GLOBAL_NAME = 'Global';
-  IT_LOCAL_NAME = 'Local';
-
-
-function IsGlobalInstall: Boolean;
-begin
-  Result := Flags.InstallType = IT_GLOBAL;
-end;
-
 
 procedure ResetGetRec(Full: Boolean);
 begin
@@ -204,6 +201,7 @@ procedure ResetPhp;
 begin
   
   PhpRec.Exe := '';
+  PhpRec.Version := '';
   PhpRec.Error := '';
         
   if FileExists(TmpFile.Result) then
@@ -389,20 +387,6 @@ begin
 end;
 
 
-function IsPathIn(const BasePath, DestPath: String): Boolean;
-var
-  Haystack: String;
-  Needle: String;
-
-begin
-  
-  Needle := Lowercase(AddBackslash(BasePath));
-  Haystack := Lowercase(AddBackslash(DestPath));
-  Result := Pos(Needle, Haystack) <> 0;
-
-end;
- 
-
 function SearchPath(List: TArrayOfString; const Cmd: String): String;
 var
   I: Integer;
@@ -484,21 +468,29 @@ begin
   Rec.Path := Path;
   Rec.Hive := HKEY_CURRENT_USER;
   Rec.Name := 'User';
-
-  if Rec.Path = '' then
-    Exit;
-  
-  if not IsPathIn(HomeDir, Path) then  
+          
+  if (Rec.Path <> '') and IsAdminLoggedOn then
   begin
-      
-    if IsAdminLoggedOn then
-    begin
-      Rec.Hive := HKEY_LOCAL_MACHINE;
-      Rec.Name := 'System';
-    end;
-
+    Rec.Hive := HKEY_LOCAL_MACHINE;
+    Rec.Name := 'System';
   end;
  
+end;
+
+function GetAppDir(): String;
+begin
+  
+  if IsAdminLoggedOn then
+    Result := ExpandConstant('{commonappdata}\{#AppName}')
+  else
+    Result := ExpandConstant('{userappdata}\{#AppName}');
+
+end;
+
+
+function GetInstallDir(const AppDir: String): String;
+begin
+  Result := AddBackslash(AppDir) + '{#BinDir}';
 end;
 
 
@@ -560,7 +552,7 @@ begin
 
 end;
 
-
+{
 function CheckShim(Rec: TSearchRec; Cmd: String; var Error: String): Boolean;
 begin
 
@@ -577,6 +569,34 @@ begin
   Result := Error = '';
 
 end;
+}
+function CheckShim(Rec: TSearchRec; Cmd: String; var Installed: Boolean): String;
+var
+  S: String;
+
+begin
+
+  S := '';
+
+  if Rec.Path <> '' then
+  begin 
+    
+    if CompareText(Rec.Cmd, Cmd) <> 0 then 
+    begin
+      S := 'Composer is already installed in the following directory:' + #13#10;
+      S := S + Rec.Path + #13#10;
+      S := S + #13#10;
+      S := S + 'You must remove it first, if you want to continue this installation.' + #13#10;
+    end;
+
+    // we only set Installed to true
+    Installed := True;
+
+  end;
+
+  Result := S;
+
+end;
 
 
 function CheckComposerPath(Info: TPathInfo): String;
@@ -587,14 +607,10 @@ var
 begin
  
   Result := '';
-      
-  if not IsGlobalInstall then
-    Exit;
+  DirPath := GetInstallDir(WizardDirValue);
 
   if (Info.Bat.Path = '') and (Info.Shell.Path = '') then
   begin
-    
-    DirPath := WizardDirValue;
 
     if not DirInPath(DirPath, Info.EnvPath) then
       SetPathRec(Flags.AddComposer, DirPath);
@@ -603,13 +619,15 @@ begin
 
   end;
   
-  Cmd := AddBackslash(WizardDirValue) + '{#CmdBat}';
+  Cmd := AddBackslash(DirPath) + '{#CmdBat}';
   
-  if not CheckShim(Info.Bat, Cmd, Result) then
-    Exit;
-
-  Cmd := AddBackslash(WizardDirValue) + '{#CmdShell}';
-  CheckShim(Info.Shell, Cmd, Result);
+  Result := CheckShim(Info.Bat, Cmd, Flags.Installed)
+  
+  if Result = '' then
+  begin
+    Cmd := AddBackslash(DirPath) + '{#CmdShell}';
+    Result := CheckShim(Info.Shell, Cmd, Flags.Installed);
+  end;
 
 end;
 
@@ -652,13 +670,8 @@ begin
   if Pos('.EXE;', PathExt) = 0 then
     Missing := NewLine + Space + '.EXE';
     
-  if IsGlobalInstall then
-  begin  
-
-    if Pos('.BAT;', PathExt) = 0 then
-      Missing := Missing + NewLine + Space + '.BAT';
-
-  end;
+  if Pos('.BAT;', PathExt) = 0 then
+    Missing := Missing + NewLine + Space + '.BAT';
 
   if Missing <> '' then
     Result := 'Your PathExt Environment variable is missing required values:' + Missing;
@@ -674,6 +687,7 @@ begin
 
   SetPathRec(Flags.AddPhp, '');
   SetPathRec(Flags.AddComposer, '');
+  Flags.Installed := False;
   Flags.PathChanged := False;
 
   Info := GetPathInfo;
@@ -843,11 +857,13 @@ begin
     SetPhpError(ERR_EMPTY, ExitCode, Filename);
     Exit; 
   end
-  else if Results[0] <> CS_SETUP_GUID then
+  else if Pos(CS_SETUP_GUID, Results[0]) = 0 then
   begin
     SetPhpError(ERR_INVALID, ExitCode, Filename);
     Exit;   
   end; 
+  
+  PhpRec.Version := Copy(Results[0], Length(CS_SETUP_GUID) + 1, 100);
         
   for I := 1 to Len - 1 do
   begin
@@ -945,6 +961,7 @@ begin
 
   end;
 
+  GetRec.Error := Code;
   GetRec.Text := Text;
 
 end;
@@ -1199,16 +1216,27 @@ begin
 end;
 
 
-procedure UpdatePhpErrorPage();
+procedure UpdateErrorPage();
+var
+  Memo: TNewMemo;
+   
 begin
-  TNewMemo(PhpErrorPage.FindComponent('Memo')).Text := PhpRec.Error;
+  
+  Memo := TNewMemo(ErrorPage.FindComponent('Memo'));
+
+  if PhpRec.Error <> '' then
+  begin
+    ErrorPage.Caption := 'PHP Settings Error';
+    Memo.Text := PhpRec.Error;
+  end
+  else if PathError <> '' then
+  begin
+    ErrorPage.Caption := 'Path Settings Error';
+    Memo.Text := PathError;
+  end
+
 end;
 
-
-procedure UpdatePathErrorPage();
-begin
-  TNewMemo(PathErrorPage.FindComponent('Memo')).Text := PathError;
-end;
 
 procedure UpdateDownloadMsgPage();
 var
@@ -1217,14 +1245,14 @@ var
     
 begin
 
-  PageStatic := TNewStaticText(DownloadMsgPage.FindComponent('Static'));
-  PageMemo := TNewMemo(DownloadMsgPage.FindComponent('Memo'));
+  PageStatic := TNewStaticText(DownloadInfoPage.FindComponent('Static'));
+  PageMemo := TNewMemo(DownloadInfoPage.FindComponent('Memo'));
   
   if GetRec.Error <> ERR_NONE then
   begin
     
-    DownloadMsgPage.Caption := 'Composer Download - Error';
-    DownloadMsgPage.Description := 'Unable to continue with installation';
+    DownloadInfoPage.Caption := 'Composer Download Error';
+    DownloadInfoPage.Description := 'Unable to continue with installation';
 
     if GetRec.Error = ERR_INSTALL then
       PageStatic.Caption := 'Please review and fix the issues listed below then try again.'
@@ -1234,8 +1262,8 @@ begin
   end
   else
   begin
-    DownloadMsgPage.Caption := 'Composer - Warning';
-    DownloadMsgPage.Description := 'Please read the following information before continuing.';
+    DownloadInfoPage.Caption := 'Composer Warning';
+    DownloadInfoPage.Description := 'Please read the following information before continuing.';
     PageStatic.Caption := 'Review the issues listed below then click Next to continue';
   end;
 
@@ -1244,27 +1272,41 @@ begin
 end;
 
 
-procedure ShowPhpCheckPage;
+procedure ShowCheckPage;
 begin
 
-  ProgressPage.Caption := 'Checking PHP settings';
+  ProgressPage.Caption := 'Checking your settings';
   ProgressPage.Description := 'Please wait';
-  ProgressPage.SetText('Checking:', PhpPage.Values[0]);
+  ProgressPage.SetText('Checking:', SettingsPage.Values[0]);
   ProgressPage.SetProgress(25, 100);
   ProgressPage.Show;
     
   try
+    
     ProgressPage.SetProgress(50, 100);
-    CheckPhp(PhpPage.Values[0]);
+    CheckPhp(SettingsPage.Values[0]);
+
+    if PhpRec.Error <> '' then
+    begin
+      UpdateErrorPage();
+      ProgressPage.SetProgress(100, 100);
+      Exit;
+    end;
+
+    ProgressPage.SetProgress(80, 100);
+    ProgressPage.SetText('Checking:', 'Environment paths');
+    CheckPath;
+    
+    ProgressPage.SetProgress(100, 100)
+      
+    if PathError <> '' then
+      UpdateErrorPage();
+
   finally
     ProgressPage.Hide;
   end;
-      
-  if PhpRec.Error <> '' then
-    UpdatePhpErrorPage;
-
+  
 end;
-
 
 function ShowDownloadPage(CurPageID: Integer): Boolean;
 begin
@@ -1293,22 +1335,6 @@ begin
     Result := CurPageID = wpReady;
   end;
 
-end;
-
-
-function CheckDirectory(): Boolean;
-begin
-
-  Result := True;
-    
-  if IsPathIn(ExpandConstant('{userappdata}\Composer'), WizardDirValue) then
-  begin
-    MsgBox('Only a ' + IT_GLOBAL_NAME + ' Installation can use this location.', mbCriticalError, MB_OK);
-    Result := False;    
-  end
-  else
-    LocalDir := WizardDirValue;
-  
 end;
 
 
@@ -1446,98 +1472,62 @@ begin
 end;
 
 
-procedure InitializeCommon(Setup: Boolean);
-begin
-
-  DefaultDir := ExpandConstant('{userappdata}\Composer\bin');
-  HomeDir := GetShellFolderByCSIDL(CSIDL_PROFILE, False);
-
-  if Setup then
-  begin
-    
-    LocalDir := ExpandConstant('{userdocs}');
-    TmpDir := ExpandConstant('{tmp}');
-
-    ExtractTemporaryFile('setup.php');
-    TmpFile.Setup := ExpandConstant('{tmp}\setup.php');
-
-    ExtractTemporaryFile('composer');
-    TmpFile.Composer := ExpandConstant('{tmp}\composer');
- 
-    TmpFile.Result := ExpandConstant('{tmp}\result.txt');
-    TmpFile.Install := ExpandConstant('{tmp}\install.txt');
-
-    ResetPhp();
-    InitRecordsFromPath();
-      
-    if Pos('/test', GetCmdTail) <> 0 then  
-      Test := TEST_FLAG;
-
-  end;
-
-end;
-
-
 function InitializeSetup(): Boolean;
 begin
-  InitializeCommon(True);
-  Result := True;   
+
+  HomeDir := GetShellFolderByCSIDL(CSIDL_PROFILE, False);
+      
+  TmpDir := ExpandConstant('{tmp}');
+
+  ExtractTemporaryFile('setup.php');
+  TmpFile.Setup := ExpandConstant('{tmp}\setup.php');
+
+  ExtractTemporaryFile('composer');
+  TmpFile.Composer := ExpandConstant('{tmp}\composer');
+ 
+  TmpFile.Result := ExpandConstant('{tmp}\result.txt');
+  TmpFile.Install := ExpandConstant('{tmp}\install.txt');
+
+  ResetPhp();
+  InitRecordsFromPath();
+      
+  if Pos('/test', GetCmdTail) <> 0 then  
+    Test := TEST_FLAG;
+
+  Result := True;
+
 end;
 
 
 procedure InitializeWizard;
-var
-  S: String;
-
 begin
 
+  WizardForm.DirEdit.Text := GetAppDir();
+ 
   ProgressPage := CreateOutputProgressPage('', '');
   ProgressPage.ProgressBar.Style := npbstMarquee;
 
-  PhpPage := CreateInputFilePage(wpWelcome,
-    'PHP Settings',
-    'We need to check your PHP Command Line Executable.',
+  SettingsPage := CreateInputFilePage(wpWelcome,
+    'Settings Check',
+    'We need to check your PHP and path settings.',
     'Select where php.exe is located, then click Next.');
   
   if Test = '' then
-    PhpPage.Add('', 'php.exe|php.exe', '.exe')
+    SettingsPage.Add('', 'php.exe|php.exe', '.exe')
   else
-    PhpPage.Add('', 'All files|*.*', '');
-   
-  PhpErrorPage := CreateMessagePage(PhpPage.ID,
-    'PHP Settings - Error',
-    'Composer will not work with your current settings',
+    SettingsPage.Add('', 'All files|*.*', '');
+  
+  ErrorPage := CreateMessagePage(SettingsPage.ID,
+    '', 'Composer will not work with your current settings',
     'Please review and fix the issues listed below then try again');
-
-  InstallTypePage := CreateInputOptionPage(PhpErrorPage.ID,
-    'Installation Type', 'How would you like to use Composer?',
-    'Please specify your installation type, then click Next.',
-    True, False);
-
-  S := #13#10;
-  S := S + IT_GLOBAL_NAME + ' - I want to run Composer from inside any directory. Recommended.';
-  S := S + #13#10 + 'Usage: composer';
-  InstallTypePage.Add(S);
   
-  S := #13#10;
-  S := S + IT_LOCAL_NAME + ' - I just want to use Composer in a specific directory.';
-  S := S + #13#10 + 'Usage: php composer.phar';
-  InstallTypePage.Add(S);
+  DownloadInfoPage := CreateMessagePage(wpReady, '', '', '');
   
-  InstallTypePage.Values[0] := True;
-  
-  PathErrorPage := CreateMessagePage(InstallTypePage.ID,
-    'Path Settings - Error',
-    'Composer will not work with your current settings',
-    'Please review and fix the issues listed below then try again');
-
-  DownloadMsgPage := CreateMessagePage(wpReady, '', '', '');
-  
-  PathInfoPage := CreateOutputMsgPage(wpInstalling,
+  FinishedInfoPage := CreateOutputMsgPage(wpInstalling,
   'Information',
   'Please read the following important information before continuing.',
-  'Setup has changed your path variable, but existing programs may not be aware of this. ' +
-  'To run Composer for the first time, you must open a NEW command window.');
+  'Setup has changed your path variable, but not all running programs will be aware of this. ' +
+  'To use Composer for the first time, you may have to open a NEW command window.');
   
   if Test = TEST_FLAG then
     TestCreateButtons(WizardForm, WizardForm.CancelButton);
@@ -1547,24 +1537,17 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-
-  if CurPageID = PhpPage.ID then
+  
+  if CurPageID = SettingsPage.ID then
   begin
     
     if FileExists(PhpRec.Exe) then
-      PhpPage.Values[0] := PhpRec.Exe;
+      SettingsPage.Values[0] := PhpRec.Exe;
     
     WizardForm.ActiveControl := nil;
 
   end
-  else if CurPageID = PhpErrorPage.ID then
-  begin
-    
-    WizardForm.ActiveControl := nil;
-    WizardForm.NextButton.Enabled := False;
-
-  end
-  else if CurPageID = PathErrorPage.ID then
+  else if CurPageID = ErrorPage.ID then
   begin
     
     WizardForm.ActiveControl := nil;
@@ -1578,7 +1561,7 @@ begin
     WizardForm.BackButton.Enabled := False;
 
   end
-  else if CurPageID = DownloadMsgPage.ID then
+  else if CurPageID = DownloadInfoPage.ID then
   begin
     
     WizardForm.ActiveControl := nil;
@@ -1596,16 +1579,12 @@ function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   
   Result := False;
-
-  if PageID = PhpErrorPage.ID then
-    Result := PhpRec.Error = ''
-  else if PageID = wpSelectDir then
-    Result := IsGlobalInstall
-  else if PageID = DownloadMsgPage.ID then
+  
+  if PageID = ErrorPage.ID then
+    Result := (PhpRec.Error = '') and (PathError = '')
+  else if PageID = DownloadInfoPage.ID then
     Result := GetRec.Text = ''
-  else if PageID = PathErrorPage.ID then
-    Result := PathError = ''
-  else if PageId = PathInfoPage.ID then
+  else if PageId = FinishedInfoPage.ID then
     Result := not Flags.PathChanged;
 
 end;
@@ -1615,53 +1594,22 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 begin
 
   Result := True;
-
-  if CurPageID = PhpPage.ID then
+  
+  if CurPageID = SettingsPage.ID then
   begin
 
-    if not FileExists(PhpPage.Values[0]) then
+    if not FileExists(SettingsPage.Values[0]) then
     begin
       MsgBox('The file you specified does not exist.', mbCriticalError, MB_OK);
       Result := False;
     end
     else
-      ShowPhpCheckPage;
+      ShowCheckPage();
 
-  end
-  else if CurPageID = InstallTypePage.ID then
-  begin
-  
-    if InstallTypePage.Values[0] then
-    begin
-      Flags.InstallType := IT_GLOBAL;
-      WizardForm.DirEdit.Text := DefaultDir;
-    end
-    else
-    begin
-      Flags.InstallType := IT_LOCAL;
-      WizardForm.DirEdit.Text := LocalDir;
-    end;
-
-    CheckPath;
-      
-    if PathError <> '' then
-      UpdatePathErrorPage;
-
-  end 
-  else if CurPageID = wpSelectDir then
-  begin
-  
-    if not IsGlobalInstall then
-      Result := CheckDirectory;
-    
   end
   else if CurPageID = wpReady then
-  begin
-    
-    Result := ShowDownloadPage(CurPageID);
-
-  end
-  else if CurPageID = DownloadMsgPage.ID then
+    Result := ShowDownloadPage(CurPageID)
+  else if CurPageID = DownloadInfoPage.ID then
     Result := ShowDownloadPage(CurPageID);
   
 end;
@@ -1671,7 +1619,7 @@ begin
 
   Result := True;
 
-  if CurPageID = DownloadMsgPage.ID then
+  if CurPageID = DownloadInfoPage.ID then
     ResetGetRec(False);
 
 end;
@@ -1679,10 +1627,9 @@ end;
 procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
 begin
 
-  Case CurPageID of
-    PhpErrorPage.ID: Confirm := False;
-    PathErrorPage.ID: Confirm := False;
-    DownloadMsgPage.ID: Confirm := False;
+  case CurPageID of
+    ErrorPage.ID: Confirm := False;
+    DownloadInfoPage.ID: Confirm := False;
   end;
  
 end;
@@ -1696,43 +1643,14 @@ var
 
 begin
   
-  S := '';
-
-  S := S + MemoDirInfo + NewLine;
-  S := S + NewLine;
-
-  if IsGlobalInstall and (MemoGroupInfo <> '') then
-  begin
+  S := MemoDirInfo;
+  
+  if (MemoGroupInfo <> '') and not Flags.Installed then
+    S := S + NewLine + NewLine + MemoGroupInfo;
     
-    if not DirExists(ExpandConstant('{group}')) then
-    begin
-      S := S + MemoGroupInfo + NewLine;
-      S := S + NewLine;
-    end;
-
-  end;
-
-  S := S + 'Installation Type:' + NewLine + Space;
-  
-  if IsGlobalInstall then
-    S := S + IT_GLOBAL_NAME + ' - Composer can be used from inside any directory.'
-  else
-  begin
-
-    S := S + IT_LOCAL_NAME;
-
-    if ComposerPath = '' then 
-      S := S + ' - Composer can only be used from the above location.'
-    else
-    begin
-      S := S + ' - Use Composer from the above location.'
-      S := S + NewLine + NewLine + Space;
-      S := S + 'WARNING: ' + IT_GLOBAL_NAME + ' Installation already exists. Why not use this?'
-      S := S + NewLine + Space + 'Location: ' + ComposerPath;
-    end;
-
-  end;
-  
+  S := S + NewLine + NewLine + 'PHP version ' + PhpRec.Version;
+  S := S + NewLine + Space + PhpRec.Exe;
+    
   Env := ' Path environment variable:';
 
   if Flags.AddPhp.Path <> '' then
@@ -1746,7 +1664,7 @@ begin
     S := S + NewLine + NewLine + 'Add to ' + Flags.AddComposer.Name + Env;
     S := S + NewLine + Space + Flags.AddComposer.Path;
   end;
-    
+      
   Result := S;
 
 end;
@@ -1800,28 +1718,21 @@ begin
 end;
 
 
-function InitializeUninstall(): Boolean;
-begin
-  InitializeCommon(False);
-  Result := True;   
-end;
-
-
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Rec: TPathRec;
+  Dir: String;
 
 begin
   
   if CurUninstallStep = usPostUninstall then
   begin
     
-    if CompareText(DefaultDir, ExpandConstant('{app}')) <> 0 then
-      Exit;
-        
-    if not DirExists(DefaultDir) then
+    Dir := getInstallDir(ExpandConstant('{app}'));
+          
+    if not DirExists(Dir) then
     begin
-      SetPathRec(Rec, DefaultDir);
+      SetPathRec(Rec, Dir);
       RemoveFromPath(Rec)
     end;
 
