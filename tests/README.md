@@ -85,7 +85,7 @@ The tests use test-mode and mimic responses from the install script. However, to
 #### Failed due to unsuitable php settings
 * *Setup:* Run test: `d1`.
 
-* *Expected:* Reports a dummy error, with a disabled Next button
+* *Expected:* Reports a dummy fatal error, with a disabled Next button
 
 
 #### Failed due to internal php error
@@ -106,13 +106,18 @@ The tests use test-mode and mimic responses from the install script. However, to
 * *Expected:* Reports a Composer error [ERR_INVALID], with a Retry button.
 
 
-#### Success with a warning
+#### Success with a warning (shebang, extra lines)
 * *Setup:* Run test: `d5`.
 
-* *Expected:* Reports the warning, with a Next button.
+* *Expected:* Reports a dummy warning with no shebang or blank lines visible, with a Next button.
+
+#### Success with a warning (no shebang, extra lines)
+* *Setup:* Run test: `d6`.
+
+* *Expected:* Reports a dummy warning with no initial blank lines visible, with a Next button.
 
 
 #### Failed due to unexpected composer response
-* *Setup:* Run test: `dn`, where *n* is the exit code (a number less then 0 or greater than 5).
+* *Setup:* Run test: `dn`, where *n* is the exit code (a number less then 0 or greater than 6).
 
 * *Expected:* Reports a Composer error [ERR_STATUS] showing the exit code, with a Retry button.

@@ -16,6 +16,7 @@ function csSetupProcess($argv, &$status)
   if (in_array('--php', $argv))
   {
 
+    # for testing
     csSetupTestPhp(true);
 
     if ($handle = fopen('result.txt', 'wb'))
@@ -26,12 +27,16 @@ function csSetupProcess($argv, &$status)
       fclose($handle);
     }
 
+    # for testing
     csSetupTestPhp(false);
 
   }
   elseif (in_array('--download', $argv))
   {
+
+    # for testing
     csSetupTestDownload();
+
     $force = in_array('--force', $argv);
     csSetupDownload($force, $status);
   }
@@ -100,13 +105,13 @@ function csSetupFormatResult($errors, $showIni)
 
       case 'allow_url_fopen':
         $text = "The allow_url_fopen setting is incorrect.".PHP_EOL;
-        $text .= "Add the following to the end of your `php.ini`:".PHP_EOL;
+        $text .= "Add the following to the end of your php.ini:".PHP_EOL;
         $text .= "    allow_url_fopen = On";
         break;
 
       case 'unicode':
         $text = "The detect_unicode setting must be disabled.".PHP_EOL;
-        $text .= "Add the following to the end of your `php.ini`:".PHP_EOL;
+        $text .= "Add the following to the end of your php.ini:".PHP_EOL;
         $text .= "    detect_unicode = Off";
         break;
 
@@ -154,7 +159,7 @@ function csSetupDownload($force, &$status)
   {
     $src = (extension_loaded('openssl') ? 'https' : 'http') . '://getcomposer.org/installer';
   }
-  error_log($src);
+
   if ($code = @file_get_contents($src))
   {
 
@@ -200,6 +205,8 @@ function csSetupGetIdentity()
 }
 
 
+# The following functions are for testing
+
 function csSetupTestPhp($before)
 {
 
@@ -229,15 +236,15 @@ function csSetupTestPhp($before)
     switch ($GLOBALS['test'])
     {
 
-      case 'p3': // delete result file
+      case 'p3': # delete result file
         @unlink('result.txt');
         break;
 
-      case 'p4': // empty result file
+      case 'p4': # empty result file
         file_put_contents('result.txt', '');
         break;
 
-      case 'p5': // non matching identity
+      case 'p5': # non matching identity
         file_put_contents('result.txt', 'xxx');
         break;
 
@@ -272,15 +279,23 @@ function csSetupTestDownload()
       exit(0);
 
     case 'd1':
-      echo 'Dummy error from installer script'.PHP_EOL;
+      echo 'Dummy PHP settings fatal error from installer script'.PHP_EOL;
       exit(1);
 
     case 'd4':
       exit(1);
 
     case 'd5':
-      ini_set('date.timezone', '');
-      break;
+      echo '#!/usr/bin/env php'.PHP_EOL.PHP_EOL.PHP_EOL.PHP_EOL;
+      echo 'Dummy PHP settings warning from installer script'.PHP_EOL;
+      file_put_contents('composer.phar', '');
+      exit(0);
+
+    case 'd6':
+      echo PHP_EOL.PHP_EOL.PHP_EOL.PHP_EOL;
+      echo 'Dummy PHP settings warning from installer script'.PHP_EOL;
+      file_put_contents('composer.phar', '');
+      exit(0);
 
     default:
 
@@ -315,4 +330,3 @@ function csSetupTestPhpResult($test)
   $GLOBALS['status'] = $test === 'p6' ? 0 : 1;
 
 }
-

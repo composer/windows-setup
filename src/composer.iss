@@ -1,13 +1,13 @@
-#define SetupVersion = "2.1"
+#define SetupVersion = "2.2"
 
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
+#define BinDir "bin"
 
 #define AppName "Composer"
-#define AppUrl "http://getcomposer.org"
 #define AppDescription AppName + " - Php Dependency Manager"
-#define BinDir "bin"
+#define AppUrl "http://getcomposer.org/"
 
 
 [Setup]
@@ -65,7 +65,7 @@ Source: "{tmp}\composer.phar"; DestDir: {app}\{#BinDir}; Flags: external ignorev
 [Dirs]
 Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
 
-; to force deletion of Composer\bin, Composer if empty.
+; to force deletion of \Composer\bin, \Composer if empty.
 [UninstallDelete]
 Type: dirifempty; Name: "{app}\{#BinDir}"
 Type: dirifempty; Name: "{app}"
@@ -77,7 +77,6 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
 [Messages]
 WelcomeLabel1=[name] Setup
-;;WelcomeLabel2=This will download and install [name] on your computer
 FinishedHeadingLabel=Completing [name] Setup
 FinishedLabelNoIcons=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
 FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
@@ -212,6 +211,31 @@ begin
 end;
 
 
+function AddSeparator(var Value: String; const Separator: String): String;
+begin
+    
+  if (Value <> '') and (Value[Length(Value)] <> Separator) then
+    Value := Value + Separator;
+
+  Result := Value;
+
+end;
+
+
+function AddPathSeparator(const Path: String): String;
+begin
+  Result := Trim(Path);
+  Result := AddSeparator(Result, SEP_PATH);
+end;
+
+
+procedure AddTo(var Existing: String; const Value, Separator: String);
+begin
+  Existing := AddSeparator(Existing, Separator);
+  Existing := Existing + Value;
+end;
+ 
+
 function Explode(Value, Sep: String): TArrayOfString;
 var
   Index: Integer;
@@ -289,7 +313,7 @@ begin
       S := RemoveBackslashUnlessRoot(S);
       Result[Index] := S;
       Inc(Index);
-      Path := Path + S + ';';
+      AddTo(Path, S, SEP_PATH);
     end;
 
   end;
@@ -305,7 +329,7 @@ begin
   Key := GetPathKeyForHive(Hive);
   Path := '';
 
-  if RegQueryStringValue(Hive, Key, 'Path', Path) then
+  if RegQueryStringValue(Hive, Key, 'PATH', Path) then
     Result := ListPath(Path); 
  
 end;
@@ -317,26 +341,6 @@ var
   
 begin
   Result := GetPathListFromHiveEx(Hive, Key, Path);
-end;
-
-
-function AddSeparator(var Value: String; const Separator: String): String;
-begin
-
-  if (Value <> '') and (Value[Length(Value)] <> Separator) then
-    Value := Value + Separator;
-
-  Result := Value;
-
-end;
-
-
-function AddPathSeparator(const Path: String): String;
-begin
-
-  Result := Trim(Path);
-  Result := AddSeparator(Result, SEP_PATH);
-
 end;
 
 
@@ -442,7 +446,7 @@ var
   Path: String;
   
 begin
-    
+  
   List1 := GetPathListFromHive(HKEY_LOCAL_MACHINE, Path);
   Result.Php.System := SearchPath(List1, '{#CmdPhp}');
   Result.Bat.System := SearchPath(List1, '{#CmdBat}');
@@ -506,7 +510,7 @@ begin
 end;
 
 
-function CheckPhpPath(EnvPaths: String; Rec: TSearchRec): String;
+function CheckPhpPath(EnvPath: String; Rec: TSearchRec): String;
 var
   S: String;
   Env: String;
@@ -521,7 +525,7 @@ begin
     
     PhpPath := ExtractFileDir(PhpRec.Exe);
     
-    if not DirInPath(PhpPath, EnvPaths) then
+    if not DirInPath(PhpPath, EnvPath) then
       SetPathRec(Flags.AddPhp, PhpPath); 
   
     Exit;
@@ -552,24 +556,7 @@ begin
 
 end;
 
-{
-function CheckShim(Rec: TSearchRec; Cmd: String; var Error: String): Boolean;
-begin
 
-  Error := '';
-
-  if (Rec.Path <> '') and (CompareText(Rec.Cmd, Cmd) <> 0) then
-  begin 
-    Error := 'Composer is already installed in the following directory:' + #13#10;
-    Error := Error + Rec.Path + #13#10;
-    Error := Error + #13#10;
-    Error := Error + 'You must remove it first, if you want to continue this installation.' + #13#10;
-  end;
-
-  Result := Error = '';
-
-end;
-}
 function CheckShim(Rec: TSearchRec; Cmd: String; var Installed: Boolean): String;
 var
   S: String;
@@ -639,7 +626,6 @@ var
   Value: String;
   PathExt: String;
   Missing: String;
-  NewLine: String;
   Space: String;
 
 begin
@@ -652,26 +638,25 @@ begin
   Value := '';
   
   if RegQueryStringValue(Hive, Key, 'PathExt', Value) then
-    PathExt := Value;
+    PathExt := AddPathSeparator(Value);
 
   Hive := HKEY_CURRENT_USER;
   Key := GetPathKeyForHive(Hive);
   Value := '';
   
   if RegQueryStringValue(Hive, Key, 'PathExt', Value) then
-    PathExt := PathExt + ';' + Value;
+    PathExt := PathExt + AddPathSeparator(Value);
 
-  PathExt := Uppercase(PathExt + ';');
+  PathExt := Uppercase(PathExt);
 
   Missing := '';
-  NewLine := #13#10;
   Space := '    ';
 
   if Pos('.EXE;', PathExt) = 0 then
-    Missing := NewLine + Space + '.EXE';
+    Missing := LF + Space + '.EXE';
     
   if Pos('.BAT;', PathExt) = 0 then
-    Missing := Missing + NewLine + Space + '.BAT';
+    Missing := Missing + LF + Space + '.BAT';
 
   if Missing <> '' then
     Result := 'Your PathExt Environment variable is missing required values:' + Missing;
@@ -864,13 +849,10 @@ begin
   end; 
   
   PhpRec.Version := Copy(Results[0], Length(CS_SETUP_GUID) + 1, 100);
-        
-  for I := 1 to Len - 1 do
-  begin
-    AddSeparator(PhpRec.Error, LF);      
-    PhpRec.Error := PhpRec.Error + Results[I];
-  end;
   
+  for I := 1 to Len - 1 do
+    AddTo(PhpRec.Error, Results[I], LF);      
+
   if (ExitCode = 0) and (PhpRec.Error <> '') then
   begin
     SetPhpError(ERR_LOGIC, ExitCode, Filename);
@@ -941,7 +923,7 @@ begin
     begin
       GetRec.Next := NEXT_RETRY;
       GetRec.Force := True;
-      Text := 'Composer Error [ERR_INVALID]: The script did not run correctly'; 
+      Text := 'Composer Error [ERR_INVALID]: The installer script did not run correctly'; 
     end;
 
     ERR_CONN:
@@ -994,23 +976,23 @@ var
   ExitCode: Integer;
   Results: TArrayOfString;
   I: Integer;
-  Len: Integer;
-  StartLine: Integer;
-        
+  Count: Integer;
+  Start: Integer;
+          
 begin
 
   {
    * Possible errors:
    * Internal error - cmd did not run [ERR_CMD]
    * Internal error - cmd did not create output file run [ERR_CMD_EX] 
-   * ResultCode: 0 - Installed, no warnings [ERR_NONE]
-   * ResultCode: 0 - Installed, warnings [ERR_NONE]
-   * ResultCode: 1 - Not Installed, errors [ERR_INSTALL] 
-   * ResultCode: 2 - Php script did not run properly [ERR_PHP]
-   * ResultCode: 3 - Connection error, file_get_contents [ERR_CONN]
-   * ResultCode: ? - Unexpected exit code from Composer, didn't return 0 or 1 [ERR_STATUS]
-   * ResultCode: 0 - No composer.phar downloaded [ERR_DOWNLOAD]
-   * ResultCode: 1 - No errors reported by Composer [ERR_INVALID]
+   * ExitCode: 0 - Installed, no warnings [ERR_NONE]
+   * ExitCode: 0 - Installed, warnings [ERR_NONE]
+   * ExitCode: 1 - Not Installed, errors [ERR_INSTALL] 
+   * ExitCode: 2 - Php script did not run properly [ERR_PHP]
+   * ExitCode: 3 - Connection error, file_get_contents [ERR_CONN]
+   * ExitCode: ? - Unexpected exit code from Composer, didn't return 0 or 1 [ERR_STATUS]
+   * ExitCode: 0 - No composer.phar downloaded [ERR_DOWNLOAD]
+   * ExitCode: 1 - No errors reported by Composer [ERR_INVALID]
   }
   
   Filename := ExpandConstant('{cmd}');
@@ -1036,6 +1018,7 @@ begin
     Exit;
   end;
   
+  // the following checks all exit
   if ExitCode = 0 then
   begin
 
@@ -1063,36 +1046,58 @@ begin
     Exit;
   end;
   
-  Len := GetArrayLength(Results);
+  // must set status now  
+  if ExitCode = 0 then
+    SetDownloadStatus(ERR_NONE)
+  else
+    SetDownloadStatus(ERR_INSTALL);
+
+  Count := GetArrayLength(Results);
   
-  // just in case we get an empty result - unlikely since we should always have the shebang
-  if Len = 0 then
+  if Count = 0 then
   begin
-
-    if ExitCode = 1 then 
+    
+    // no output, check that we are not expecting errors
+    if ExitCode = 1 then
       SetDownloadStatus(ERR_INVALID);
-
+    
     Exit;
 
   end;
   
-  // everything looks okay
-  SetDownloadStatus(ExitCode);
-    
-  if Pos('#!', Results[0]) <> 0 then
-    StartLine := 1
-  else
-    StartLine := 0;
-
-  for I := StartLine to Len - 1 do
+  // look for shebang, should be first line if present
+  Start := 0;
+  
+  for I := 0 to Count - 1 do
   begin
-    AddSeparator(GetRec.Text, LF);      
-    GetRec.Text := GetRec.Text + Results[I];
+
+    if Pos('#!', TrimLeft(Results[I])) = 1 then
+    begin
+      Start := I + 1;
+      Break;
+    end;
+
   end;
   
+  // get the results, filtering out any initial empty output    
+  for I := Start to Count - 1 do
+  begin
+    
+    if (GetRec.Text = '') and (Trim(Results[I]) = '') then
+      Continue;
+
+    AddTo(GetRec.Text, Results[I], LF);
+
+  end;
+  
+  GetRec.Text := Trim(GetRec.Text);
+
   // final check
   if (ExitCode = 1) and (GetRec.Text = '') then
     SetDownloadStatus(ERR_INVALID);
+
+  if GetRec.Text <> '' then
+    AddTo(GetRec.Text, '', LF);
                     
 end;
 
@@ -1118,14 +1123,14 @@ begin
       Exit;
     end;
 
-    if not RegQueryStringValue(Rec.Hive, Key, 'Path', CurrentPath) then
+    if not RegQueryStringValue(Rec.Hive, Key, 'PATH', CurrentPath) then
       Exit;
 
   end;
 
   // add trailing separator (mysgit needs this is certain situations)
   NewPath := AddPathSeparator(CurrentPath) + AddPathSeparator(Rec.Path);
-  Result := RegWriteExpandStringValue(Rec.Hive, Key, 'Path', NewPath);
+  Result := RegWriteExpandStringValue(Rec.Hive, Key, 'PATH', NewPath);
     
 end;
 
@@ -1157,11 +1162,11 @@ begin
 
   if (Entries = 1) and (Index = 0) then
   begin
-    Result := RegDeleteValue(Rec.Hive, Key, 'Path');
+    Result := RegDeleteValue(Rec.Hive, Key, 'PATH');
     Exit;
   end;
      
-  if not RegQueryStringValue(Rec.Hive, Key, 'Path', CurrentPath) then
+  if not RegQueryStringValue(Rec.Hive, Key, 'PATH', CurrentPath) then
     Exit;
 
   List := Explode(CurrentPath, SEP_PATH);
@@ -1169,18 +1174,15 @@ begin
     
   for I := 0 to GetArrayLength(List) - 1 do
   begin
-
+    
     if I <> Index then    
-    begin
-      AddSeparator(NewPath, SEP_PATH);
-      NewPath := NewPath + List[I];
-    end;
+      AddTo(NewPath, List[I], SEP_PATH); 
 
   end;
  
   // add trailing separator (mysgit needs this is certain situations)
-  AddSeparator(NewPath, SEP_PATH);
-  Result := RegWriteExpandStringValue(Rec.Hive, Key, 'Path', NewPath);
+  NewPath := AddPathSeparator(NewPath);
+  Result := RegWriteExpandStringValue(Rec.Hive, Key, 'PATH', NewPath);
 
 end;
 
