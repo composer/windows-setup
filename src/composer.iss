@@ -77,10 +77,10 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 
 [Messages]
 WelcomeLabel1=[name] Setup
-WelcomeLabel2=This will download and install [name] on your computer
+;;WelcomeLabel2=This will download and install [name] on your computer
 FinishedHeadingLabel=Completing [name] Setup
-FinishedLabelNoIcons=Setup has finished installing [name] on your computer.
-FinishedLabel=Setup has finished installing [name] on your computer.
+FinishedLabelNoIcons=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
+FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
 
 
 [Code]
