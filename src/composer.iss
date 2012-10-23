@@ -1,4 +1,4 @@
-#define SetupVersion = "2.3"
+#define SetupVersion = "2.4"
 
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
