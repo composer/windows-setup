@@ -6,6 +6,7 @@ A Windows installer for the [Composer][composer] PHP Dependency Manager. [Downlo
 * [About](#About)
 * [Details](#Details)
 * [Uninstalling](#Uninstalling)
+* [Path](#Path)
 * [Compiling](#Compiling)
 * [License](#License)
 
@@ -45,8 +46,14 @@ After you have accepted these choices, the installer will download Composer and 
 <a name="Uninstalling"></a>
 ## Uninstalling
 
-The uninstall program is available from both the Control Panel and the Start Menu.
+The uninstall program is available from the Control Panel and the Start Menu.
 
+<a name="Path"></a>
+## Path
+
+The installer/uninstaller will modify your System Path environment variable for Admin installs, or your User Path environment variable for User installs.
+
+The installer will add your `php.exe` path if required and will also add the path to the installation directory. The unistaller will only remove the installation directory from your path.
 
 <a name="Compiling"></a>
 ## Compiling

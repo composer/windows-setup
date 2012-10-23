@@ -1,4 +1,4 @@
-#define SetupVersion = "2.2"
+#define SetupVersion = "2.3"
 
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
@@ -26,6 +26,7 @@ SolidCompression=yes
 MinVersion=5.1
 PrivilegesRequired=none
 ChangesEnvironment=true
+AllowCancelDuringInstall=false
 
 ; directory stuff
 DefaultDirName={commonappdata}{#AppName}
@@ -42,15 +43,17 @@ AlwaysShowGroupOnReadyPage=yes
 ; uninstall
 Uninstallable=yes
 UninstallDisplayName={#AppDescription}
-UninstallFilesDir={app}\bin
+UninstallFilesDir={app}\{#BinDir}
 
 ; exe version info
 VersionInfoVersion={#SetupVersion}
 VersionInfoProductVersion=0
 VersionInfoProductName={#AppDescription}
 
+; code-signing
+SignTool=mssigntool
+
 ; cosmetic
-SetupIconFile=install.ico
 WizardImageFile=wiz.bmp
 WizardSmallImageFile=wizsmall.bmp
 
@@ -63,6 +66,7 @@ Source: "{tmp}\{#CmdShell}"; DestDir: {app}\{#BinDir}; Flags: external ignorever
 Source: "{tmp}\composer.phar"; DestDir: {app}\{#BinDir}; Flags: external ignoreversion
 
 [Dirs]
+; we need to make all-users directory writeable
 Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
 
 ; to force deletion of \Composer\bin, \Composer if empty.
@@ -73,9 +77,10 @@ Type: dirifempty; Name: "{app}"
 
 [Icons]
 Name: "{group}\Documentation"; Filename: "{#AppUrl}"
-Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
+Name: "{group}\Uninstall Composer"; Filename: "{uninstallexe}";
 
 [Messages]
+SetupWindowTitle=%1 Setup
 WelcomeLabel1=[name] Setup
 FinishedHeadingLabel=Completing [name] Setup
 FinishedLabelNoIcons=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
@@ -100,12 +105,17 @@ type
   end;
 
 type
+  TPathList = record
+    Safe    : Boolean;
+    Items   : TArrayOfString;
+  end;
+   
+type
   TPathInfo = record
     Php       : TSearchRec;
     Bat       : TSearchRec;
     Shell     : TSearchRec;
-    EnvPath   : String;
-
+    PathList  : TPathList;
   end;
 
 type
@@ -180,7 +190,9 @@ const
   NEXT_NONE = 0;
   NEXT_RETRY = 1;
   NEXT_OK = 2;
-  
+
+#include AddBackslash(SourcePath) + "paths.iss"
+
 
 procedure ResetGetRec(Full: Boolean);
 begin
@@ -194,7 +206,6 @@ begin
   GetRec.Text := '';
 
 end;
-
 
 procedure ResetPhp;
 begin
@@ -211,207 +222,13 @@ begin
 end;
 
 
-function AddSeparator(var Value: String; const Separator: String): String;
+procedure AddLine(var Existing: String; const Value: String);
 begin
+
+  if Existing <> '' then
+    Existing := Existing + LF;  
     
-  if (Value <> '') and (Value[Length(Value)] <> Separator) then
-    Value := Value + Separator;
-
-  Result := Value;
-
-end;
-
-
-function AddPathSeparator(const Path: String): String;
-begin
-  Result := Trim(Path);
-  Result := AddSeparator(Result, SEP_PATH);
-end;
-
-
-procedure AddTo(var Existing: String; const Value, Separator: String);
-begin
-  Existing := AddSeparator(Existing, Separator);
   Existing := Existing + Value;
-end;
- 
-
-function Explode(Value, Sep: String): TArrayOfString;
-var
-  Index: Integer;
-  Count: Integer;
-  Next: Integer;
-
-begin
-
-  Count := 0;
-  Next := 0;
-
-  repeat
-
-    Index := Pos(Sep, Value);
-
-    if Next = Count then
-    begin
-      Count := Count + 20;
-      SetArrayLength(Result, Count);
-    end;
-
-    if Index > 0 then
-    begin
-      Result[Next] := Copy(Value, 1, Index - 1);
-      Value := Copy(Value, Index + 1, Length(Value));
-    end 
-    else
-    begin
-      Result[Next] := Value;
-			Value := '';
-    end;
-
-    Inc(Next);
-    
-  until Length(Value) = 0;
-
-  if Next < Count then
-    SetArrayLength(Result, Next);
-
-end;
-
-
-function GetPathKeyForHive(Hive: Integer): String;
-begin
-
-  if Hive = HKEY_LOCAL_MACHINE then
-    Result := 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
-  else
-    Result := 'Environment';
-
-end;
-
-
-function ListPath(var Path: String): TArrayOfString;
-var
-  List: TArrayOfString;
-  I: Integer;
-  S: String;
-  Index: Integer;
-
-begin
-   
-  List := Explode(Path, SEP_PATH);
-  SetArrayLength(Result, GetArrayLength(List));  
-  
-  Path := '';
-  Index := 0;
-    
-  for I := 0 to GetArrayLength(List) - 1 do
-  begin
-       
-    if List[I] <> '' then
-    begin
-      S := ExpandUNCFileName(List[I]);
-      S := RemoveBackslashUnlessRoot(S);
-      Result[Index] := S;
-      Inc(Index);
-      AddTo(Path, S, SEP_PATH);
-    end;
-
-  end;
-
-  SetArrayLength(Result, Index);
-
-end;
-
-
-function GetPathListFromHiveEx(Hive: Integer; var Key, Path: String): TArrayOfString;
-begin
-
-  Key := GetPathKeyForHive(Hive);
-  Path := '';
-
-  if RegQueryStringValue(Hive, Key, 'PATH', Path) then
-    Result := ListPath(Path); 
- 
-end;
-
-
-function GetPathListFromHive(Hive: Integer; var Path: String): TArrayOfString;
-var
-  Key: String;
-  
-begin
-  Result := GetPathListFromHiveEx(Hive, Key, Path);
-end;
-
-
-function DirInPath(var Dir: String; const Path: String): Boolean;
-var
-  Haystack: String;
-  Needle: String;
-
-begin
-
-  Dir := RemoveBackslashUnlessRoot(Dir);
-  Needle := Lowercase(AddPathSeparator(Dir));
-  Haystack := Lowercase(AddPathSeparator(Path));
-  Result := Pos(Needle, Haystack) <> 0;
-
-end;
-
-
-function GetPathIndexForRemoval(var Rec: TPathRec; var Count: Integer): Integer;
-var
-  Dummy: String;
-  List: TArrayOfString;
-  I: Integer;
-
-begin
-
-  Result := -1;
-
-  Rec.Path := RemoveBackslashUnlessRoot(Rec.Path);
-
-  if Rec.Path = '' then
-    Exit;
-
-  List := GetPathListFromHive(Rec.Hive, Dummy);
-  Count := GetArrayLength(List);
-
-  for I := 0 to Count - 1 do
-  begin
-
-    if CompareText(List[I], Rec.Path) = 0 then
-    begin
-      Result := I;
-      Exit;
-    end;
-
-  end;
-  
-end;
-
-
-function SearchPath(List: TArrayOfString; const Cmd: String): String;
-var
-  I: Integer;
-  Filename: String;
-
-begin
-
-  Result := '';
-    
-  for I := 0 to GetArrayLength(List) - 1 do
-  begin
-
-    Filename := List[I] + '\' + Cmd;
-
-    if FileExists(Filename) then
-    begin
-      Result := Filename;
-      Exit;
-    end;
-
-  end;
 
 end;
 
@@ -441,27 +258,38 @@ end;
 
 function GetPathInfo: TPathInfo;
 var
-  List1: TArrayOfString;
-  List2: TArrayOfString;
-  Path: String;
+  List1: TPathList;
+  List2: TPathList;
+  C1: Integer;
+  C2: Integer;
+  I: Integer;
   
 begin
   
-  List1 := GetPathListFromHive(HKEY_LOCAL_MACHINE, Path);
+  List1 := GetSafePathList(HKEY_LOCAL_MACHINE);
   Result.Php.System := SearchPath(List1, '{#CmdPhp}');
   Result.Bat.System := SearchPath(List1, '{#CmdBat}');
   Result.Shell.System := SearchPath(List1, '{#CmdShell}');
-  Result.EnvPath := AddPathSeparator(Path);
-
-  List2 := GetPathListFromHive(HKEY_CURRENT_USER, Path);
+  
+  List2 := GetSafePathList(HKEY_CURRENT_USER);
   Result.Php.User := SearchPath(List2, '{#CmdPhp}');
   Result.Bat.User := SearchPath(List2, '{#CmdBat}');
   Result.Shell.User := SearchPath(List2, '{#CmdShell}');
-  Result.EnvPath := Result.EnvPath + AddPathSeparator(Path);
-      
+        
   SetSearchRec(Result.Php);
   SetSearchRec(Result.Bat);
   SetSearchRec(Result.Shell);
+
+  Result.PathList.Safe := True;
+  C1 := GetArrayLength(List1.Items);
+  C2 := GetArrayLength(List2.Items);
+  SetArrayLength(Result.PathList.Items, C1 + C2);
+  
+  for I := 0 to C1 - 1 do
+    Result.PathList.Items[I] := List1.Items[I];
+
+  for I := 0 to C2 - 1 do
+    Result.PathList.Items[C1 + I] := List2.Items[I];
   
 end;
 
@@ -510,7 +338,7 @@ begin
 end;
 
 
-function CheckPhpPath(EnvPath: String; Rec: TSearchRec): String;
+function CheckPhpPath(PathList: TPathList; Rec: TSearchRec): String;
 var
   S: String;
   Env: String;
@@ -525,7 +353,7 @@ begin
     
     PhpPath := ExtractFileDir(PhpRec.Exe);
     
-    if not DirInPath(PhpPath, EnvPath) then
+    if not DirectoryInPath(PhpPath, PathList) then
       SetPathRec(Flags.AddPhp, PhpPath); 
   
     Exit;
@@ -588,31 +416,31 @@ end;
 
 function CheckComposerPath(Info: TPathInfo): String;
 var
-  DirPath: String;
+  BinPath: String;
   Cmd: String;
     
 begin
  
   Result := '';
-  DirPath := GetInstallDir(WizardDirValue);
+  BinPath := GetInstallDir(WizardDirValue);
 
   if (Info.Bat.Path = '') and (Info.Shell.Path = '') then
   begin
 
-    if not DirInPath(DirPath, Info.EnvPath) then
-      SetPathRec(Flags.AddComposer, DirPath);
+    if not DirectoryInPath(BinPath, Info.PathList) then
+      SetPathRec(Flags.AddComposer, BinPath);
     
     Exit;
 
   end;
   
-  Cmd := AddBackslash(DirPath) + '{#CmdBat}';
+  Cmd := AddBackslash(BinPath) + '{#CmdBat}';
   
   Result := CheckShim(Info.Bat, Cmd, Flags.Installed)
   
   if Result = '' then
   begin
-    Cmd := AddBackslash(DirPath) + '{#CmdShell}';
+    Cmd := AddBackslash(BinPath) + '{#CmdShell}';
     Result := CheckShim(Info.Shell, Cmd, Flags.Installed);
   end;
 
@@ -638,16 +466,16 @@ begin
   Value := '';
   
   if RegQueryStringValue(Hive, Key, 'PathExt', Value) then
-    PathExt := AddPathSeparator(Value);
+    PathExt := Value;
 
   Hive := HKEY_CURRENT_USER;
   Key := GetPathKeyForHive(Hive);
   Value := '';
   
   if RegQueryStringValue(Hive, Key, 'PathExt', Value) then
-    PathExt := PathExt + AddPathSeparator(Value);
+    PathExt := PathExt + ';' + Value;
 
-  PathExt := Uppercase(PathExt);
+  PathExt := Uppercase(PathExt  + ';');
 
   Missing := '';
   Space := '    ';
@@ -677,7 +505,7 @@ begin
 
   Info := GetPathInfo;
 
-  PathError := CheckPhpPath(Info.EnvPath, Info.Php);
+  PathError := CheckPhpPath(Info.PathList, Info.Php);
 
   if PathError = '' then
     PathError := CheckComposerPath(Info);
@@ -851,7 +679,7 @@ begin
   PhpRec.Version := Copy(Results[0], Length(CS_SETUP_GUID) + 1, 100);
   
   for I := 1 to Len - 1 do
-    AddTo(PhpRec.Error, Results[I], LF);      
+    AddLine(PhpRec.Error, Results[I]);      
 
   if (ExitCode = 0) and (PhpRec.Error <> '') then
   begin
@@ -1086,7 +914,7 @@ begin
     if (GetRec.Text = '') and (Trim(Results[I]) = '') then
       Continue;
 
-    AddTo(GetRec.Text, Results[I], LF);
+    AddLine(GetRec.Text, Results[I]);
 
   end;
   
@@ -1097,93 +925,8 @@ begin
     SetDownloadStatus(ERR_INVALID);
 
   if GetRec.Text <> '' then
-    AddTo(GetRec.Text, '', LF);
+    AddLine(GetRec.Text, '');
                     
-end;
-
-
-function AddToPath(Rec: TPathRec): Boolean;
-var
-  CurrentPath: String;
-  NewPath: String;
-  Key: String;
-  
-begin
-
-  Result := False;
-  
-  GetPathListFromHiveEx(Rec.Hive, Key, CurrentPath);
-  
-  if CurrentPath <> '' then
-  begin
-
-    if DirInPath(Rec.Path, CurrentPath) then    
-    begin
-      Result := True;
-      Exit;
-    end;
-
-    if not RegQueryStringValue(Rec.Hive, Key, 'PATH', CurrentPath) then
-      Exit;
-
-  end;
-
-  // add trailing separator (mysgit needs this is certain situations)
-  NewPath := AddPathSeparator(CurrentPath) + AddPathSeparator(Rec.Path);
-  Result := RegWriteExpandStringValue(Rec.Hive, Key, 'PATH', NewPath);
-    
-end;
-
-
-function RemoveFromPath(Rec: TPathRec): Boolean;
-var
-  Index: Integer;
-  Entries: Integer;
-  Key: String;
-  List: TArrayOfString;
-  CurrentPath: String;
-  NewPath: String;
-  I: Integer;
-  
-begin
-
-  Result := False;
-  
-  // we don't want to mess with existing path entries
-  Index := GetPathIndexForRemoval(Rec, Entries);
-  
-  if Index = -1 then    
-  begin
-    Result := True;
-    Exit;
-  end;
-    
-  Key := GetPathKeyForHive(Rec.Hive);
-
-  if (Entries = 1) and (Index = 0) then
-  begin
-    Result := RegDeleteValue(Rec.Hive, Key, 'PATH');
-    Exit;
-  end;
-     
-  if not RegQueryStringValue(Rec.Hive, Key, 'PATH', CurrentPath) then
-    Exit;
-
-  List := Explode(CurrentPath, SEP_PATH);
-  NewPath := '';
-    
-  for I := 0 to GetArrayLength(List) - 1 do
-  begin
-    
-    if I <> Index then    
-      AddTo(NewPath, List[I], SEP_PATH); 
-
-  end;
- 
-  // add trailing separator (mysgit needs this is certain situations)
-  NewPath := AddPathSeparator(NewPath);
-  Result := RegWriteExpandStringValue(Rec.Hive, Key, 'PATH', NewPath);
-
 end;
 
 
@@ -1478,7 +1221,7 @@ function InitializeSetup(): Boolean;
 begin
 
   HomeDir := GetShellFolderByCSIDL(CSIDL_PROFILE, False);
-      
+  
   TmpDir := ExpandConstant('{tmp}');
 
   ExtractTemporaryFile('setup.php');
@@ -1683,7 +1426,7 @@ begin
   if Flags.AddPhp.Path <> '' then
   begin
     
-    if not AddToPath(Flags.AddPhp) then
+    if not AddToPath(Flags.AddPhp.Hive, Flags.AddPhp.Path) then
     begin
       Result := 'Error setting ' + Flags.AddPhp.Name + ' Path variable';
       Exit;
@@ -1696,7 +1439,7 @@ begin
   if Flags.AddComposer.Path <> '' then
   begin
    
-    if not AddToPath(Flags.AddComposer) then
+    if not AddToPath(Flags.AddComposer.Hive, Flags.AddComposer.Path) then
     begin
       Result := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
       Exit;
@@ -1730,12 +1473,12 @@ begin
   if CurUninstallStep = usPostUninstall then
   begin
     
-    Dir := getInstallDir(ExpandConstant('{app}'));
+    Dir := GetInstallDir(ExpandConstant('{app}'));
           
     if not DirExists(Dir) then
     begin
       SetPathRec(Rec, Dir);
-      RemoveFromPath(Rec)
+      RemoveFromPath(Rec.Hive, Rec.Path)
     end;
 
   end;
