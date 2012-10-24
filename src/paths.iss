@@ -16,6 +16,7 @@ function GetSafePathList(Hive: Integer): TPathList; forward;
 function GetSafePath(PathList: TPathList; Index: Integer): String; forward;
 function DirectoryInPath(var Directory: String; PathList: TPathList): Boolean; forward;
 function SearchPath(PathList: TPathList; const Cmd: String): String; forward;
+function NeedsTrailingSeparator: Boolean; forward;
 
 
 function AddToPath(Hive: Integer; Value: String): Boolean;
@@ -55,8 +56,12 @@ begin
   if (Path <> '') and (Path[Length(Path)] <> ';') then
     Path := Path + ';';
   
-  // add our new value to the path with a trailing separator (mysgit needs this is certain situations)
-  Path := Path + SafeDirectory + ';';
+  // add our new value to the path
+  Path := Path + SafeDirectory;
+
+  // add a trailing separator if required
+  if NeedsTrailingSeparator then
+    Path := Path + ';';
 
   Result := RegWriteExpandStringValue(Hive, Key, 'PATH', Path);
     
@@ -118,10 +123,15 @@ begin
     end;
 
   end;
- 
-  // add trailing separator (mysgit needs this is certain situations)
+    
   if NewPath <> '' then
-    NewPath := NewPath + ';'
+  begin
+    
+    // add trailing separator if needed
+    if NeedsTrailingSeparator then    
+      NewPath := NewPath + ';';
+
+  end
   else
   begin
 
@@ -352,4 +362,48 @@ begin
 
   end;
 
+end;
+
+
+{ Git for Windows has a bug that means that the last entry in your path
+will not be resolved if cygwin is in your path. Until this is fixed
+we have to add a trailing separator to the path to fix it.}
+function NeedsTrailingSeparator: Boolean;
+var
+  List1: TPathList;
+  List2: TPathList;
+  Cmd: String;
+  GitExe: String;
+  Version: String;
+
+begin
+
+  Result := False;
+  Cmd := 'git.exe';
+
+  List1 := GetSafePathList(HKEY_LOCAL_MACHINE);
+  GitExe := SearchPath(List1, Cmd);
+  
+  if GitExe = '' then
+  begin  
+    List2 := GetSafePathList(HKEY_CURRENT_USER);
+    GitExe := SearchPath(List2, Cmd);
+  end;
+  
+  if GitExe = '' then
+    Exit;
+
+  if StringChangeEx(GitExe, 'cmd', 'bin', True) = 0 then
+    Exit;
+  
+  if FileExists(GitExe) then
+  begin
+
+    Result := True;
+
+    if GetVersionNumbersString(GitExe, Version) then
+      Result := CompareStr(Version, '{#GitVersionOkay}') < 0;
+
+  end;
+  
 end;
