@@ -51,9 +51,7 @@ The uninstall program is available from the Control Panel and the Start Menu.
 <a name="Path"></a>
 ## Path
 
-The installer/uninstaller will modify your System Path environment variable for Admin installs, or your User Path environment variable for User installs.
-
-The installer will add your `php.exe` path if required and will also add the path to the installation directory. The unistaller will only remove the installation directory from your path.
+Composer-Setup will modify your System Path environment variable for Admin installs, or your User Path environment variable for User installs. The installer will add your `php.exe` path if required and will also add the path to the installation directory. The uninstaller will only remove the installation directory.
 
 <a name="Compiling"></a>
 ## Compiling
