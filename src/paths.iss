@@ -124,15 +124,7 @@ begin
 
   end;
     
-  if NewPath <> '' then
-  begin
-    
-    // add trailing separator if needed
-    if NeedsTrailingSeparator then    
-      NewPath := NewPath + ';';
-
-  end
-  else
+  if NewPath = '' then
   begin
 
     // we have an empty PATH. Only delete it if it is a User PATH
@@ -365,9 +357,12 @@ begin
 end;
 
 
-{ Git for Windows has a bug that means that the last entry in your path
-will not be resolved if cygwin is in your path. Until this is fixed
-we have to add a trailing separator to the path to fix it.}
+{Git for Windows had a bug on versions lower than 1.8.1.0 that only
+affects users with cygwin in their path. The code to strip the cygwin
+references adds a null-byte to the PATH which means that Posix paths
+are inherited by non-msys child processes rather than Windows ones,
+and the last path entry becomes unresovable. We can cure the latter
+by adding a trailing separator to the path.}
 function NeedsTrailingSeparator: Boolean;
 var
   List1: TPathList;
@@ -375,7 +370,7 @@ var
   Cmd: String;
   GitExe: String;
   Version: String;
-
+  
 begin
 
   Result := False;
@@ -402,7 +397,7 @@ begin
     Result := True;
 
     if GetVersionNumbersString(GitExe, Version) then
-      Result := CompareStr(Version, '{#GitVersionOkay}') < 0;
+      Result := CompareStr(Version, '1.8.1.0') < 0;
 
   end;
   

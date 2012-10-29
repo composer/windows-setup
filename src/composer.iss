@@ -1,12 +1,9 @@
-#define SetupVersion = "2.4"
+#define SetupVersion = "2.5"
 
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
 #define BinDir "bin"
-
-; we need to change this to the minimum ok Git version when it exists
-#define GitVersionOkay "100.1.0.0"
 
 #define AppName "Composer"
 #define AppDescription AppName + " - Php Dependency Manager"
