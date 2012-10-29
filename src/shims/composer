@@ -1,13 +1,10 @@
 #!/bin/sh
 
-# This file must be saved with Unix line endings, or cygwin will choke
-
-DIR=`dirname "$0"`;
-DIRECTORY=$(cd "${DIR}" && pwd)
+dir=$(d=$(dirname "$0"); cd "$d" && pwd)
 
 if command -v 'cygpath' >/dev/null 2>&1; then
-  DIRECTORY=`cygpath -m $DIRECTORY`;
+  dir=$(cygpath -m $dir);
 fi
 
-PHAR="$(echo $DIRECTORY | sed 's/ /\ /g')/composer.phar"
-php "${PHAR}" $*
+dir=$(echo $dir | sed 's/ /\ /g')
+php "${dir}/composer.phar"
