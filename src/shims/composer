@@ -7,4 +7,4 @@ if command -v 'cygpath' >/dev/null 2>&1; then
 fi
 
 dir=$(echo $dir | sed 's/ /\ /g')
-php "${dir}/composer.phar"
+php "${dir}/composer.phar" $*
