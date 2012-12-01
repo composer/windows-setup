@@ -1,4 +1,4 @@
-#define SetupVersion = "2.5"
+#define SetupVersion = "2.6"
 
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
@@ -826,11 +826,11 @@ begin
    * Internal error - cmd did not create output file run [ERR_CMD_EX] 
    * ExitCode: 0 - Php check passed
    * ExitCode: 1 - Php check failed
-   * ExitCode: ? - Php program error [ERR_STATUS] (test=p1, test=p2, test=p3)
-   * Results file, empty: [ERR_RESULT] (test=p4)
-   * Results file, non-matching guid: [ERR_INVALID] (test=p5)
-   * Results file, ExitCode 0, multiline [ERR_LOGIC] (test=p6)
-   * Results file, ExitCode 1, guid only [ERR_LOGIC] (test=p7)
+   * ExitCode: ? - Php program error [ERR_STATUS] (Test=p1, Test=p2)
+   * Results file, empty: [ERR_RESULT] (Test=p3)
+   * Results file, non-matching guid: [ERR_INVALID] (Test=p4)
+   * Results file, ExitCode 0, multiline [ERR_LOGIC] (test=p5)
+   * Results file, ExitCode 1, guid only [ERR_LOGIC] (test=p6)
   }
    
   ResetPhp;
@@ -998,14 +998,16 @@ begin
    * Internal error - cmd did not run [ERR_CMD]
    * Internal error - cmd did not create output file [ERR_CMD_EX] 
    * ExitCode: 0 - Installed, no warnings [ERR_NONE]
-   * ExitCode: 0 - Installed, warnings [ERR_NONE]
-   * ExitCode: 1 - Not Installed, errors [ERR_INSTALL] 
-   * ExitCode: 2 - Php script did not run properly [ERR_PHP]
-   * ExitCode: 3 - Connection error, file_get_contents [ERR_CONN]
-   * ExitCode: ? - Unexpected exit code from Composer, didn't return 0 or 1 [ERR_STATUS]
-   * ExitCode: 0 - No composer.phar downloaded [ERR_DOWNLOAD]
-   * ExitCode: 1 - No errors reported by Composer [ERR_INVALID]
+   * ExitCode: 0 - Installed, warnings [ERR_NONE] (Test=d1)
+   * ExitCode: 1 - Not Installed, errors [ERR_INSTALL] (Test=d2) 
+   * ExitCode: 2 - Php script did not run properly [ERR_PHP] (Test=d3)
+   * ExitCode: 3 - Connection error of some sort [ERR_CONNECTION] (Test=d4) (Test=d5)
+   * ExitCode: ? - Unexpected exit code from Composer, didn't return 0 or 1 [ERR_STATUS] (Test=d6)
+   * ExitCode: 0 - No composer.phar downloaded [ERR_DOWNLOAD] (Test=d7)
+   * ExitCode: 1 - No errors reported by Composer [ERR_INVALID] (Test=d8)
   }
+
+  Debug('Downloading from {#AppUrl}');
   
   AddSwitch(Switches, 'download', '');
   
@@ -1576,6 +1578,8 @@ var
   I: Integer;
 
 begin
+
+  Debug('Running PrepareToInstall tasks');
 
   if Flags.AddPhp.Path <> '' then
   begin

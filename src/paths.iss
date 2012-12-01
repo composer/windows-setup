@@ -70,7 +70,7 @@ begin
   Result := RegWriteExpandStringValue(Hive, Key, 'PATH', Path);
 
   if Result then
-    Debug('Path after: ' + Path)
+    Debug('Path after:  ' + Path)
   else
     Debug('RegWriteExpandStringValue failed');
     
@@ -151,7 +151,7 @@ begin
   // write the new path (could be empty for HKEY_LOCAL_MACHINE)
   RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
 
-  Debug('Path after: ' + NewPath);
+  Debug('Path after:  ' + NewPath);
     
 end;
 

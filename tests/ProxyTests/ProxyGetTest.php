@@ -9,15 +9,15 @@ class ProxyGetTest extends \ProxyTests\Base
   * is returned with http and https values
   *
   */
-  public function testGetEnvironmentHttp()
+  public function testEnvironmentHttpReturnsBoth()
   {
 
     $values = array(
-      'http_proxy' => '127.0.0.1:8080',
+      'http_proxy' => 'http://127.0.0.1:8080',
     );
 
     $server = array_merge($_SERVER, $values);
-    $list = $this->worker->envGetProxies($server);
+    $list = $this->mock->proxyGetEnvironment($server);
     $this->assertArrayHasKey('http', $list);
     $this->assertArrayHasKey('https', $list);
     $this->assertEquals($values['http_proxy'], $list['https']);
@@ -30,16 +30,39 @@ class ProxyGetTest extends \ProxyTests\Base
   * is returned with only an https value
   *
   */
-  public function testGetEnvironmentHttps()
+  public function testEnvironmentHttpsReturnsHttps()
   {
 
     $values = array(
-      'https_proxy' => '127.0.0.1:8080',
+      'https_proxy' => 'https://127.0.0.1:4443',
     );
 
     $server = array_merge($_SERVER, $values);
-    $list = $this->worker->envGetProxies($server);
+    $list = $this->mock->proxyGetEnvironment($server);
     $this->assertArrayNotHasKey('http', $list);
+    $this->assertEquals($values['https_proxy'], $list['https']);
+
+  }
+
+
+  /**
+  * Checks that http_proxy and https_proxy vars
+  * are returned with http and https values
+  *
+  */
+  public function testEnvironmentBothReturnsBoth()
+  {
+
+    $values = array(
+      'http_proxy' => 'http://127.0.0.1:8080',
+      'https_proxy' => 'https://127.0.0.1:4443',
+    );
+
+    $server = array_merge($_SERVER, $values);
+    $list = $this->mock->proxyGetEnvironment($server);
+    $this->assertArrayHasKey('http', $list);
+    $this->assertArrayHasKey('https', $list);
+    $this->assertEquals($values['http_proxy'], $list['http']);
     $this->assertEquals($values['https_proxy'], $list['https']);
 
   }
@@ -50,9 +73,9 @@ class ProxyGetTest extends \ProxyTests\Base
   * returns an empty list
   *
   */
-  public function testGetEnvironmentNone()
+  public function testEnvironmentNone()
   {
-    $list = $this->worker->envGetProxies(null);
+    $list = $this->mock->proxyGetEnvironment(null);
     $this->assertEquals(0, count($list));
   }
 
@@ -63,11 +86,11 @@ class ProxyGetTest extends \ProxyTests\Base
   * is returned with http and https values
   *
   */
-  public function testGetRegSimple()
+  public function testRegistryAllReturnsBoth()
   {
 
     $value = '127.0.0.1:8080';
-    $list = $this->worker->regGetProxies($value);
+    $list = $this->mock->proxyGetRegistry($value);
     $this->assertArrayHasKey('http', $list);
     $this->assertArrayHasKey('https', $list);
     $this->assertEquals($value, $list['https']);
@@ -79,11 +102,11 @@ class ProxyGetTest extends \ProxyTests\Base
   * is returned with only an http value (unlike http_proxy env)
   *
   */
-  public function testGetRegDefinedHttp()
+  public function testRegistryHttpReturnsHttp()
   {
 
     $value = 'http=127.0.0.1:8080';
-    $list = $this->worker->regGetProxies($value);
+    $list = $this->mock->proxyGetRegistry($value);
     $this->assertArrayHasKey('http', $list);
     $this->assertArrayNotHasKey('https', $list);
     $this->assertEquals('127.0.0.1:8080', $list['http']);
@@ -96,11 +119,11 @@ class ProxyGetTest extends \ProxyTests\Base
   * is returned with only an https value
   *
   */
-  public function testGetRegDefinedHttps()
+  public function testRegistryHttpsReturnsHttps()
   {
 
     $value = 'https=127.0.0.1:4443';
-    $list = $this->worker->regGetProxies($value);
+    $list = $this->mock->proxyGetRegistry($value);
     $this->assertArrayHasKey('https', $list);
     $this->assertArrayNotHasKey('http', $list);
     $this->assertEquals('127.0.0.1:4443', $list['https']);
@@ -113,11 +136,11 @@ class ProxyGetTest extends \ProxyTests\Base
   * is returned with http and https values
   *
   */
-  public function testGetRegDefined()
+  public function testRegistryBothReturnsBoth()
   {
 
     $value = 'https=127.0.0.1:4443;http=127.0.0.1:8080';
-    $list = $this->worker->regGetProxies($value);
+    $list = $this->mock->proxyGetRegistry($value);
     $this->assertArrayHasKey('http', $list);
     $this->assertArrayHasKey('https', $list);
     $this->assertEquals('127.0.0.1:8080', $list['http']);
@@ -131,11 +154,11 @@ class ProxyGetTest extends \ProxyTests\Base
   * is returned with http and https values
   *
   */
-  public function testGetMalformedRegDefined()
+  public function testRegistryMalformedBothReturnsBoth()
   {
 
     $value = '=https= 127.0.0.1:4443; http =127.0.0.1:8080';
-    $list = $this->worker->regGetProxies($value);
+    $list = $this->mock->proxyGetRegistry($value);
     $this->assertArrayHasKey('http', $list);
     $this->assertArrayHasKey('https', $list);
     $this->assertEquals('127.0.0.1:8080', $list['http']);
@@ -149,11 +172,11 @@ class ProxyGetTest extends \ProxyTests\Base
   * is returned empty
   *
   */
-  public function testGetRegDefinedNone()
+  public function testRegistryOtherReturnsNone()
   {
 
     $value = 'ftp=127.0.0.1:4443;socks=127.0.0.1:5000';
-    $list = $this->worker->regGetProxies($value);
+    $list = $this->mock->proxyGetRegistry($value);
     $this->assertEquals(0, count($list));
 
   }
@@ -164,11 +187,11 @@ class ProxyGetTest extends \ProxyTests\Base
   * returns only an http value
   *
   */
-  public function testGetRegDefinedMixed()
+  public function testRegistryHttpOtherReturnsHttp()
   {
 
     $value = 'ftp=127.0.0.1:4443;http=127.0.0.1:8080;socks=127.0.0.1:5000';
-    $list = $this->worker->regGetProxies($value);
+    $list = $this->mock->proxyGetRegistry($value);
     $this->assertEquals(1, count($list));
     $this->assertEquals('127.0.0.1:8080', $list['http']);
 
@@ -180,9 +203,9 @@ class ProxyGetTest extends \ProxyTests\Base
   * returns an empty list
   *
   */
-  public function testGetRegNone()
+  public function testRegistryNoneReturnsNone()
   {
-    $list = $this->worker->regGetProxies(null);
+    $list = $this->mock->proxyGetRegistry(null);
     $this->assertEquals(0, count($list));
   }
 

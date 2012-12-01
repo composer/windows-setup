@@ -1,7 +1,5 @@
 <?php
 
-chdir(dirname(__FILE__));
-
 class ComposerSetup
 {
 
@@ -123,25 +121,25 @@ class ComposerSetup
 
     if (!$this->getArg('force') && file_exists($filename))
     {
-      # debug
       $this->debug('Download, using existing file: '.$filename);
-
       $this->install($filename);
       return;
     }
 
-    # debug
-    $this->debug('Download, from getcomposer.org/installer');
+    $url = 'getcomposer.org/installer';
+    $this->debug('Download, from '.$url);
 
-    $worker = new ComposerSetupRequest();
-    $requestList = $worker->get('getcomposer.org/installer', false);
+    $broker = new ComposerSetupRequestBroker();
+    $requestList = $broker->getRequests($url, false);
 
     if ($this->requestsExecute($requestList, $filename))
     {
+      $this->debug('Download ok, running install');
       $this->install($filename);
     }
     else
     {
+      $this->debug('Download failed');
       $this->status = 3;
     }
 
@@ -152,50 +150,43 @@ class ComposerSetup
   {
 
     $result = false;
-    $defTimeout = ini_get('default_socket_timeout');
     $errors = array();
 
+    $defTimeout = ini_set('default_socket_timeout', '15');
     set_error_handler(array($this, 'errorHandler'));
 
     foreach ($requestList as $request)
     {
 
-      if ($request['error'])
-      {
-        #debug
-        $this->debug($request['error']);
+      $this->debug($request->msg);
 
-        $errors[] = $request['error'];
+      if (!$request->context)
+      {
+        $errors[] = $request->msg;
         continue;
       }
 
-      $msg = 'Request to '.$request['source'];
-      $msg .= $request['proxy'] ? ', proxy: '.$request['display'] : '';
-
-      # debug
-      $this->debug($msg, true);
-
-      # set shorter timeout for ssl proxy
-      ini_set('default_socket_timeout', $request['ssl'] ? '10' : '20');
-
       # make the request
-      if ($result = copy($request['source'], $filename, $request['context']))
+      if ($result = copy($request->source, $filename, $request->context))
       {
+        $this->debug('Request ok');
         break;
       }
       else
       {
-        # debug
-        $this->debug('failed');
+        $errRequest = $this->requestGetErrors();
+        $this->debug('Failed with errors: ' .$errRequest);
 
-        if ($errRequest = $this->requestGetErrors())
+        if ($request->proxyUrl)
         {
-          # debug
-          $this->debug($errRequest);
-
-          $errors[] = $errRequest;
+          $errMsg = 'Proxy '.$request->proxyDisplay;
+        }
+        else
+        {
+          $errMsg = $request->msg;
         }
 
+        $errors[] = $errMsg.' failed with errors:'.PHP_EOL.$errRequest;
       }
 
     }
@@ -206,21 +197,24 @@ class ComposerSetup
     if ($result)
     {
 
-      # debug
-      $this->debug('success');
-
       # set http_proxy for install script
-      if ($request['proxy'])
+      if ($request->proxyUrl)
       {
-        $this->debug('Adding proxy value to local environment: '.$request['display']);
-        $_SERVER['http_proxy'] = $request['proxy'];
-        $_SERVER['HTTP_PROXY'] = $request['proxy'];
+        $this->debug('Adding proxy value to local environment: '.$request->proxyDisplay);
+        $_SERVER['http_proxy'] = $request->proxyUrl;
+        $_SERVER['HTTP_PROXY'] = $request->proxyUrl;
+      }
+
+      if ($errors)
+      {
+        array_unshift($errors, 'Warning: Your internet settings may stop Composer from working.');
       }
 
     }
-    else
+
+    if ($errors)
     {
-      echo implode(PHP_EOL.PHP_EOL, $errors);
+      echo implode(PHP_EOL.PHP_EOL, $errors).PHP_EOL;
     }
 
     return $result;
@@ -229,14 +223,17 @@ class ComposerSetup
 
 
   /**
-  * Empties errors from each request
+  * Empties errors from each request, formats and returns them
   *
   */
   protected function requestGetErrors()
   {
-    $errorStr = implode(PHP_EOL.PHP_EOL, $this->errors);
+    $s = implode('. ', $this->errors);
+    $s = str_replace('..', '.', $s);
+
     $this->errors = array();
-    return $errorStr;
+    return $s ? $s : 'no errors reported';
+
   }
 
 
@@ -415,10 +412,11 @@ class ComposerSetup
   protected function setupTestPhp($before)
   {
 
-    if (!$test = $this->getArg('test', true))
+    if ((!$test = $this->getArg('test', true)) || $test[0] !== 'p')
     {
       return;
     }
+
 
     if ($before)
     {
@@ -434,9 +432,6 @@ class ComposerSetup
         case 'p2':
           throw new Exception('Dummy');
 
-        case 'p3':
-          exit(PHP_INT_MAX);
-
       }
 
     }
@@ -448,18 +443,18 @@ class ComposerSetup
       switch ($test)
       {
 
-        case 'p4': # empty result file
+        case 'p3': # empty result file
           exit(0);
 
-        case 'p5': # non matching identity
+        case 'p4': # non matching identity
           echo 'xxx'.PHP_EOL;
           exit(0);
 
-        case 'p6':
+        case 'p5':
           $this->setupTestPhpResult($test);
           break;
 
-        case 'p7':
+        case 'p6':
           $this->setupTestPhpResult($test);
           break;
 
@@ -480,12 +475,12 @@ class ComposerSetup
 
     echo $this->getIndentity();
 
-    if ($test === 'p6')
+    if ($test === 'p5')
     {
       echo 'xxx'.PHP_EOL;
     }
 
-    $this->status = $test === 'p6' ? 0 : 1;
+    $this->status = $test === 'p5' ? 0 : 1;
 
   }
 
@@ -493,7 +488,7 @@ class ComposerSetup
   protected function setupTestDownload()
   {
 
-    if (!$test = $this->getArg('test', true))
+    if ((!$test = $this->getArg('test', true)) || $test[0] !== 'd')
     {
       return;
     }
@@ -501,37 +496,44 @@ class ComposerSetup
     switch ($test)
     {
 
-      case 'd0':
+      case 'd1':
+        # [ERR_NONE]
+        $this->debug('This message should not be shown');
+        echo PHP_EOL.PHP_EOL.'#!/usr/bin/env php'.PHP_EOL.PHP_EOL.PHP_EOL.PHP_EOL;
+        echo 'Dummy PHP settings warning from installer script'.PHP_EOL;
+        file_put_contents('composer.phar', '');
+        exit(0);
+
+      case 'd2':
+        # [ERR_INSTALL]
+        echo 'Dummy Composer fatal error from installer script'.PHP_EOL;
+        exit(1);
+
+      case 'd3':
+        # [ERR_PHP]
+        exit(2);
+
+      case 'd4':
+        # [ERR_CONNECTION]
+        exit(3);
+
+      case 'd5':
+        # [ERR_CONNECTION]
+        $_SERVER['http_proxy'] = 'http://127.0.0.100:28000';
+        return;
+
+      case 'd6':
+        # [ERR_STATUS]
+        exit(15);
+
+      case 'd7':
+        # [ERR_DOWNLOAD]
         @unlink('composer.phar');
         exit(0);
 
-      case 'd1':
-        echo 'Dummy PHP settings fatal error from installer script'.PHP_EOL;
+      case 'd8':
+        # [ERR_INVALID]
         exit(1);
-
-      case 'd4':
-        exit(1);
-
-      case 'd5':
-        echo '#!/usr/bin/env php'.PHP_EOL.PHP_EOL.PHP_EOL.PHP_EOL;
-        echo 'Dummy PHP settings warning from installer script'.PHP_EOL;
-        file_put_contents('composer.phar', '');
-        exit(0);
-
-      case 'd6':
-        echo PHP_EOL.PHP_EOL.PHP_EOL.PHP_EOL;
-        echo 'Dummy PHP settings warning from installer script'.PHP_EOL;
-        file_put_contents('composer.phar', '');
-        exit(0);
-
-      default:
-
-        $matches = array();
-
-        if (preg_match('/d(-*\\d{1,})/', $test, $matches))
-        {
-          exit(intval($matches[1]));
-        }
 
     }
 
@@ -541,85 +543,129 @@ class ComposerSetup
 }
 
 
-class ComposerSetupRequest
+class ComposerSetupRequestBroker
 {
 
   protected $scheme = '';
+  protected $winRegistry;
+
+  const PROXY_SRC_ENV = 'Environment Variables';
+  const PROXY_SRC_REG = 'Internet Settings';
+  const PROXY_ERR_UNC = 'UNC proxy name not supported.';
+  const PROXY_ERR_INVALID = 'Invalid proxy value.';
+  const PROXY_ERR_MISSING = 'Missing proxy value.';
+  const PROXY_ERR_UNKNOWN = 'Unknown proxy scheme.';
+  const PROXY_ERR_PORT = 'Missing proxy port value.';
+  const PROXY_ERR_SSL = 'You must enable the openssl extension to use a proxy over https.';
 
 
   /**
-  * Setting scheme in constructor allows us to test
+  * Setting stuff in constructor allows us to test
   *
   */
   public function __construct()
   {
     $this->scheme = extension_loaded('openssl') ? 'https' : 'http';
+
+    if ('WIN' === strtoupper(substr(PHP_OS, 0, 3)))
+    {
+      $this->winRegistry = new ComposerSetupWindowsRegistry();
+    }
+
   }
 
 
   /**
-  * Populates and returns requests array
+  * Populates and returns an array of ComposerSetupRequest objects
   *
+  * @param String $url
+  * @param Bool $strict Whether to return non-proxy if proxy found
   */
-  public function get($url, $strict = true)
+  public function getRequests($url, $strict = true)
   {
 
-    $requests = array();
+    $items = array();
     $url = preg_replace('/https?:\/\//i', '', $url);
-    $strict = $strict;
 
     # get proxy from environment variables
-
-    if ($params = $this->proxyFromEnv())
+    if ($params = $this->proxyFromEnvironment())
     {
-      $requests = $params;
+      $items = $params;
     }
 
     # get proxy from registry
-    if (!$requests || !$strict)
+    if ($this->winRegistry && (!$items || !$strict))
     {
 
-      if ($params = $this->proxyFromReg())
+      if ($params = $this->proxyFromRegistry($url))
       {
-        $requests = array_merge($requests, $params);
+        $items = array_merge($items, $params);
       }
 
     }
 
     # add default non-proxy last
-    if (!$requests || !$strict)
+    if (!$items || !$strict)
     {
-      $item = $this->param();
-      $item['scheme'] = $this->scheme;
-      $requests[] = $item;
+      $params = $this->proxyParams();
+      $params['scheme'] = $this->scheme;
+      $items[] = $params;
     }
 
-    # populate source and context fields
-    foreach ($requests as &$params)
-    {
-
-      $params['source'] = $params['scheme'].'://'.$url;
-      unset($params['scheme']);
-
-      if (!$params['error'])
-      {
-        $options['http'] = $params['http'];
-        $params['context'] = stream_context_create($options);
-      }
-
-      unset($params['http']);
-
-    }
-
-    return $requests;
+    return $this->formatRequests($items, $url);
 
   }
 
 
-  protected function proxyFromEnv()
+  /**
+  * Creates an array of ComposerSetupRequest objects
+  *
+  * @param Array $list
+  * @param String $url
+  */
+  protected function formatRequests($list, $url)
   {
 
-    if ($list = $this->envGetProxies($_SERVER))
+    $out = array();
+
+    foreach ($list as $item)
+    {
+
+      $request = new ComposerSetupRequest();
+      $request->source = $item['scheme'].'://'.$url;
+
+      if ($item['proxyError'])
+      {
+        $request->context = null;
+        $request->msg = $item['proxyError'];
+      }
+      else
+      {
+        $request->context = stream_context_create(array('http' => $item['http']));
+        $request->msg = 'Request to '.$request->source;
+        $request->msg .= $item['proxyUrl'] ? ', using proxy '.$item['proxyDisplay'] : '';
+      }
+
+      $request->proxyUrl = $item['proxyUrl'];
+      $request->proxyDisplay = $item['proxyDisplay'];
+
+      $out[] = $request;
+
+    }
+
+    return $out;
+
+  }
+
+
+  /**
+  * reads environment variables for proxy information
+  *
+  */
+  protected function proxyFromEnvironment()
+  {
+
+    if ($list = $this->proxyGetEnvironment($_SERVER))
     {
       return $this->proxyProcess($list, false);
     }
@@ -628,36 +674,17 @@ class ComposerSetupRequest
 
 
   /**
-  * reads the registry for proxy information for current user
+  * reads the registry for proxy information
   *
+  * @param String $url The host/path of the request url
   */
-  protected function proxyFromReg()
+  protected function proxyFromRegistry($url)
   {
 
-    $key = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings';
-
-    # ProxyEnable
-    if (!$this->winRegGet($key, 'ProxyEnable', $value) || !$value)
-    {
-      return;
-    }
-
-    # ProxyOverride
-    if ($this->winRegGet($key, 'ProxyOverride', $value) && $value)
+    if ($proxyStr = $this->proxyReadRegistry($url))
     {
 
-      if (false !== stripos($value, 'getcomposer.org'))
-      {
-        return;
-      }
-
-    }
-
-    # ProxyServer
-    if ($this->winRegGet($key, 'ProxyServer', $value) && $value)
-    {
-
-      if ($list = $this->regGetProxies($value))
+      if ($list = $this->proxyGetRegistry($proxyStr))
       {
         return $this->proxyProcess($list, true);
       }
@@ -667,62 +694,75 @@ class ComposerSetupRequest
   }
 
 
-  protected function proxyProcess($list, $fromReg)
+  /**
+  * reads the registry for proxy information for current user
+  *
+  * @param String $url The request url
+  */
+  protected function proxyReadRegistry($url)
   {
 
-    $fmtError = 'Cannot use proxy %s from %s. %s';
-    $fmtDisplay = '%s from %s';
-    $from = $fromReg ? 'Internet Settings' : 'environment variable';
-    $sslError = 'You must enable the openssl extension to use a proxy over https';
+    $key = 'HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings';
+    $url = parse_url($url, PHP_URL_HOST);
 
-    $checked = array();
+    # ProxyEnable
+    if (!$this->winRegistry->read($key, 'ProxyEnable', $value) || !$value)
+    {
+      return;
+    }
 
-    foreach ($list as $key => $item)
+    # ProxyOverride
+    if ($this->winRegistry->read($key, 'ProxyOverride', $value) && $value)
     {
 
-      if ($item)
+      if ($url && false !== stripos($value, $url))
       {
-        $options = array();
-        $this->proxyGetOptions($item, $options);
-
-        if ($options['error'])
-        {
-          $options['error'] = sprintf($fmtError, $options['display'], $from, $options['error']);
-        }
-        elseif ($options['ssl'] && 'http' === $scheme)
-        {
-          $options['error'] = sprintf($fmtError, $options['display'], $from, $sslError);
-        }
-
-        $options['display'] = sprintf($fmtDisplay, $options['display'], $from);
-        $checked[$key] = $options;
+        return;
       }
 
     }
 
-    if (!$first = isset($checked[$this->scheme]) ? $checked[$this->scheme] : null)
+    # ProxyServer
+    if ($this->winRegistry->read($key, 'ProxyServer', $value) && $value)
+    {
+      return $value;
+    }
+
+  }
+
+
+  protected function proxyProcess($list, $fromReg)
+  {
+
+    $out = array();
+
+    $params = $this->proxyGetParams($list, $fromReg);
+
+    if (!$first = isset($params[$this->scheme]) ? $params[$this->scheme] : null)
     {
       return;
     }
 
     $other = 'https' === $this->scheme ? 'http' : 'https';
 
-    if ($second = isset($checked[$other]) ? $checked[$other] : null)
+    if ($second = isset($params[$other]) ? $params[$other] : null)
     {
 
-      if ($first['proxy'] === $second['proxy'])
+      if ($first['proxyUrl'] === $second['proxyUrl'] || 'http' === $this->scheme)
       {
-        unset($checked[$other]);
+        unset($params[$other]);
+        $second = null;
       }
 
     }
 
-    $out = array();
+    $first['scheme'] = $this->scheme;
+    $out[] = $first;
 
-    foreach ($checked as $scheme => $options)
+    if ($second)
     {
-      $options['scheme'] = $scheme;
-      $out[] = $options;
+      $second ['scheme'] = $other;
+      $out[] = $second;
     }
 
     return $out;
@@ -730,23 +770,52 @@ class ComposerSetupRequest
   }
 
 
-  protected function proxyGetOptions($proxyStr, &$options)
+  protected function proxyGetParams($list, $fromReg)
+  {
+
+    $fmtDisplay = '%s [from %s]';
+    $fmtError = 'Cannot use proxy %s. %s';
+    $from = $fromReg ? self::PROXY_SRC_REG : self::PROXY_SRC_ENV;
+
+    $out = array();
+
+    foreach ($list as $key => $proxyStr)
+    {
+
+      if ($proxyStr)
+      {
+        $this->proxySetParams($proxyStr, $params);
+
+        $display = preg_replace('/:[^\/](.|\s)*?@/', ':*****@', $params['proxyUrl'], 1);
+        $params['proxyDisplay'] = sprintf($fmtDisplay, $display, $from);
+
+        if ($params['proxyError'])
+        {
+          $params['proxyError'] = sprintf($fmtError, $params['proxyDisplay'], $params['proxyError']);
+        }
+
+        $out[$key] = $params;
+      }
+
+    }
+
+    return $out;
+
+  }
+
+
+  protected function proxySetParams($proxyStr, &$params)
   {
 
     $proxyStr = trim($proxyStr);
 
-    $pattern = '/:[^\/](.|\s)*?@/';
-    $replace = ':*****@';
-
-    $options = $this->param();
-    $options['proxy'] = $proxyStr;
-    $options['display'] = preg_replace($pattern, $replace, $proxyStr, 1);
-    $options['ssl'] = false;
+    $params = $this->proxyParams();
+    $params['proxyUrl'] = $proxyStr;
 
     # check for UNC name
-    if (0 === strpos($proxyStr, '\\'))
+    if (0 === strpos($proxyStr, '\\\\'))
     {
-      $options['error'] = 'UNC proxy name not supported.';
+      $params['proxyError'] = self::PROXY_ERR_UNC;
       return;
     }
     elseif (false === strpos($proxyStr, '://'))
@@ -757,7 +826,7 @@ class ComposerSetupRequest
     # fail if we cannot parse the url
     if (!$proxy = parse_url($proxyStr))
     {
-      $options['error'] = 'Invalid proxy value.';
+      $params['proxyError'] = self::PROXY_ERR_INVALID;
       return;
     }
 
@@ -771,19 +840,19 @@ class ComposerSetupRequest
     # fail if scheme or host are missing
     if (!$proxy['scheme'] || !$proxy['host'])
     {
-      $options['error'] = 'Missing proxy value.';
+      $params['proxyError'] = self::PROXY_ERR_MISSING;
       return;
     }
 
     # fail if scheme not one of http, https, tcp, ssl, dummy
     if (!in_array($proxy['scheme'], array('http', 'https', 'tcp', 'ssl', 'dummy')))
     {
-      $options['error'] = 'Unknown proxy scheme.';
+      $params['proxyError'] = self::PROXY_ERR_UNKNOWN;
       return;
     }
 
     # add scheme where missing, according to port
-    if ($proxy['scheme'] === 'dummy')
+    if ('dummy' === $proxy['scheme'])
     {
 
       if ('80' === $proxy['port'])
@@ -815,35 +884,43 @@ class ComposerSetupRequest
       }
       else
       {
-        $options['error'] = 'Missing proxy port value.';
+        $params['proxyError'] = self::PROXY_ERR_PORT;
         return;
       }
 
     }
 
-    $proxyURL = $proxy['scheme'] . '://' . $proxy['host'] . ':' . $proxy['port'];
-    $proxyURL = str_replace(array('http://', 'https://'), array('tcp://', 'ssl://'), $proxyURL);
-    $options['ssl'] = strpos($proxyURL, 'ssl://') === 0;
+    $proxyUrl = $proxy['scheme'] . '://' . $proxy['host'] . ':' . $proxy['port'];
+    $ctxUrl = str_replace(array('http://', 'https://'), array('tcp://', 'ssl://'), $proxyUrl);
 
-    $options['http'] = array(
-      'proxy' => $proxyURL,
+    $params['http'] = array(
+      'proxy' => $ctxUrl,
       'request_fulluri' => true,
     );
 
     if ($proxy['user'])
     {
       $auth = $proxy['user'] . ':' . $proxy['pass'];
-      $options['http']['header'] = 'Proxy-Authorization: Basic ' . base64_encode($auth);
-      $proxyURL = str_replace('://', '://'.$auth.'@', $proxyURL);
+      $params['http']['header'] = 'Proxy-Authorization: Basic '.base64_encode($auth);
+      $proxyUrl = str_replace('://', '://'.$auth.'@', $proxyUrl);
     }
 
-    $options['proxy'] = $proxyURL;
-    $options['display'] = preg_replace($pattern, $replace, $proxyURL, 1);
+    $params['proxyUrl'] = $proxyUrl;
+
+    if ('http' === $this->scheme && 0 === strpos($ctxUrl, 'ssl://'))
+    {
+      $params['proxyError'] = self::PROXY_ERR_SSL;
+    }
 
   }
 
 
-  protected function envGetProxies($env)
+  /**
+  * Parses http_proxy, https_proxy environment variables
+  *
+  * @param Array $env Environment variables
+  */
+  protected function proxyGetEnvironment($env)
   {
 
     $env = (array) $env;
@@ -863,6 +940,7 @@ class ComposerSetupRequest
 
     }
 
+    # add https value if not specified
     if ($list && !isset($list['https']))
     {
       $list['https'] = $list['http'];
@@ -873,7 +951,26 @@ class ComposerSetupRequest
   }
 
 
-  protected function regGetProxies($proxyStr)
+  /**
+  * Parses ProxyServer value from Windows registry
+  *
+  * Example values:
+  *
+  *   127.0.0.1:80
+  *   - all protocols use this address
+  *
+  *   127.0.0.1:80;127.0.0.1:443
+  *   - only http and https use a proxy
+  *
+  *   http=127.0.0.1:8080;https=127.0.0.1:4443
+  *   - only http and https use a proxy
+  *
+  *   ftp=127.0.0.1:21
+  *   - no proxy for http/https
+  *
+  * @param String $proxyStr Windows proxy value
+  */
+  protected function proxyGetRegistry($proxyStr)
   {
 
     $proxyStr = (string) $proxyStr;
@@ -923,6 +1020,25 @@ class ComposerSetupRequest
   }
 
 
+  protected function proxyParams()
+  {
+
+    return array(
+      'scheme' => '',
+      'http' => array(),
+      'proxyUrl' => '',
+      'proxyDisplay' => '',
+      'proxyError' => '',
+    );
+
+  }
+
+}
+
+
+class ComposerSetupWindowsRegistry
+{
+
   /**
   * Reads a value from the registry, using Windows reg.exe
   *
@@ -931,7 +1047,7 @@ class ComposerSetupRequest
   * @param String $key The parent key of the value
   * @param String $name The name of the value
   */
-  protected function winRegRead($key, $name)
+  protected function query($key, $name)
   {
 
     if ('WIN' === strtoupper(substr(PHP_OS, 0, 3)))
@@ -953,19 +1069,35 @@ class ComposerSetupRequest
   /**
   * Reads a value from the registry
   *
-  * Returns True if value read from registry, otherwise null
+  * Returns True if a value is read from registry, otherwise null, putting
+  * the value in $value.
+  *
+  * $key is in the form of ROOTKEY\SubKey name where ROOTKEY is one of:
+  *   HKLM, HKCU, HKCR, HKU, HKCC
+  *
+  * $raw affects how the data is returned for the following values, with
+  * the default format shown first:
+  *
+  * REG_DWORD, REG_QWORD
+  *   integer, or hexadecimal if raw=true
+  *
+  * REG_BINARY
+  *   string, or hexadecimal if raw=true
+  *
+  * REG_MULTI_SZ
+  *   array, or string if raw=true (formatted 'sssss\0sssss\0sssss')
   *
   * @param String $key The parent key of the value
   * @param String $name The name of the value
   * @param mixed $value The returned value
-  * @param Bool $raw Whether to format REG_DWORD, QWORD, BINARY and MULTI_SZ values
+  * @param Bool $raw Whether not to format certain values
   */
-  protected function winRegGet($key, $name, &$value, $raw = false)
+  public function read($key, $name, &$value, $raw = false)
   {
 
     $value = null;
 
-    if (!$output = $this->winRegRead($key, $name))
+    if (!$output = $this->query($key, $name))
     {
       return;
     }
@@ -1005,21 +1137,16 @@ class ComposerSetupRequest
 
   }
 
+}
 
-  protected function param()
-  {
 
-    return array(
-      'source' => '',
-      'context' => null,
-      'scheme' => '',
-      'http' => array(),
-      'proxy' => '',
-      'display' => '',
-      'ssl' => false,
-      'error' => '',
-    );
+class ComposerSetupRequest
+{
 
-  }
+  public $source = '';
+  public $context = null;
+  public $msg = '';
+  public $proxyUrl = '';
+  public $proxyDisplay = '';
 
 }

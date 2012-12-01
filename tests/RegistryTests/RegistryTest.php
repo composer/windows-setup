@@ -1,134 +1,126 @@
 <?php
 
-use \RegistryTests\RegistryWorker;
-
 class RegistryTest extends \RegistryTests\Base
 {
 
 
-  public function testReadDword()
+  public function testDwordReturnsInteger()
   {
 
-    $value = '0x20';
-    $this->worker->setValue(RegistryWorker::REG_DWORD, $value);
-    $expected = intval($value, 16);
+    $name = 'REG_DWORD';
+    $value = 16;
+    $this->mock->setTypeValue($name, $value);
 
-    $this->worker->winRegTestGet($actual);
+    $expected = $value;
+    $this->mock->read($this->key, $name, $actual);
     $this->assertTrue($expected === $actual);
 
   }
 
 
-  public function testReadDwordRaw()
+  public function testDwordReturnsStringHex()
   {
 
-    $value = '0x20';
-    $this->worker->setValue(RegistryWorker::REG_DWORD, $value);
-    $expected = $value;
+    $name = 'REG_DWORD';
+    $value = 32;
+    $this->mock->setTypeValue($name, $value);
 
-    $this->worker->winRegTestGet($actual, true);
+    $expected = '0x20';
+    $this->mock->read($this->key, $name, $actual, true);
     $this->assertTrue($expected === $actual);
 
   }
 
-  public function testFailReadDwordRaw()
+
+  public function testSzReturnsStringValue()
   {
 
-    $value = '0x20';
-    $this->worker->setValue(RegistryWorker::REG_DWORD, $value);
-    $expected = $value;
-
-    $this->worker->winRegTestGet($actual);
-    $this->assertTrue($expected !== $actual);
-
-  }
-
-
-  public function testReadSz()
-  {
-
+    $name = 'REG_SZ';
     $value = 'string from registry';
-    $this->worker->setValue(RegistryWorker::REG_SZ, $value);
-    $expected = $value;
+    $this->mock->setTypeValue($name, $value);
 
-    $this->worker->winRegTestGet($actual);
+    $expected = $value;
+    $this->mock->read($this->key, $name, $actual);
     $this->assertEquals($expected, $actual);
 
   }
 
 
-  public function testReadSzEmpty()
+  public function testSzReturnsStringEmpty()
   {
 
+    $name = 'REG_SZ';
     $value = '';
-    $this->worker->setValue(RegistryWorker::REG_SZ, $value);
+    $this->mock->setTypeValue($name, $value);
     $expected = $value;
 
-    $this->worker->winRegTestGet($actual);
+    $this->mock->read($this->key, $name, $actual);
     $this->assertEquals($expected, $actual);
 
   }
 
 
-  public function testReadMultiSz()
+  public function testMultiSzReturnsArray()
   {
 
-    $value = 'value1\0value2\0value3';
-    $this->worker->setValue(RegistryWorker::REG_MULTI_SZ, $value);
-    $expected = array('value1', 'value2', 'value3');
+    $name = 'REG_MULTI_SZ';
+    $value = array('value1 ', 'value 2', ' value3');
+    $this->mock->setTypeValue($name, $value);
 
-    $this->worker->winRegTestGet($actual);
+    $expected = $value;
+    $this->mock->read($this->key, $name, $actual);
     $this->assertTrue($expected === $actual);
 
   }
 
 
-  public function testReadMultiSzRaw()
+  public function testReadMultiSzReturnsStringFormatted()
   {
 
-    $value = 'value1\0value2\0value3';
-    $this->worker->setValue(RegistryWorker::REG_MULTI_SZ, $value);
-    $expected = $value;
+    $name = 'REG_MULTI_SZ';
+    $value = array('value1', 'value 2', 'value3');
+    $this->mock->setTypeValue($name, $value);
 
-    $this->worker->winRegTestGet($actual, true);
+    $expected = 'value1\0value 2\0value3';
+    $this->mock->read($this->key, $name, $actual, true);
     $this->assertEquals($expected, $actual);
 
   }
 
 
-  public function testReadBinary()
+  public function testBinaryReturnsString()
   {
 
-    $value = '7265670d0a';
-    $this->worker->setValue(RegistryWorker::REG_BINARY, $value);
-    $expected = "reg\r\n";
+    $name = 'REG_BINARY';
+    $value = "reg\r\n";
+    $this->mock->setTypeValue($name, $value);
 
-    $this->worker->winRegTestGet($actual);
+    $expected = $value;
+    $this->mock->read($this->key, $name, $actual);
     $this->assertEquals($expected, $actual);
 
   }
 
 
-  public function testReadBinaryRaw()
+  public function testBinaryReturnsStringHex()
   {
 
-    $value = '7265670d0a';
-    $this->worker->setValue(RegistryWorker::REG_BINARY, $value);
-    $expected = $value;
+    $name = 'REG_BINARY';
+    $value = "reg\r\n";
+    $this->mock->setTypeValue($name, $value);
 
-    $this->worker->winRegTestGet($actual, true);
+    $expected = '7265670d0a';
+    $this->mock->read($this->key, $name, $actual, true);
     $this->assertEquals($expected, $actual);
 
   }
 
-  public function testReadNonExistent()
+  public function testNonExistent()
   {
 
-    $value = null;
-    $this->worker->setValue(0, $value);
-    $expected = $value;
-
-    $this->worker->winRegTestGet($actual, true);
+    $name = 'REG_SZ';
+    $expected = null;
+    $this->mock->read($this->key, $name, $actual);
     $this->assertEquals($expected, $actual);
 
   }

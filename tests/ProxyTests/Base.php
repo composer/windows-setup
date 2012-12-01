@@ -5,18 +5,52 @@ namespace ProxyTests;
 class Base extends \PHPUnit_Framework_TestCase
 {
 
-  public $worker = null;
+  public $mock = null;
+  public $registry = null;
 
   public function setUp()
   {
+    $this->mock = new \RequestBroker();
+    $this->registry = $this->mock->winRegistry;
+    $this->clearHttpServer();
+  }
 
-    $this->worker = new \RequestWorker();
-    $this->initServer();
+
+  public function setProxyEnabled($value)
+  {
+    $this->registry->setProxyValue('ProxyEnable', intval($value));
+  }
+
+
+  public function setProxyOverride($value)
+  {
+    $this->registry->setProxyValue('ProxyOverride', $value);
+  }
+
+
+  public function setProxyServer($value)
+  {
+    $this->registry->setProxyValue('ProxyServer', $value);
+  }
+
+
+  public function strContains($needle, $haystack, $case = true)
+  {
+
+    if ($case)
+    {
+      return false !== strpos($haystack, $needle);
+    }
+    else
+    {
+      return false !== stripos($haystack, $needle);
+    }
 
   }
 
 
-  private function initServer()
+
+  public function clearHttpServer()
   {
 
     $unset = array();
