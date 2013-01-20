@@ -784,7 +784,7 @@ end;
 
 function CheckPhpExe(const Filename: String): Boolean;
 var
-	Show: Integer;
+  Show: Integer;
   ExitCode: Integer;
 
 begin
@@ -811,7 +811,7 @@ end;
 
 function CheckPhp(const Filename: String): Boolean;
 var
-	Switches: String;
+  Switches: String;
   Show: Integer;
   ExitCode: Integer;
   Results: TArrayOfString;
@@ -987,7 +987,7 @@ end;
 
 procedure DownloadWork;
 var
-	Switches: String;
+  Switches: String;
   ExitCode: Integer;
   Results: TArrayOfString;
 

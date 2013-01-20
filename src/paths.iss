@@ -185,7 +185,7 @@ begin
     else
     begin
       Result[Next] := Value;
-			Value := '';
+      Value := '';
     end;
 
     Inc(Next);
