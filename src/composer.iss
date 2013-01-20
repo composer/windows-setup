@@ -40,7 +40,6 @@ AlwaysShowDirOnReadyPage=yes
 
 ; group stuff for Start Menu
 DefaultGroupName={#AppName}
-DisableProgramGroupPage=yes
 AlwaysShowGroupOnReadyPage=yes
 
 ; uninstall
