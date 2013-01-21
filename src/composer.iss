@@ -54,7 +54,16 @@ VersionInfoProductVersion=0
 VersionInfoProductName={#AppDescription}
 
 ; code-signing
-SignTool=mssigntool
+;
+; NOTE:
+; code-signin requires a locally installed code-signing binary tool
+; that does not ship with this codebase, so you need to enable it if
+; you need it.
+; http://www.jrsoftware.org/ishelp/index.php?topic=setup_signtool
+; http://doughennig.blogspot.de/2009/11/executable-signing-with-inno-setup.html
+; http://margopowell.wordpress.com/2012/05/08/run-innosetup-with-digital-signature/
+;
+;SignTool=mssigntool
 
 ; cosmetic
 WizardImageFile=wiz.bmp
