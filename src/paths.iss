@@ -26,7 +26,7 @@ var
   SafeList: TPathList;
   Key: String;
   Path: String;
-    
+
 begin
 
   Result := False;
@@ -36,8 +36,8 @@ begin
 
   // we exit if NormalizePath failed and/or we have no value
   if SafeDirectory = '' then
-    Exit;  
-  
+    Exit;
+
   // get a list of normalized path entries
   SafeList := GetSafePathList(Hive);
 
@@ -47,19 +47,19 @@ begin
     Result := True;
     Exit;
   end;
-  
-  // get the current path values from registry   
+
+  // get the current path values from registry
   Key := GetPathKeyForHive(Hive);
   Path := '';
   RegQueryStringValue(Hive, Key, 'PATH', Path);
-  
+
   Debug(Format('Adding %s to %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
   Debug('Path before: ' + Path);
-   
+
   // add trailing separator to path if required
   if (Path <> '') and (Path[Length(Path)] <> ';') then
     Path := Path + ';';
-  
+
   // add our new value to the path
   Path := Path + SafeDirectory;
 
@@ -73,7 +73,7 @@ begin
     Debug('Path after:  ' + Path)
   else
     Debug('RegWriteExpandStringValue failed');
-    
+
 end;
 
 
@@ -86,9 +86,9 @@ var
   NewPath: String;
   I: Integer;
   SafePath: String;
-  
+
 begin
-  
+
   // NormalizePath UNC expands the path and removes any trailing backslash
   SafeDirectory := NormalizePath(Value);
 
@@ -107,17 +107,17 @@ begin
   // if we fail, we have not got any
   if not RegQueryStringValue(Hive, Key, 'PATH', CurrentPath) then
     Exit;
-  
+
   Debug(Format('Removing %s from %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
   Debug('Path before: ' + CurrentPath);
 
-  // split current path into a list of raw entries  
+  // split current path into a list of raw entries
   RawList := SplitPath(CurrentPath);
   NewPath := '';
-    
+
   for I := 0 to GetArrayLength(RawList) - 1 do
   begin
-    
+
     // normalize each raw entry - will be blank if we cannot expand it
     SafePath := NormalizePath(RawList[I]);
 
@@ -128,14 +128,14 @@ begin
       // add separator if required
       if NewPath <> '' then
         NewPath := NewPath + ';';
-      
+
       // important to add RAW value
       NewPath := NewPath + RawList[I];
-      
+
     end;
 
   end;
-    
+
   if NewPath = '' then
   begin
 
@@ -145,14 +145,14 @@ begin
       RegDeleteValue(Hive, Key, 'PATH');
       Exit;
     end;
-    
+
   end;
-  
+
   // write the new path (could be empty for HKEY_LOCAL_MACHINE)
   RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
 
   Debug('Path after:  ' + NewPath);
-    
+
 end;
 
 
@@ -181,15 +181,15 @@ begin
     begin
       Result[Next] := Copy(Value, 1, Index - 1);
       Value := Copy(Value, Index + 1, Length(Value));
-    end 
+    end
     else
     begin
       Result[Next] := Value;
-			Value := '';
+      Value := '';
     end;
 
     Inc(Next);
-    
+
   until Length(Value) = 0;
 
   if Next < Count then
@@ -225,16 +225,16 @@ var
   Path: String;
   ResSize: DWord;
   Expanded: String;
-  
+
 begin
-  
+
   Result := '';
   Path := Trim(Value);
-  
+
   // see if we have any %variables%
   if Pos('%', Path) <> 0 then
   begin
-    
+
     Expanded := '';
     ResSize := ExpandEnvironmentStrings(Path, Expanded, 0);
 
@@ -242,14 +242,14 @@ begin
       Exit;
 
     SetLength(Expanded, ResSize);
-    
+
     if ExpandEnvironmentStrings(Path, Expanded, ResSize) = ResSize then
       Path := TrimRight(Expanded)
     else
       Exit;
 
   end;
-  
+
   // check that we are a suitable path to expand, or a UNC name (not a complete check)
   if (Length(Path) >= 3) and (Path[2] = ':') and (Uppercase(Path[1]) >= 'A') and (Uppercase(Path[1]) <= 'Z') then
     Path := ExpandUNCFileName(Path)
@@ -259,7 +259,7 @@ begin
   Result := RemoveBackslashUnlessRoot(Path);
 
 end;
- 
+
 
 function GetSafePathList(Hive: Integer): TPathList;
 var
@@ -269,7 +269,7 @@ var
   Index: Integer;
   I: Integer;
   SafePath: String;
-    
+
 begin
 
   Result.Safe := True;
@@ -281,18 +281,18 @@ begin
     Exit;
 
   RawList := SplitPath(Path)
-  
-  SetArrayLength(Result.Items, GetArrayLength(RawList));  
+
+  SetArrayLength(Result.Items, GetArrayLength(RawList));
   Index := 0;
-    
+
   for I := 0 to GetArrayLength(RawList) - 1 do
   begin
-           
+
     if RawList[I] <> '' then
     begin
-      
+
       SafePath := NormalizePath(RawList[I]);
-      
+
       if SafePath <> '' then
       begin
         Result.Items[Index] := SafePath;
@@ -304,7 +304,7 @@ begin
   end;
 
   SetArrayLength(Result.Items, Index);
-    
+
 end;
 
 
@@ -331,13 +331,13 @@ begin
   Directory := NormalizePath(Directory);
 
   if Directory = '' then
-    Exit;  
+    Exit;
 
   for I := 0 to GetArrayLength(PathList.Items) - 1 do
   begin
 
     SafePath := GetSafePath(PathList, I);
-    
+
     if (SafePath <> '') and (CompareText(SafePath, Directory) = 0) then
     begin
       Result := True;
@@ -345,7 +345,7 @@ begin
     end;
 
   end;
-  
+
 end;
 
 
@@ -358,7 +358,7 @@ var
 begin
 
   Result := '';
-    
+
   for I := 0 to GetArrayLength(PathList.Items) - 1 do
   begin
 
@@ -395,7 +395,7 @@ var
   Cmd: String;
   GitExe: String;
   Version: String;
-  
+
 begin
 
   Result := False;
@@ -403,19 +403,19 @@ begin
 
   List1 := GetSafePathList(HKEY_LOCAL_MACHINE);
   GitExe := SearchPath(List1, Cmd);
-  
+
   if GitExe = '' then
-  begin  
+  begin
     List2 := GetSafePathList(HKEY_CURRENT_USER);
     GitExe := SearchPath(List2, Cmd);
   end;
-  
+
   if GitExe = '' then
     Exit;
 
   if StringChangeEx(GitExe, 'cmd', 'bin', True) = 0 then
     Exit;
-  
+
   if FileExists(GitExe) then
   begin
 
@@ -425,5 +425,5 @@ begin
       Result := CompareStr(Version, '1.8.1.0') < 0;
 
   end;
-  
+
 end;
