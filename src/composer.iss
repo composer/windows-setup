@@ -12,6 +12,7 @@
 #define CS_SETUP_GUID "3ECDC245-751A-4962-B580-B8A250EDD1CF"
 #define GUID_LEN Len(CS_SETUP_GUID)
 
+#define SetupIni SourcePath	+ "\\setup.ini"
 
 [Setup]
 ; app name and version
@@ -55,15 +56,11 @@ VersionInfoProductName={#AppDescription}
 
 ; code-signing
 ;
-; NOTE:
-; code-signin requires a locally installed code-signing binary tool
-; that does not ship with this codebase, so you need to enable it if
-; you need it.
-; http://www.jrsoftware.org/ishelp/index.php?topic=setup_signtool
-; http://doughennig.blogspot.de/2009/11/executable-signing-with-inno-setup.html
-; http://margopowell.wordpress.com/2012/05/08/run-innosetup-with-digital-signature/
-;
-;SignTool=mssigntool
+; NOTE: see setup.ini
+#define SignTool ReadIni(SetupIni, "SignTool", "SignTool")
+#if SignTool != ""
+  SignTool={#SignTool}
+#endif
 
 ; cosmetic
 WizardImageFile=wiz.bmp
