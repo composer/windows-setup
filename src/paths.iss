@@ -8,7 +8,7 @@ function ExpandEnvironmentStrings(Src: String; Dst: String; Size: DWord): DWord;
   external 'ExpandEnvironmentStringsW@kernel32.dll stdcall';
 
 function AddToPath(Hive: Integer; Value: String): Boolean; forward;
-procedure RemoveFromPath(Hive: Integer; Value: String); forward;
+procedure RemoveFromPath(Hive: Integer; Value: String; MustExist: Boolean); forward;
 function SplitPath(Value: String): TArrayOfString; forward;
 function GetPathKeyForHive(Hive: Integer): String; forward;
 function GetHiveName(Hive: Integer): String; forward;
@@ -77,7 +77,7 @@ begin
 end;
 
 
-procedure RemoveFromPath(Hive: Integer; Value: String);
+procedure RemoveFromPath(Hive: Integer; Value: String; MustExist: Boolean);
 var
   SafeDirectory: String;
   Key: String;
@@ -93,7 +93,7 @@ begin
   SafeDirectory := NormalizePath(Value);
 
   // we exit if NormalizePath failed or the directory exists
-  if (SafeDirectory = '') or DirExists(SafeDirectory) then
+  if (SafeDirectory = '') or (MustExist and DirExists(SafeDirectory)) then
     Exit;
 
   // paranoid check to make sure we are not removing a system path - should not happen
