@@ -1637,16 +1637,13 @@ var
 
 begin
 
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep = usUninstall then
   begin
 
     Dir := GetInstallDir(ExpandConstant('{app}'));
 
-    if not DirExists(Dir) then
-    begin
-      SetPathRec(Rec, Dir);
-      RemoveFromPath(Rec.Hive, Rec.Path)
-    end;
+    SetPathRec(Rec, Dir);
+    RemoveFromPath(Rec.Hive, Rec.Path, False)
 
   end;
 
