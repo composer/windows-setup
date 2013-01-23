@@ -1,2 +1,4 @@
+/output
+*.exe
 *.phar
 test.php

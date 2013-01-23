@@ -1,4 +1,6 @@
-#define SetupVersion = "2.6"
+#ifndef SetupVersion
+  #define SetupVersion
+#endif
 
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
@@ -20,8 +22,7 @@ AppVerName={#AppName}
 AppPublisher={#AppUrl}
 
 ; compile directives
-OutputDir=..\
-OutputBaseFilename={#AppName}-Setup
+OutputDir=output
 Compression=lzma
 SolidCompression=yes
 
