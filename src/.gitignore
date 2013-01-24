@@ -1,4 +1,6 @@
 /output
+/release
 *.exe
 *.phar
-test.php
+*build*
+*test*

@@ -1,6 +1,6 @@
 # Composer-Setup
 
-A Windows installer for the [Composer][composer] PHP Dependency Manager. [Download it here][download].
+A Windows installer for the [Composer][composer] PHP Dependency Manager. [**Download it here**][download].
 
 ## Contents
 * [About](#About)
@@ -46,12 +46,12 @@ After you have accepted these choices, the installer will download Composer and 
 <a name="Uninstalling"></a>
 ## Uninstalling
 
-The uninstall program is available from the Control Panel and the Start Menu.
+The uninstall program is available from the Control Panel.
 
 <a name="Path"></a>
 ## Path
 
-Composer-Setup will modify your System Path environment variable for Admin installs, or your User Path environment variable for User installs. The installer will add your `php.exe` path if required and will also add the path to the installation directory. The uninstaller will only remove the installation directory.
+Composer-Setup will modify your System Path environment variable for Admin installs, or your User Path environment variable for User installs. The installer will add your `php.exe` to the path if required and will also add the path to the installation directory. The uninstaller will only remove the installation directory.
 
 <a name="Compiling"></a>
 ## Compiling
@@ -66,7 +66,7 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
 
 
   [composer]:   http://getcomposer.org
-  [download]:   https://github.com/downloads/johnstevenson/composer-setup/Composer-Setup.exe
+  [download]:   https://s3-eu-west-1.amazonaws.com/johnstevenson/composer/Composer-Setup.2.6.exe
   [inno]:       http://www.jrsoftware.org/isinfo.php
   [packagist]:  https://packagist.org/
   [manual]:     https://github.com/johnstevenson/composer-setup/wiki/Manual-installation
