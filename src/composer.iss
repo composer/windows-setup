@@ -29,7 +29,7 @@ SolidCompression=yes
 ; runtime  directives
 MinVersion=5.1
 PrivilegesRequired=none
-;AllowCancelDuringInstall=false
+AllowCancelDuringInstall=false
 
 ; directory stuff
 DefaultDirName={commonappdata}{#AppName}
@@ -143,6 +143,7 @@ type
   end;
 
 var
+  Completed: Boolean;
   TmpFile: TTmpFile;
   PhpRec: TPhpRec;
   CmdExe: String;
@@ -622,6 +623,74 @@ begin
 
   end;
 
+end;
+
+
+procedure PathsAdd(var Error: String);
+begin
+
+  Error := '';
+
+  if Flags.AddPhp.Path <> '' then
+  begin
+
+    if not AddToPath(Flags.AddPhp.Hive, Flags.AddPhp.Path) then
+    begin
+      Error := 'Error setting ' + Flags.AddPhp.Name + ' Path variable';
+      Exit;
+    end;
+
+    Flags.PathChanged := True;
+
+  end;
+
+  if Flags.AddComposer.Path <> '' then
+  begin
+
+    if not AddToPath(Flags.AddComposer.Hive, Flags.AddComposer.Path) then
+    begin
+      
+      Error := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
+
+      // remove php path in the unlikely event we have just added it
+      if Flags.PathChanged then
+      begin
+        RemoveFromPath(Flags.AddPhp.Hive, Flags.AddPhp.Path);
+        Flags.PathChanged := False;
+        NotifyPathChange;
+      end; 
+            
+      Exit;
+
+    end;
+
+    Flags.PathChanged := True;
+
+  end;
+
+  if Flags.PathChanged then
+    NotifyPathChange;
+
+end;
+
+
+procedure PathsRemove;
+begin
+
+  if Flags.PathChanged then
+  begin
+
+    if Flags.AddPhp.Path <> '' then
+      RemoveFromPath(Flags.AddPhp.Hive, Flags.AddPhp.Path);
+
+    if Flags.AddComposer.Path <> '' then
+      RemoveFromPath(Flags.AddComposer.Hive, Flags.AddComposer.Path);
+ 
+    Flags.PathChanged := False;
+    NotifyPathChange;
+    
+  end;
+  
 end;
 
 
@@ -1371,6 +1440,7 @@ end;
 function InitializeSetup(): Boolean;
 begin
 
+  Completed := False;
   HomeDir := GetShellFolderByCSIDL(CSIDL_PROFILE, False);
 
   CmdExe := ExpandConstant('{cmd}');
@@ -1392,6 +1462,18 @@ begin
     Test := TEST_FLAG;
 
   Result := True;
+
+end;
+
+
+procedure DeinitializeSetup();
+begin
+
+  if not Completed then
+  begin
+    Debug('Setup cancelled or aborted');
+    PathsRemove;
+  end;
 
 end;
 
@@ -1526,7 +1608,7 @@ begin
   case CurPageID of
     ErrorPage.ID: Confirm := False;
     DownloadInfoPage.ID: Confirm := False;
-  end;
+   end;
 
 end;
 
@@ -1574,34 +1656,15 @@ var
 
 begin
 
+  Result := '';
+
   Debug('Running PrepareToInstall tasks');
 
-  if Flags.AddPhp.Path <> '' then
-  begin
-
-    if not AddToPath(Flags.AddPhp.Hive, Flags.AddPhp.Path) then
-    begin
-      Result := 'Error setting ' + Flags.AddPhp.Name + ' Path variable';
-      Exit;
-    end;
-
-    Flags.PathChanged := True;
-
-  end;
-
-  if Flags.AddComposer.Path <> '' then
-  begin
-
-    if not AddToPath(Flags.AddComposer.Hive, Flags.AddComposer.Path) then
-    begin
-      Result := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
-      Exit;
-    end;
-
-    Flags.PathChanged := True;
-
-  end;
-
+  PathsAdd(Result);
+  
+  if Result <> '' then
+    Exit;
+ 
   if LoadStringsFromFile(TmpFile.Composer, Lines) then
   begin
 
@@ -1612,6 +1675,15 @@ begin
     SaveStringToFile(TmpDir + '\composer', S, False);
 
   end;
+
+end;
+
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+
+  if CurStep = ssPostInstall then
+    Completed := True;
 
 end;
 
