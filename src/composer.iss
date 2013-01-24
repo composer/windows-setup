@@ -39,11 +39,6 @@ AppendDefaultDirName=no
 DirExistsWarning=no
 AlwaysShowDirOnReadyPage=yes
 
-; group stuff for Start Menu
-DefaultGroupName={#AppName}
-DisableProgramGroupPage=yes
-AlwaysShowGroupOnReadyPage=yes
-
 ; uninstall
 Uninstallable=yes
 UninstallDisplayName={#AppDescription}
@@ -67,19 +62,17 @@ Source: "shims\{#CmdBat}"; DestDir: {app}\{#BinDir}; Flags: ignoreversion
 Source: "{tmp}\{#CmdShell}"; DestDir: {app}\{#BinDir}; Flags: external ignoreversion
 Source: "{tmp}\composer.phar"; DestDir: {app}\{#BinDir}; Flags: external ignoreversion
 
+
 [Dirs]
 ; we need to make all-users directory writeable
 Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
 
-; to force deletion of \Composer\bin, \Composer if empty.
+
 [UninstallDelete]
+; to force deletion of \Composer\bin, \Composer if empty.
 Type: dirifempty; Name: "{app}\{#BinDir}"
 Type: dirifempty; Name: "{app}"
 
-
-[Icons]
-Name: "{group}\Documentation"; Filename: "{#AppUrl}"
-Name: "{group}\Uninstall Composer"; Filename: "{uninstallexe}";
 
 [Messages]
 SetupWindowTitle=%1 Setup
