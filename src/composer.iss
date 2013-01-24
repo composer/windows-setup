@@ -481,10 +481,10 @@ begin
 
     if CompareText(Rec.Cmd, Cmd) <> 0 then
     begin
-      S := 'Composer is already installed in the following directory:' + #13#10;
-      S := S + Rec.Path + #13#10;
-      S := S + #13#10;
-      S := S + 'You must remove it first, if you want to continue this installation.' + #13#10;
+      S := 'Composer is already installed in the following directory:' + LF;
+      S := S + Rec.Path + LF;
+      S := S + LF;
+      S := S + 'You must remove it first, if you want to continue this installation.' + LF;
     end;
 
     // we only set Installed to true
@@ -727,7 +727,7 @@ begin
     begin
 
       if GetSysError(ExitCode, Filename, Error) = 0 then
-        Text := 'The PHP exe file you specified did not execute correctly: ' + Filename + #13#10
+        Text := 'The PHP exe file you specified did not execute correctly: ' + Filename + LF
       else
         Text := Error;
 
