@@ -12,7 +12,6 @@ function SendMessageTimeout(Hwnd, Msg, WParam: LongInt; LParam: String; Flags, T
 
 function AddToPath(Hive: Integer; Value: String): Boolean; forward;
 function RemoveFromPath(Hive: Integer; Value: String): Boolean; forward;
-procedure PathChangeFinish(Success: Boolean; NewPath: String); forward;
 function SplitPath(Value: String): TArrayOfString; forward;
 function GetPathKeyForHive(Hive: Integer): String; forward;
 function GetHiveName(Hive: Integer): String; forward;
@@ -73,8 +72,12 @@ begin
     Path := Path + ';';
 
   Result := RegWriteExpandStringValue(Hive, Key, 'PATH', Path);
-  PathChangeFinish(Result, Path);
-  
+
+  if not Result then
+    Debug('Failed, path was not updated')
+  else
+    Debug('Path after:  ' + Path);
+    
 end;
 
 
@@ -95,8 +98,8 @@ begin
   // NormalizePath UNC expands the path and removes any trailing backslash
   SafeDirectory := NormalizePath(Value);
 
-  // we exit if NormalizePath failed or the directory exists
-  if (SafeDirectory = '') or DirExists(SafeDirectory) then
+  // we exit if NormalizePath failed
+  if SafeDirectory = '' then
     Exit;
 
   // paranoid check to make sure we are not removing a system path - should not happen
@@ -146,22 +149,11 @@ begin
     // write the new path (could be empty for HKEY_LOCAL_MACHINE)
     Result := RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
   
-  PathChangeFinish(Result, NewPath);
-    
-end;
-
-
-procedure PathChangeFinish(Success: Boolean; NewPath: String);
-begin
-
-  if not Success then
+  if not Result then
     Debug('Failed, path was not updated')
   else
-  begin
     Debug('Path after:  ' + NewPath);
-    NotifyPathChange;
-  end;
-  
+      
 end;
 
 
