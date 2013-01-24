@@ -29,7 +29,7 @@ SolidCompression=yes
 ; runtime  directives
 MinVersion=5.1
 PrivilegesRequired=none
-AllowCancelDuringInstall=false
+;AllowCancelDuringInstall=false
 
 ; directory stuff
 DefaultDirName={commonappdata}{#AppName}
@@ -442,22 +442,26 @@ begin
   if CompareText(Rec.Cmd, PhpRec.Exe) = 0 then
     Exit;
 
-  S := 'The php exe you selected does not match the one found in your path.' + #13#10;
-  S := S + #13#10;
-  S := S + 'Selected: ' + PhpRec.Exe + #13#10;
-  S := S + 'In Path: ' + Rec.Cmd + #13#10;
-  S := S + #13#10;
+  S := 'The php exe you selected does not match the one found in your path.' + LF;
+  S := S + LF;
+  S := S + 'Selected: ' + PhpRec.Exe + LF;
+  S := S + 'In Path: ' + Rec.Cmd + LF;
+  S := S + LF;
 
   if Rec.System <> '' then
     Env := 'System'
   else
     Env := 'User';
 
-  S := S + 'Remove the following from your ' + Env + ' Path Environment variable:' #13#10;
-  S := S + '   ' + Rec.Path + #13#10;
-  S := S + #13#10;
+  S := S + 'You can either select the one in your path or remove the following from your ';
+  S := S + Env + ' Path Environment variable:' + LF;
+  S := S + '   ' + Rec.Path + LF;
+  S := S + LF;
 
-  S := S + 'Warning: Only do this if you are sure that it will not affect anything else.';
+  S := S + 'Warning: Only do this if you are sure that it will not affect anything else.' + LF;
+  S := S + LF;
+
+  S := S + 'If neither of these options are suitable, you will have to install Composer manually.';
 
   Result := S;
 
@@ -1117,11 +1121,13 @@ begin
   if PhpRec.Error <> '' then
   begin
     ErrorPage.Caption := 'PHP Settings Error';
+    ErrorPage.Description := '{#AppName} will not work with your current settings'
     Memo.Text := PhpRec.Error;
   end
   else if PathError <> '' then
   begin
     ErrorPage.Caption := 'Path Settings Error';
+    ErrorPage.Description := '{#AppName} Setup cannot continue with your current settings'
     Memo.Text := PathError;
   end
 
@@ -1409,8 +1415,7 @@ begin
     SettingsPage.Add('', 'All files|*.*', '');
 
   ErrorPage := CreateMessagePage(SettingsPage.ID,
-    '', 'Composer will not work with your current settings',
-    'Please review and fix the issues listed below then try again');
+    '', '', 'Please review and fix the issues listed below then try again');
 
   DownloadInfoPage := CreateMessagePage(wpReady, '', '', '');
 
