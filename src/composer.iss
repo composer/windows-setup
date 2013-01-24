@@ -1704,6 +1704,7 @@ begin
     begin
       SetPathRec(Rec, Dir);
       RemoveFromPath(Rec.Hive, Rec.Path);
+      NotifyPathChange;
     end;
 
   end;
