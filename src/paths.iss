@@ -7,8 +7,12 @@ to change this.}
 function ExpandEnvironmentStrings(Src: String; Dst: String; Size: DWord): DWord;
   external 'ExpandEnvironmentStringsW@kernel32.dll stdcall';
 
+function SendMessageTimeout(Hwnd, Msg, WParam: LongInt; LParam: String; Flags, Timeout: LongInt; lpdwResult: DWord): DWord;
+  external 'SendMessageTimeoutW@user32.dll stdcall';
+
 function AddToPath(Hive: Integer; Value: String): Boolean; forward;
-procedure RemoveFromPath(Hive: Integer; Value: String); forward;
+function RemoveFromPath(Hive: Integer; Value: String): Boolean; forward;
+procedure PathChangeFinish(Success: Boolean; NewPath: String); forward;
 function SplitPath(Value: String): TArrayOfString; forward;
 function GetPathKeyForHive(Hive: Integer): String; forward;
 function GetHiveName(Hive: Integer): String; forward;
@@ -18,6 +22,7 @@ function GetSafePath(PathList: TPathList; Index: Integer): String; forward;
 function DirectoryInPath(var Directory: String; PathList: TPathList): Boolean; forward;
 function SearchPath(PathList: TPathList; const Cmd: String): String; forward;
 function NeedsTrailingSeparator: Boolean; forward;
+procedure NotifyPathChange; forward;
 
 
 function AddToPath(Hive: Integer; Value: String): Boolean;
@@ -68,16 +73,12 @@ begin
     Path := Path + ';';
 
   Result := RegWriteExpandStringValue(Hive, Key, 'PATH', Path);
-
-  if Result then
-    Debug('Path after:  ' + Path)
-  else
-    Debug('RegWriteExpandStringValue failed');
-
+  PathChangeFinish(Result, Path);
+  
 end;
 
 
-procedure RemoveFromPath(Hive: Integer; Value: String);
+function RemoveFromPath(Hive: Integer; Value: String): Boolean;
 var
   SafeDirectory: String;
   Key: String;
@@ -86,8 +87,10 @@ var
   NewPath: String;
   I: Integer;
   SafePath: String;
-
+    
 begin
+
+  Result := False;
 
   // NormalizePath UNC expands the path and removes any trailing backslash
   SafeDirectory := NormalizePath(Value);
@@ -136,23 +139,29 @@ begin
 
   end;
 
-  if NewPath = '' then
+  if (NewPath = '') and (Hive = HKEY_CURRENT_USER) then
+    // we have an empty User PATH, so we can delete the subkey
+    Result := RegDeleteValue(Hive, Key, 'PATH')
+  else
+    // write the new path (could be empty for HKEY_LOCAL_MACHINE)
+    Result := RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
+  
+  PathChangeFinish(Result, NewPath);
+    
+end;
+
+
+procedure PathChangeFinish(Success: Boolean; NewPath: String);
+begin
+
+  if not Success then
+    Debug('Failed, path was not updated')
+  else
   begin
-
-    // we have an empty PATH. Only delete it if it is a User PATH
-    if Hive = HKEY_CURRENT_USER then
-    begin
-      RegDeleteValue(Hive, Key, 'PATH');
-      Exit;
-    end;
-
+    Debug('Path after:  ' + NewPath);
+    NotifyPathChange;
   end;
-
-  // write the new path (could be empty for HKEY_LOCAL_MACHINE)
-  RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
-
-  Debug('Path after:  ' + NewPath);
-
+  
 end;
 
 
@@ -378,6 +387,20 @@ begin
     end;
 
   end;
+
+end;
+
+
+procedure NotifyPathChange;
+var
+  Res: DWord;
+
+begin
+
+  Debug('Calling NotifyPathChange');
+
+  // WM_SETTINGCHANGE = $1A; SMTO_ABORTIFHUNG = $2;
+  SendMessageTimeout(HWND_BROADCAST, $1A, 0, 'Environment', $2, 3000, Res);
 
 end;
 

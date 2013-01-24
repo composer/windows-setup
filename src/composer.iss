@@ -29,7 +29,6 @@ SolidCompression=yes
 ; runtime  directives
 MinVersion=5.1
 PrivilegesRequired=none
-ChangesEnvironment=true
 AllowCancelDuringInstall=false
 
 ; directory stuff
@@ -1627,7 +1626,7 @@ begin
     if not DirExists(Dir) then
     begin
       SetPathRec(Rec, Dir);
-      RemoveFromPath(Rec.Hive, Rec.Path)
+      RemoveFromPath(Rec.Hive, Rec.Path);
     end;
 
   end;
