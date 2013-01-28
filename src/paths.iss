@@ -77,7 +77,7 @@ begin
     Debug('Failed, path was not updated')
   else
     Debug('Path after:  ' + Path);
-    
+
 end;
 
 
@@ -90,7 +90,7 @@ var
   NewPath: String;
   I: Integer;
   SafePath: String;
-    
+
 begin
 
   Result := False;
@@ -148,12 +148,12 @@ begin
   else
     // write the new path (could be empty for HKEY_LOCAL_MACHINE)
     Result := RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
-  
+
   if not Result then
     Debug('Failed, path was not updated')
   else
     Debug('Path after:  ' + NewPath);
-      
+
 end;
 
 
