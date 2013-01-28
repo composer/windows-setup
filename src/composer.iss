@@ -1,4 +1,11 @@
+; Running this script will compile composer-setup with the following default settings:
+; Output filename: /Output/setup.exe, exe version info: 0.0.0.0
+;
+; Use the command-line compiler to change this (see Inno Help), for example:
+; iscc /o"My\Output\Folder" /f"MyProgram" /d"SetupVersion=n.n" "path\to\composer.iss"  
+
 #ifndef SetupVersion
+  ; do not change this
   #define SetupVersion
 #endif
 
@@ -22,7 +29,6 @@ AppVerName={#AppName}
 AppPublisher={#AppUrl}
 
 ; compile directives
-OutputDir=output
 Compression=lzma
 SolidCompression=yes
 
@@ -63,7 +69,7 @@ Source: "{tmp}\composer.phar"; DestDir: {app}\{#BinDir}; Flags: external ignorev
 
 
 [Dirs]
-; we need to make all-users directory writeable
+; we need to make all-users directory writeable so composer.phar can update
 Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
 
 
@@ -187,7 +193,7 @@ const
 
 procedure Debug(const Message: String); forward;
 
-#include AddBackslash(SourcePath) + "paths.iss"
+#include "paths.iss"
 
 procedure Debug(const Message: String);
 begin

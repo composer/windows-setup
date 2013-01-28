@@ -1,6 +1,5 @@
-/output
-/release
+output/
+release*
 *.exe
 *.phar
-*build*
 *test*
