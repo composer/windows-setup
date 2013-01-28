@@ -1538,6 +1538,34 @@ begin
 end;
 
 
+procedure URLLabelOnClick(Sender: TObject);
+var
+  ErrorCode: Integer;
+begin
+  ShellExecAsOriginalUser('open', '{#AppUrl}', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+end;
+
+
+procedure CreateURLLabel(ParentForm: TSetupForm; CancelButton: TNewButton);
+var
+  URLLabel: TNewStaticText;
+begin
+  URLLabel := TNewStaticText.Create(ParentForm);
+  URLLabel.Caption := ExtractFileName(RemoveBackslash('{#AppUrl}'));
+  URLLabel.Cursor := crHand;
+  URLLabel.OnClick := @URLLabelOnClick;
+  URLLabel.Parent := ParentForm;
+  { Alter Font *after* setting Parent so the correct defaults are inherited first }
+  URLLabel.Font.Style := URLLabel.Font.Style + [fsUnderline];
+  if GetWindowsVersion >= $040A0000 then   { Windows 98 or later? }
+    URLLabel.Font.Color := clHotLight
+  else
+    URLLabel.Font.Color := clBlue;
+  URLLabel.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
+  URLLabel.Top := CancelButton.Top + CancelButton.Height - URLLabel.Height - 2;
+end;
+
+
 procedure InitializeWizard;
 begin
 
@@ -1569,6 +1597,8 @@ begin
 
   if Test = TEST_FLAG then
     TestCreateButtons(WizardForm, WizardForm.CancelButton);
+
+  CreateURLLabel(WizardForm, WizardForm.CancelButton);
 
 end;
 
