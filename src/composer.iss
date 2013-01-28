@@ -82,6 +82,8 @@ Type: dirifempty; Name: "{app}"
 [Messages]
 SetupWindowTitle=%1 Setup
 WelcomeLabel1=[name] Setup
+ReadyLabel1=Setup is now ready to download [name] and install it on your computer.
+ReadyLabel2a=Please review these settings. Click Install to continue with the installation.
 FinishedHeadingLabel=Completing [name] Setup
 FinishedLabelNoIcons=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
 FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
@@ -1629,6 +1631,7 @@ begin
 
   S := MemoDirInfo;
 
+  // this line left over from Start Menu days. Do not remove yet
   if (MemoGroupInfo <> '') and not Flags.Installed then
     S := S + NewLine + NewLine + MemoGroupInfo;
 
