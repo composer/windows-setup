@@ -1,4 +1,13 @@
-#define SetupVersion = "2.6"
+; Running this script will compile composer-setup with the following default settings:
+; Output filename: /Output/setup.exe, exe version info: 0.0.0.0
+;
+; Use the command-line compiler to change this (see Inno Help), for example:
+; iscc /o"My\Output\Folder" /f"MyProgram" /d"SetupVersion=n.n" "path\to\composer.iss"
+
+#ifndef SetupVersion
+  ; do not change this
+  #define SetupVersion
+#endif
 
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
@@ -20,15 +29,12 @@ AppVerName={#AppName}
 AppPublisher={#AppUrl}
 
 ; compile directives
-OutputDir=..\
-OutputBaseFilename={#AppName}-Setup
 Compression=lzma
 SolidCompression=yes
 
 ; runtime  directives
 MinVersion=5.1
 PrivilegesRequired=none
-ChangesEnvironment=true
 AllowCancelDuringInstall=false
 
 ; directory stuff
@@ -37,11 +43,6 @@ DisableDirPage=yes
 AppendDefaultDirName=no
 DirExistsWarning=no
 AlwaysShowDirOnReadyPage=yes
-
-; group stuff for Start Menu
-DefaultGroupName={#AppName}
-DisableProgramGroupPage=yes
-AlwaysShowGroupOnReadyPage=yes
 
 ; uninstall
 Uninstallable=yes
@@ -52,18 +53,6 @@ UninstallFilesDir={app}\{#BinDir}
 VersionInfoVersion={#SetupVersion}
 VersionInfoProductVersion=0
 VersionInfoProductName={#AppDescription}
-
-; code-signing
-;
-; NOTE:
-; code-signin requires a locally installed code-signing binary tool
-; that does not ship with this codebase, so you need to enable it if
-; you need it.
-; http://www.jrsoftware.org/ishelp/index.php?topic=setup_signtool
-; http://doughennig.blogspot.de/2009/11/executable-signing-with-inno-setup.html
-; http://margopowell.wordpress.com/2012/05/08/run-innosetup-with-digital-signature/
-;
-;SignTool=mssigntool
 
 ; cosmetic
 WizardImageFile=wiz.bmp
@@ -78,23 +67,23 @@ Source: "shims\{#CmdBat}"; DestDir: {app}\{#BinDir}; Flags: ignoreversion
 Source: "{tmp}\{#CmdShell}"; DestDir: {app}\{#BinDir}; Flags: external ignoreversion
 Source: "{tmp}\composer.phar"; DestDir: {app}\{#BinDir}; Flags: external ignoreversion
 
+
 [Dirs]
-; we need to make all-users directory writeable
+; we need to make all-users directory writeable so composer.phar can update
 Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
 
-; to force deletion of \Composer\bin, \Composer if empty.
+
 [UninstallDelete]
+; to force deletion of \Composer\bin, \Composer if empty.
 Type: dirifempty; Name: "{app}\{#BinDir}"
 Type: dirifempty; Name: "{app}"
 
 
-[Icons]
-Name: "{group}\Documentation"; Filename: "{#AppUrl}"
-Name: "{group}\Uninstall Composer"; Filename: "{uninstallexe}";
-
 [Messages]
 SetupWindowTitle=%1 Setup
 WelcomeLabel1=[name] Setup
+ReadyLabel1=Setup is now ready to download [name] and install it on your computer.
+ReadyLabel2a=Please review these settings. Click Install to continue with the installation.
 FinishedHeadingLabel=Completing [name] Setup
 FinishedLabelNoIcons=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
 FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a command window and type "composer"
@@ -162,6 +151,7 @@ type
   end;
 
 var
+  Completed: Boolean;
   TmpFile: TTmpFile;
   PhpRec: TPhpRec;
   CmdExe: String;
@@ -205,7 +195,7 @@ const
 
 procedure Debug(const Message: String); forward;
 
-#include AddBackslash(SourcePath) + "paths.iss"
+#include "paths.iss"
 
 procedure Debug(const Message: String);
 begin
@@ -461,22 +451,26 @@ begin
   if CompareText(Rec.Cmd, PhpRec.Exe) = 0 then
     Exit;
 
-  S := 'The php exe you selected does not match the one found in your path.' + #13#10;
-  S := S + #13#10;
-  S := S + 'Selected: ' + PhpRec.Exe + #13#10;
-  S := S + 'In Path: ' + Rec.Cmd + #13#10;
-  S := S + #13#10;
+  S := 'The php exe you selected does not match the one found in your path.' + LF;
+  S := S + LF;
+  S := S + 'Selected: ' + PhpRec.Exe + LF;
+  S := S + 'In Path: ' + Rec.Cmd + LF;
+  S := S + LF;
 
   if Rec.System <> '' then
     Env := 'System'
   else
     Env := 'User';
 
-  S := S + 'Remove the following from your ' + Env + ' Path Environment variable:' #13#10;
-  S := S + '   ' + Rec.Path + #13#10;
-  S := S + #13#10;
+  S := S + 'You can either select the one in your path or remove the following from your ';
+  S := S + Env + ' Path Environment variable:' + LF;
+  S := S + '   ' + Rec.Path + LF;
+  S := S + LF;
 
-  S := S + 'Warning: Only do this if you are sure that it will not affect anything else.';
+  S := S + 'Warning: Only do this if you are sure that it will not affect anything else.' + LF;
+  S := S + LF;
+
+  S := S + 'If neither of these options are suitable, you will have to install Composer manually.';
 
   Result := S;
 
@@ -496,10 +490,10 @@ begin
 
     if CompareText(Rec.Cmd, Cmd) <> 0 then
     begin
-      S := 'Composer is already installed in the following directory:' + #13#10;
-      S := S + Rec.Path + #13#10;
-      S := S + #13#10;
-      S := S + 'You must remove it first, if you want to continue this installation.' + #13#10;
+      S := 'Composer is already installed in the following directory:' + LF;
+      S := S + Rec.Path + LF;
+      S := S + LF;
+      S := S + 'You must remove it first, if you want to continue this installation.' + LF;
     end;
 
     // we only set Installed to true
@@ -640,6 +634,74 @@ begin
 end;
 
 
+procedure PathsAdd(var Error: String);
+begin
+
+  Error := '';
+
+  if Flags.AddPhp.Path <> '' then
+  begin
+
+    if not AddToPath(Flags.AddPhp.Hive, Flags.AddPhp.Path) then
+    begin
+      Error := 'Error setting ' + Flags.AddPhp.Name + ' Path variable';
+      Exit;
+    end;
+
+    Flags.PathChanged := True;
+
+  end;
+
+  if Flags.AddComposer.Path <> '' then
+  begin
+
+    if not AddToPath(Flags.AddComposer.Hive, Flags.AddComposer.Path) then
+    begin
+
+      Error := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
+
+      // remove php path in the unlikely event we have just added it
+      if Flags.PathChanged then
+      begin
+        RemoveFromPath(Flags.AddPhp.Hive, Flags.AddPhp.Path);
+        Flags.PathChanged := False;
+        NotifyPathChange;
+      end;
+
+      Exit;
+
+    end;
+
+    Flags.PathChanged := True;
+
+  end;
+
+  if Flags.PathChanged then
+    NotifyPathChange;
+
+end;
+
+
+procedure PathsRemove;
+begin
+
+  if Flags.PathChanged then
+  begin
+
+    if Flags.AddPhp.Path <> '' then
+      RemoveFromPath(Flags.AddPhp.Hive, Flags.AddPhp.Path);
+
+    if Flags.AddComposer.Path <> '' then
+      RemoveFromPath(Flags.AddComposer.Hive, Flags.AddComposer.Path);
+
+    Flags.PathChanged := False;
+    NotifyPathChange;
+
+  end;
+
+end;
+
+
 function StatusCodeText(Status: Integer): String;
 begin
 
@@ -742,7 +804,7 @@ begin
     begin
 
       if GetSysError(ExitCode, Filename, Error) = 0 then
-        Text := 'The PHP exe file you specified did not execute correctly: ' + Filename + #13#10
+        Text := 'The PHP exe file you specified did not execute correctly: ' + Filename + LF
       else
         Text := Error;
 
@@ -1136,11 +1198,13 @@ begin
   if PhpRec.Error <> '' then
   begin
     ErrorPage.Caption := 'PHP Settings Error';
+    ErrorPage.Description := '{#AppName} will not work with your current settings'
     Memo.Text := PhpRec.Error;
   end
   else if PathError <> '' then
   begin
     ErrorPage.Caption := 'Path Settings Error';
+    ErrorPage.Description := '{#AppName} Setup cannot continue with your current settings'
     Memo.Text := PathError;
   end
 
@@ -1384,6 +1448,7 @@ end;
 function InitializeSetup(): Boolean;
 begin
 
+  Completed := False;
   HomeDir := GetShellFolderByCSIDL(CSIDL_PROFILE, False);
 
   CmdExe := ExpandConstant('{cmd}');
@@ -1409,6 +1474,49 @@ begin
 end;
 
 
+procedure DeinitializeSetup();
+begin
+
+  if not Completed then
+  begin
+    Debug('Setup cancelled or aborted');
+    PathsRemove;
+  end;
+
+end;
+
+
+procedure URLLabelOnClick(Sender: TObject);
+var
+  ErrorCode: Integer;
+begin
+  if IsUninstaller() then
+    ShellExec('open', '{#AppUrl}', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode)
+  else
+    ShellExecAsOriginalUser('open', '{#AppUrl}', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+end;
+
+
+procedure CreateURLLabel(ParentForm: TSetupForm; CancelButton: TNewButton);
+var
+  URLLabel: TNewStaticText;
+begin
+  URLLabel := TNewStaticText.Create(ParentForm);
+  URLLabel.Caption := ExtractFileName(RemoveBackslash('{#AppUrl}'));
+  URLLabel.Cursor := crHand;
+  URLLabel.OnClick := @URLLabelOnClick;
+  URLLabel.Parent := ParentForm;
+  { Alter Font *after* setting Parent so the correct defaults are inherited first }
+  URLLabel.Font.Style := URLLabel.Font.Style + [fsUnderline];
+  if GetWindowsVersion >= $040A0000 then   { Windows 98 or later? }
+    URLLabel.Font.Color := clHotLight
+  else
+    URLLabel.Font.Color := clBlue;
+  URLLabel.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
+  URLLabel.Top := CancelButton.Top + CancelButton.Height - URLLabel.Height - 2;
+end;
+
+
 procedure InitializeWizard;
 begin
 
@@ -1428,8 +1536,7 @@ begin
     SettingsPage.Add('', 'All files|*.*', '');
 
   ErrorPage := CreateMessagePage(SettingsPage.ID,
-    '', 'Composer will not work with your current settings',
-    'Please review and fix the issues listed below then try again');
+    '', '', 'Please review and fix the issues listed below then try again');
 
   DownloadInfoPage := CreateMessagePage(wpReady, '', '', '');
 
@@ -1442,6 +1549,16 @@ begin
   if Test = TEST_FLAG then
     TestCreateButtons(WizardForm, WizardForm.CancelButton);
 
+  CreateURLLabel(WizardForm, WizardForm.CancelButton);
+
+end;
+
+
+procedure InitializeUninstallProgressForm();
+begin
+  { Custom controls }
+
+  CreateURLLabel(UninstallProgressForm, UninstallProgressForm.CancelButton);
 end;
 
 
@@ -1540,7 +1657,7 @@ begin
   case CurPageID of
     ErrorPage.ID: Confirm := False;
     DownloadInfoPage.ID: Confirm := False;
-  end;
+   end;
 
 end;
 
@@ -1555,6 +1672,7 @@ begin
 
   S := MemoDirInfo;
 
+  // this line left over from Start Menu days. Do not remove yet
   if (MemoGroupInfo <> '') and not Flags.Installed then
     S := S + NewLine + NewLine + MemoGroupInfo;
 
@@ -1588,33 +1706,14 @@ var
 
 begin
 
+  Result := '';
+
   Debug('Running PrepareToInstall tasks');
 
-  if Flags.AddPhp.Path <> '' then
-  begin
+  PathsAdd(Result);
 
-    if not AddToPath(Flags.AddPhp.Hive, Flags.AddPhp.Path) then
-    begin
-      Result := 'Error setting ' + Flags.AddPhp.Name + ' Path variable';
-      Exit;
-    end;
-
-    Flags.PathChanged := True;
-
-  end;
-
-  if Flags.AddComposer.Path <> '' then
-  begin
-
-    if not AddToPath(Flags.AddComposer.Hive, Flags.AddComposer.Path) then
-    begin
-      Result := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
-      Exit;
-    end;
-
-    Flags.PathChanged := True;
-
-  end;
+  if Result <> '' then
+    Exit;
 
   if LoadStringsFromFile(TmpFile.Composer, Lines) then
   begin
@@ -1626,6 +1725,15 @@ begin
     SaveStringToFile(TmpDir + '\composer', S, False);
 
   end;
+
+end;
+
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+
+  if CurStep = ssPostInstall then
+    Completed := True;
 
 end;
 
@@ -1645,7 +1753,8 @@ begin
     if not DirExists(Dir) then
     begin
       SetPathRec(Rec, Dir);
-      RemoveFromPath(Rec.Hive, Rec.Path)
+      RemoveFromPath(Rec.Hive, Rec.Path);
+      NotifyPathChange;
     end;
 
   end;

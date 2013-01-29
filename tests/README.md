@@ -74,7 +74,7 @@ These tests are for checking the input on the *Php Settings* page. They should d
 
 ## Installer Path Tests
 
-Run the installer/uninstaller with the `/LOG="path/to/log.txt"` command-line argument. The log displays the path before and after any changes.
+Run the installer/uninstaller with the `/LOG="path\to\log.txt"` command-line argument. The log displays the path before and after any changes.
 
 
 ## Installer Download Tests

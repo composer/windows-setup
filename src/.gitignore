@@ -1,2 +1,5 @@
+output/
+release*
+*.exe
 *.phar
-test.php
+*test*
