@@ -1490,7 +1490,10 @@ procedure URLLabelOnClick(Sender: TObject);
 var
   ErrorCode: Integer;
 begin
-  ShellExecAsOriginalUser('open', '{#AppUrl}', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+  if IsUninstaller() then
+    ShellExec('open', '{#AppUrl}', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode)
+  else
+    ShellExecAsOriginalUser('open', '{#AppUrl}', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
 end;
 
 
@@ -1548,6 +1551,14 @@ begin
 
   CreateURLLabel(WizardForm, WizardForm.CancelButton);
 
+end;
+
+
+procedure InitializeUninstallProgressForm();
+begin
+  { Custom controls }
+
+  CreateURLLabel(UninstallProgressForm, UninstallProgressForm.CancelButton);
 end;
 
 
