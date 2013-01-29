@@ -2,7 +2,7 @@
 ; Output filename: /Output/setup.exe, exe version info: 0.0.0.0
 ;
 ; Use the command-line compiler to change this (see Inno Help), for example:
-; iscc /o"My\Output\Folder" /f"MyProgram" /d"SetupVersion=n.n" "path\to\composer.iss"  
+; iscc /o"My\Output\Folder" /f"MyProgram" /d"SetupVersion=n.n" "path\to\composer.iss"
 
 #ifndef SetupVersion
   ; do not change this
@@ -148,7 +148,19 @@ type
     AddComposer : TPathRec;
     PathChanged : Boolean;
     Installed   : Boolean;
+    Completed   : Boolean;
   end;
+
+type
+  TUserDataRec = record
+    User      : String;
+    Error     : String;
+    Selected  : Boolean;
+end;
+
+type
+  TUserDataList = array of TUserDataRec;
+
 
 var
   Completed: Boolean;
@@ -462,12 +474,12 @@ begin
   else
     Env := 'User';
 
-  S := S + 'You can either select the one in your path or remove the following from your ';
+  S := S + 'You can either select the one in your path, or remove its entry from your ';
   S := S + Env + ' Path Environment variable:' + LF;
   S := S + '   ' + Rec.Path + LF;
   S := S + LF;
 
-  S := S + 'Warning: Only do this if you are sure that it will not affect anything else.' + LF;
+  S := S + 'Note: Only change your path if you are sure that it will not affect anything else.' + LF;
   S := S + LF;
 
   S := S + 'If neither of these options are suitable, you will have to install Composer manually.';
@@ -657,7 +669,7 @@ begin
 
     if not AddToPath(Flags.AddComposer.Hive, Flags.AddComposer.Path) then
     begin
-      
+
       Error := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
 
       // remove php path in the unlikely event we have just added it
@@ -666,8 +678,8 @@ begin
         RemoveFromPath(Flags.AddPhp.Hive, Flags.AddPhp.Path);
         Flags.PathChanged := False;
         NotifyPathChange;
-      end; 
-            
+      end;
+
       Exit;
 
     end;
@@ -693,12 +705,12 @@ begin
 
     if Flags.AddComposer.Path <> '' then
       RemoveFromPath(Flags.AddComposer.Hive, Flags.AddComposer.Path);
- 
+
     Flags.PathChanged := False;
     NotifyPathChange;
-    
+
   end;
-  
+
 end;
 
 
@@ -1350,6 +1362,7 @@ begin
   Form := CreateCustomForm();
 
   try
+
     Form.ClientWidth := ScaleX(256);
     Form.ClientHeight := ScaleY(128);
     Form.Caption := 'Enter Test Identifier';
@@ -1445,6 +1458,168 @@ begin
 end;
 
 
+procedure UninstallShowUserData(var List: TUserDataList; var Cancel: Boolean);
+var
+  Form: TSetupForm;
+  Left: Integer;
+  Top: Integer;
+  Width: Integer;
+  Text: TNewStaticText;
+  ListBox: TNewCheckListBox;
+  Note: TNewStaticText;
+  NextButton: TButton;
+  CancelButton: TButton;
+  S: String;
+  I: Integer;
+  Count: Integer;
+  Enabled: Boolean;
+  NonDefault: Boolean;
+
+begin
+
+  Cancel := False;
+
+  Count := GetArrayLength(List);
+
+  if Count = 0 then
+    Exit;
+
+  Form := CreateCustomForm();
+
+  try
+
+    Form.ClientWidth := ScaleX(380);
+    Form.ClientHeight := ScaleY(290);
+    Form.Caption := 'Remove User Data';
+    Form.CenterInsideControl(UninstallProgressForm, False);
+
+    Top := ScaleY(16);
+    Left := ScaleX(20);
+    Width := Form.ClientWidth - (Left * 2);
+
+    Text := TNewStaticText.Create(Form);
+    Text.Parent := Form;
+    Text.Top := Top;
+    Text.Left := Left;
+    Text.Width := Width;
+    Text.AutoSize := True;
+    Text.WordWrap := True;
+
+    S := 'Composer stores cache and configuration data on your computer. ';
+    S := S + 'Select the user data to remove then click Next to continue, ';
+    S := S + 'or Cancel to exit.';
+
+    Text.Caption := S;
+
+    ListBox := TNewCheckListBox.Create(Form);
+    ListBox.Parent := Form;
+    ListBox.Top := Text.Top + Text.Height + Top;
+    ListBox.Left := Left;
+    ListBox.Width := Width;
+    ListBox.Height := ScaleY(132);
+
+    NonDefault := False;
+
+    for I := 0 to Count - 1 do
+    begin
+
+      if List[I].Error = '' then
+        Enabled := True
+      else
+      begin
+        Enabled := False;
+        NonDefault := True;
+      end;
+
+      ListBox.AddCheckBox('User: ' + List[I].User, List[I].Error, 0, False, Enabled, False, True, nil);
+
+    end;
+
+    Note := TNewStaticText.Create(Form);
+    Note.Parent := Form;
+    Note.Top := ListBox.Top + ListBox.Height + ScaleY(6);
+    Note.Left := Left;
+    Note.Width := Width;
+    Note.AutoSize := True;
+    Note.WordWrap := True;
+
+    S := '';
+
+    if NonDefault then
+      S := 'Cache data found in non-default locations must be removed manually. ';
+
+    S := S + 'Cache locations configured in projects will not be listed.'
+    Note.Caption := S;
+
+    NextButton := TButton.Create(Form);
+    NextButton.Parent := Form;
+    NextButton.Width := ScaleX(75);
+    NextButton.Height := ScaleY(23);
+    NextButton.Left := Form.ClientWidth - (ScaleX(75 + 6 + 75) + Left);
+    NextButton.Top := Form.ClientHeight - ScaleY(23 + 10);
+    NextButton.Caption := 'Next';
+    NextButton.ModalResult := mrOk;
+
+    CancelButton := TButton.Create(Form);
+    CancelButton.Parent := Form;
+    CancelButton.Width := ScaleX(75);
+    CancelButton.Height := ScaleY(23);
+    CancelButton.Left := NextButton.Left + ScaleX(75 + 6);
+    CancelButton.Top := NextButton.Top;
+    CancelButton.Caption := 'Cancel';
+    CancelButton.ModalResult := mrCancel;
+    CancelButton.Cancel := True;
+
+    Form.ActiveControl := NextButton;
+
+    if Form.ShowModal() = mrCancel then
+    begin
+      Cancel := True;
+      Exit;
+    end;
+
+    for I := 0 to Count - 1 do
+    begin
+
+      if ListBox.Checked[I] then
+        List[I].Selected := True
+      else
+        List[I].Selected := False;
+
+    end;
+
+  finally
+    Form.Free();
+  end;
+
+end;
+
+
+procedure UninstallRemoveUserData();
+var
+  UserData: TUserDataList;
+  Cancel: Boolean;
+
+begin
+
+  Exit;
+
+  // stuff here to get user data
+  SetArrayLength(UserData, 3);
+  UserData[0].User := 'John';
+  UserData[1].User := 'Fred';
+  UserData[1].Error := 'Non-default cache settings';
+  UserData[2].User := 'Bill';
+  UserData[2].Error := 'Composer installed locally';
+
+  UninstallShowUserData(UserData, Cancel);
+
+  if Cancel then
+    Abort();
+
+end;
+
+
 function InitializeSetup(): Boolean;
 begin
 
@@ -1505,7 +1680,7 @@ begin
     SettingsPage.Add('', 'All files|*.*', '');
 
   ErrorPage := CreateMessagePage(SettingsPage.ID,
-    '', '', 'Please review and fix the issues listed below then try again');
+    '', '', 'Please review and fix the issues listed below, then click Back and try again');
 
   DownloadInfoPage := CreateMessagePage(wpReady, '', '', '');
 
@@ -1613,6 +1788,7 @@ end;
 procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
 begin
 
+  // remove cancel confirmation where errors are shown
   case CurPageID of
     ErrorPage.ID: Confirm := False;
     DownloadInfoPage.ID: Confirm := False;
@@ -1670,10 +1846,10 @@ begin
   Debug('Running PrepareToInstall tasks');
 
   PathsAdd(Result);
-  
+
   if Result <> '' then
     Exit;
- 
+
   if LoadStringsFromFile(TmpFile.Composer, Lines) then
   begin
 
@@ -1703,6 +1879,13 @@ var
   Dir: String;
 
 begin
+
+  if CurUninstallStep = usUninstall then
+  begin
+
+    UninstallRemoveUserData();
+
+  end;
 
   if CurUninstallStep = usPostUninstall then
   begin
