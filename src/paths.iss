@@ -103,7 +103,7 @@ begin
     Exit;
 
   // paranoid check to make sure we are not removing a system path - should not happen
-  if Pos(Lowercase(GetSystemDir()), Lowercase(SafeDirectory)) = 1 then
+  if Pos(AnsiLowercase(GetSystemDir()), AnsiLowercase(SafeDirectory)) = 1 then
     Exit;
 
   // get the current path values from registry
