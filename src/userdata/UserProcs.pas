@@ -1,9 +1,9 @@
-unit ThreadProcs;
+unit UserProcs;
 
 interface
 
 uses
-  Windows, Messages, MainProcs;
+  Windows, Messages, UserMain;
 
 const
   IDP_TEXT = 100;

@@ -1,4 +1,4 @@
-unit MainProcs;
+unit UserMain;
 
 interface
 
@@ -57,7 +57,7 @@ var
 implementation
 
 uses
-  ThreadProcs;
+  UserProcs;
 
 { TMain }
 

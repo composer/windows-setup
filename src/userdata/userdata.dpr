@@ -1,12 +1,12 @@
 library userdata;
 uses
   Windows,
-  MainProcs in 'MainProcs.pas',
-  ThreadProcs in 'ThreadProcs.pas';
+  UserMain in 'UserMain.pas',
+  UserProcs in 'UserProcs.pas';
 
-{$R version.res}
-{$R progress.res}
-{$R result.res}
+{$R UserResVersion.res}
+{$R UserResProgress.res}
+{$R UserResResult.res}
 
 function DeleteUserData(HParent: HWND; DirList: PChar): Boolean; stdcall;
 begin
