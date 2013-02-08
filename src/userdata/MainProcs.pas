@@ -15,16 +15,18 @@ type
 
 type TMain = class
   private
+    FHParent: HWND;
     FDirList: TDirList;
+    function CheckFailed: Boolean;
     function CheckPath(var Value: String): Boolean;
     function CloseThread(ThdHandle: THandle): Boolean;
-    function DeleteData(HParent: THandle): Boolean;
+    function DeleteData: Boolean;
     function DirectoryExists(const Directory: string): Boolean;
     function SplitPath(Path: String): Boolean;
   public
     constructor Create;
     destructor Destroy; override;
-    function Execute(HParent: THandle; DirList: String): Boolean;
+    function Execute(HParent: HWND; DirList: String): Boolean;
 end;
 
 type TStatus = class
@@ -32,7 +34,7 @@ type TStatus = class
     FCancelled: Boolean;
     FCSection: TRTLCriticalSection;
     FHDialog: HWND;
-    FHEvent: HWND;
+    FHEvent: THandle;
     FHProgress: HWND;
     FHText: HWND;
     function GetCancelled: Boolean;
@@ -43,7 +45,7 @@ type TStatus = class
     procedure SetText(Value: String);
     property Cancelled: Boolean read GetCancelled;
     property HDialog: HWND read FHDialog write FHDialog;
-    property HEvent: HWND read FHEvent write FHEvent;
+    property HEvent: THandle read FHEvent write FHEvent;
     property HProgress: HWND read FHProgress write FHProgress;
     property HText: HWND read FHText write FHText;
 end;
@@ -59,11 +61,41 @@ uses
 
 { TMain }
 
+function TMain.CheckFailed: Boolean;
+var
+  FailedList: TDirList;
+  I: Integer;
+  Next: Integer;
+
+begin
+
+  // see if any directories were not deleted
+  Next := 0;
+
+  for I := 0 to High(FDirList) do
+  begin
+
+    if DirectoryExists(FDirList[I]) then
+    begin
+      SetLength(FailedList, Next + 1);
+      FailedList[Next] := FDirList[I];
+      Inc(Next);
+    end;
+
+  end;
+
+  Result := Next = 0;
+
+  if not Result then
+    DialogBoxParam(hInstance, 'Result', FHParent, @ResultProc, LPARAM(@FailedList));
+
+end;
+
 function TMain.CheckPath(var Value: String): Boolean;
 var
   Len: Integer;
   LcValue: String;
-  
+
 begin
 
   Result := False;
@@ -112,9 +144,9 @@ begin
   Status := TStatus.Create;
 end;
 
-function TMain.DeleteData(HParent: THandle): Boolean;
+function TMain.DeleteData: Boolean;
 var
-  ThdHandle: DWORD;
+  ThdHandle: THandle;
   ThdId: DWORD;
   ExitCode: DWORD;
 
@@ -138,7 +170,7 @@ begin
       Exit;
 
     // show the Progress dialog, which signals the thread
-    DialogBoxParam(hInstance, 'Progress', HParent, @ProgressProc, 0);
+    DialogBoxParam(hInstance, 'Progress', FHParent, @ProgressProc, 0);
 
     // either the thread or the user will have closed the dialog
     GetExitCodeThread(ThdHandle, ExitCode);
@@ -148,7 +180,7 @@ begin
       THD_EXIT_ERROR: Result := False;
       STILL_ACTIVE: Result := CloseThread(ThdHandle);
     end;
-    
+
   finally
     CloseHandle(Status.HEvent);
     CloseHandle(ThdHandle);
@@ -171,44 +203,27 @@ begin
 
   Code := GetFileAttributes(PChar(Directory));
   Result := (Code <> -1) and (FILE_ATTRIBUTE_DIRECTORY and Code <> 0);
-  
+
 end;
 
-function TMain.Execute(HParent: THandle; DirList: String): Boolean;
-var
-  I: Integer;
-  Failed: TDirList;
-  Next: Integer;
-
+function TMain.Execute(HParent: HWND; DirList: String): Boolean;
 begin
 
   Result := False;
-  
+
+  FHParent := HParent;
+
   // SplitPath will only fail if no valid entries
   if not SplitPath(DirList) then
     Exit;
 
   // DeleteData will only fail on system calls
-  if not DeleteData(HParent) then
+  if not DeleteData then
     Exit;
 
-  // see if any directories were not deleted
-  Next := 0;
+  // CheckFailed will show any entries that need to be deleted manually
+  Result := CheckFailed;
 
-  for I := 0 to High(FDirList) do
-  begin
-
-    if DirectoryExists(FDirList[I]) then
-    begin
-      SetLength(Failed, Next + 1);
-      Failed[Next] := FDirList[I];
-      Inc(Next);
-    end;
-    
-  end;
-
-  Result := Next = 0;
-    
 end;
 
 function TMain.SplitPath(Path: String): Boolean;
@@ -220,7 +235,7 @@ var
 begin
 
   Next := 0;
-  
+
   repeat
 
     Index := Pos(';', Path);
@@ -259,7 +274,7 @@ begin
   FHDialog := 0;
   FHProgress := 0;
   FCancelled := False;
-  
+
 end;
 
 destructor TStatus.Destroy;
@@ -316,3 +331,4 @@ begin
 end;
 
 end.
+

@@ -6,24 +6,56 @@ uses
   Windows, Messages, MainProcs;
 
 const
-  IDD_TEXT = 100;
-  IDD_PROGRESS = 200;
-  IDD_CANCEL = 300;
+  IDP_TEXT = 100;
+  IDP_PROGRESS = 200;
+  IDP_CANCEL = 300;
+
+  IDR_TEXT = 100;
+  IDR_LIST = 200;
+  IDR_OK = 300;
 
   PBS_MARQUEE = $08;
   PBM_SETMARQUEE = WM_USER + 10;
 
-function ProgressProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
 function ThreadProc(DirList: PTDirList): DWORD; stdcall;
+function ProgressProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
+function ResultProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
 
 procedure DeleteDirectories(DirList: PTDirList);
 function DeleteTree(Path: String): Boolean;
+procedure DialogCenter(HDialog: HWND);
 function ProgressCancel(HDialog, HCancel: HWND): Boolean;
-procedure ProgressCenter(HDialog: HWND);
 procedure ProgressInit(HDialog: HWND);
+procedure ResultInit(HDialog: HWND; List: PTDirList);
 
 implementation
 
+function ThreadProc(DirList: PTDirList): DWORD; stdcall;
+begin
+
+  Result := THD_EXIT_ERROR;
+
+  try
+
+    // the dialog signals this when it is shown
+    if WaitForSingleObject(Status.HEvent, INFINITE) <> WAIT_OBJECT_0 then
+      Exit;
+
+    // allow the dialog to show Please wait
+    Sleep(250);
+
+    // DeleteDirectories checks if the user has cancelled
+    DeleteDirectories(DirList);
+
+    // always send a message to close the dialog
+    SendMessage(Status.HDialog, WM_CLOSE, 0, 0);
+    Result := THD_EXIT_OK;
+
+  except
+    ExitThread(THD_EXIT_ERROR);
+  end;
+
+end;
 
 function ProgressProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
 begin
@@ -55,41 +87,46 @@ begin
     WM_COMMAND:
     begin
 
-      if LOWORD(wParam) = IDD_CANCEL then
+      if LOWORD(wParam) = IDP_CANCEL then
       begin
         ProgressCancel(hwndDlg, HWND(lParam));
         Result := 1;
       end;
-      
+
     end;
 
   end;
 
 end;
 
-function ThreadProc(DirList: PTDirList): DWORD; stdcall;
+function ResultProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
 begin
 
-  Result := THD_EXIT_ERROR;
+  Result := 0;
 
-  try
+  case msg of
 
-    // the dialog signals this when it is shown
-    if WaitForSingleObject(Status.HEvent, INFINITE) <> WAIT_OBJECT_0 then
-      Exit;
+    WM_INITDIALOG:
+    begin
+      ResultInit(hwndDlg, PTDirList(lParam));
+      Result := 1;
+    end;
 
-    // allow the dialog to show Please wait
-    Sleep(250);
+    WM_CLOSE:
+    begin
+      EndDialog(hwndDlg, IDCANCEL);
+      Result := 1;
+    end;
 
-    // DeleteDirectories checks if the user has cancelled
-    DeleteDirectories(DirList);
+    WM_COMMAND:
+    begin
+      if LOWORD(wParam) = IDR_OK then
+      begin
+        EndDialog(hwndDlg, IDOK);
+        Result := 1;
+      end;
+    end;
 
-    // always send a message to close the dialog
-    SendMessage(Status.HDialog, WM_CLOSE, 0, 0);
-    Result := THD_EXIT_OK;
-
-  except
-    ExitThread(THD_EXIT_ERROR);
   end;
 
 end;
@@ -108,9 +145,9 @@ begin
 
     if not DeleteTree(DirList^[I]) then
       Exit;
-      
+
   end;
-    
+
 end;
 
 function DeleteTree(Path: String): Boolean;
@@ -181,30 +218,10 @@ begin
     Status.SetText(Path);
     RemoveDirectory(PChar(Path));
   end;
-    
-end;
-
-function ProgressCancel(HDialog, HCancel: HWND): Boolean;
-begin
-
-  // HCancel is 0 when user clicks sys close
-  if HCancel = 0 then
-  begin
-    HCancel := GetDlgItem(HDialog, IDD_CANCEL);
-    Result := IsWindowEnabled(HCancel);
-  end
-  else
-    Result := True;
-
-  if Result then
-  begin
-    EnableWindow(HCancel, False);
-    Status.SetCancelled;
-  end;
 
 end;
 
-procedure ProgressCenter(HDialog: HWND);
+procedure DialogCenter(HDialog: HWND);
 var
   HwndOwner: HWND;
   RcDesktop: TRect;
@@ -213,7 +230,7 @@ var
   Rc: TRect;
   X, Y, W, H: Integer;
 
- begin
+begin
 
   HwndOwner := GetParent(HDialog);
 
@@ -239,7 +256,7 @@ var
     X := RcDesktop.Left
   else if X + W > RcDesktop.Right then
     X := RcDesktop.Right - W;
-       
+
   H := RcDlg.Bottom - RcDlg.Top;
   Y := RcOwner.Top + (Rc.Bottom div 2);
 
@@ -253,14 +270,34 @@ var
 
   SetWindowPos(HDialog, HWND_TOP, X, Y, 0, 0, SWP_NOSIZE);
 
- end;
+end;
 
- procedure ProgressInit(HDialog: HWND);
- begin
+function ProgressCancel(HDialog, HCancel: HWND): Boolean;
+begin
+
+  // HCancel is 0 when user clicks sys close
+  if HCancel = 0 then
+  begin
+    HCancel := GetDlgItem(HDialog, IDP_CANCEL);
+    Result := IsWindowEnabled(HCancel);
+  end
+  else
+    Result := True;
+
+  if Result then
+  begin
+    EnableWindow(HCancel, False);
+    Status.SetCancelled;
+  end;
+
+end;
+
+procedure ProgressInit(HDialog: HWND);
+begin
 
   Status.HDialog := HDialog;
-  Status.HText := GetDlgItem(HDialog, IDD_TEXT);
-  Status.HProgress := GetDlgItem(HDialog, IDD_PROGRESS);
+  Status.HText := GetDlgItem(HDialog, IDP_TEXT);
+  Status.HProgress := GetDlgItem(HDialog, IDP_PROGRESS);
 
   // set up path ellipse
   SetWindowLong(Status.HText, GWL_STYLE,
@@ -271,12 +308,78 @@ var
     GetWindowLong(Status.HProgress, GWL_STYLE) or PBS_MARQUEE);
   SendMessage(Status.HProgress, PBM_SETMARQUEE, 1, 0);
 
-  ProgressCenter(HDialog);
+  DialogCenter(HDialog);
 
   // signal the thread that we are ready to work
   SetEvent(Status.HEvent);
 
- end;
+end;
+
+procedure ResultInit(HDialog: HWND; List: PTDirList);
+var
+  HList: HWND;
+  Rc: TRect;
+  Size: TSize;
+  Dc: HDC;
+  Max, I, W, H: Integer;
+  Item: String;
+
+begin
+
+  HList := GetDlgItem(HDialog, IDR_LIST);
+
+  // set up horizontal scroll
+  SetWindowLong(HList, GWL_STYLE,
+    GetWindowLong(HList, GWL_STYLE) or WS_HSCROLL);
+
+  if (List <> nil) and (Length(List^) > 0) then
+  begin
+
+    Dc := GetDc(HList);
+
+    try
+
+      SelectObject(Dc, SendMessage(HDialog, WM_GETFONT, 0, 0));
+      Max := 0;
+
+      for I := 0 to High(List^) do
+      begin
+
+        SendMessage(HList, LB_ADDSTRING, 0, LPARAM(List^[I]));
+
+        Item := List^[I];
+        GetTextExtentPoint32(Dc, PChar(Item), Length(Item), Size);
+
+        if Size.cx > Max then
+          Max := Size.cx;
+
+      end;
+
+      GetClientRect(HList, Rc);
+
+      if Rc.Right - Rc.Left < Max then
+      begin
+
+        SendMessage(HList, LB_SETHORIZONTALEXTENT, Max + 10, 0);
+
+        // force scroll to appear
+        GetWindowRect(HList, Rc);
+        W := Rc.Right - Rc.Left;
+        H := Rc.Bottom - Rc.Top;
+        SetWindowPos(HList, HWND_TOP, 0, 0, W - 20, H, SWP_NOMOVE);
+        SetWindowPos(HList, HWND_TOP, 0, 0, W, H, SWP_NOMOVE);
+
+      end;
+
+    finally
+      ReleaseDC(HList, Dc);
+    end;
+
+  end;
+
+  DialogCenter(HDialog);
+
+end;
 
 end.
 

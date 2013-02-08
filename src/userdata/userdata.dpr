@@ -4,7 +4,9 @@ uses
   MainProcs in 'MainProcs.pas',
   ThreadProcs in 'ThreadProcs.pas';
 
+{$R version.res}
 {$R progress.res}
+{$R result.res}
 
 function DeleteUserData(HParent: HWND; DirList: PChar): Boolean; stdcall;
 begin
@@ -27,8 +29,7 @@ end;
 
 exports
   DeleteUserData;
-  
+
 begin
 
 end.
-
