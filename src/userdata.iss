@@ -26,7 +26,7 @@ type
   TUserProfileList = array of TUserProfileRec;
 
 function DeleteUserData(HParent: HWND; DirList: String): Boolean;
-  external 'DeleteUserData@{tmp}\{#DllData} stdcall delayload uninstallonly';
+  external 'DeleteUserData@{app}\bin\{#DllData} stdcall uninstallonly';
 
 procedure UserDataDelete; forward;
 function UserDataGet: TUserDataList; forward;
@@ -39,7 +39,7 @@ procedure UserAddDataRec(Rec: TUserDataRec; var List: TUserDataList); forward;
 function UserGetFolderPrefix(const Folder: String; var Prefix: String): Boolean; forward;
 function UserDefinedCache(Rec: TUserDataRec): Boolean; forward;
 function UserCheckConfig(const Key, Json: String; var Location: String): Boolean; forward;
-procedure UserDeleteData(List: TUserDataList); forward;
+procedure UserDeleteData(List: TUserDataList; const DllData: String); forward;
 function UserDataSelect(var List: TUserDataList): Boolean; forward;
 function UserDataCreateForm(): TSetupForm; forward;
 
@@ -47,6 +47,7 @@ function UserDataCreateForm(): TSetupForm; forward;
 procedure UserDataDelete;
 var
   List: TUserDataList;
+  DllData: String;
 
 begin
 
@@ -54,10 +55,20 @@ begin
     The main function, must be called from Uninstall step usUninstall,
     otherwise the dll and app dir will not be deleted
   }
-  List := UserDataGet();
 
-  if UserDataSelect(List) then
-    UserDeleteData(List);
+  DllData := ExpandConstant('{app}\bin\{#DllData}');
+
+  try
+
+    List := UserDataGet();
+
+    if UserDataSelect(List) then
+      UserDeleteData(List, DllData);
+
+  finally
+    // important to unload dll, or it will not be deleted
+    UnloadDLL(DllData);
+  end;
 
 end;
 
@@ -466,50 +477,43 @@ begin
 end;
 
 
-procedure UserDeleteData(List: TUserDataList);
+procedure UserDeleteData(List: TUserDataList; const DllData: String);
 var
   S: String;
   I: Integer;
 
 begin
 
-  try
+  S := '';
 
-    S := '';
+  for I := 0 to GetArrayLength(List) - 1 do
+  begin
 
-    for I := 0 to GetArrayLength(List) - 1 do
-    begin
+    if not List[I].Delete then
+      Continue;
 
-      if not List[I].Delete then
-        Continue;
+    if List[I].Cache <> '' then
+      S := S + List[I].Cache + ';';
 
-      if List[I].Cache <> '' then
-        S := S + List[I].Cache + ';';
+    if List[I].Home <> '' then
+      S := S + List[I].Home + ';';
 
-      if List[I].Home <> '' then
-        S := S + List[I].Home + ';';
+  end;
 
-    end;
+  if S <> '' then
+  begin
 
-    if S <> '' then
-    begin
+    Debug('Calling dll: ' + DllData + ' with directory list: ' + S);
 
-      Debug('Calling dll: ' + TmpDll + ' with directory list: ' + S);
+    if DeleteUserData(UninstallProgressForm.Handle, S) then
+      Debug('Deleted user data')
+    else
+      Debug('Failed to delete user data');
 
-      if DeleteUserData(UninstallProgressForm.Handle, S) then
-        Debug('Deleted user data')
-      else
-        Debug('Failed to delete user data');
+    // update uninstall form so it repaints
+    Sleep(10);
+    UninstallProgressForm.Update;
 
-      // update uninstall form so it repaints
-      Sleep(10);
-      UninstallProgressForm.Update;
-
-    end;
-
-  finally
-    // important to unload dll, or it will not be deleted
-    UnloadDLL(TmpDll);
   end;
 
 end;

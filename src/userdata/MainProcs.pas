@@ -123,20 +123,24 @@ begin
   Result := False;
   ThdHandle := 0;
 
+  // create an event for the thread and progress dialog
   Status.HEvent := CreateEvent(nil, True, False, nil);
 
   if Status.HEvent = 0 then
     Exit;
 
   try
-    
+
+    // create worker thread that does the deletions
     ThdHandle := CreateThread(nil, 0, @ThreadProc, @FDirList, 0, ThdId);
 
     if ThdHandle = 0 then
       Exit;
 
-    DialogBoxParam(hInstance, 'Progress', HParent, @DialogProc, 0);
+    // show the Progress dialog, which signals the thread
+    DialogBoxParam(hInstance, 'Progress', HParent, @ProgressProc, 0);
 
+    // either the thread or the user will have closed the dialog
     GetExitCodeThread(ThdHandle, ExitCode);
 
     case ExitCode of

@@ -161,7 +161,6 @@ var
   GetRec: TGetRec;
   Flags: TFlagsRec;
   TmpDir: String;
-  TmpDll: String;
   Test: String;
   SettingsPage: TInputFileWizardPage;
   ProgressPage: TOutputProgressWizardPage;
@@ -1749,27 +1748,6 @@ begin
 
   if CurStep = ssPostInstall then
     Completed := True;
-
-end;
-
-
-function InitializeUninstall(): Boolean;
-var
-  DllData: String;
-  S: String;
-
-begin
-
-  DllData := ExpandConstant('{app}\bin\{#DllData}');
-  TmpDll := ExpandConstant('{tmp}\{#DllData}');
-
-  Result := FileCopy(DllData, TmpDll, False);
-
-  if not Result then
-  begin
-    S := Format('File "%s" does not exist. Cannot uninstall.', [DllData]);
-    MsgBox(S, mbCriticalError, MB_OK);
-  end;
 
 end;
 

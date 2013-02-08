@@ -13,19 +13,19 @@ const
   PBS_MARQUEE = $08;
   PBM_SETMARQUEE = WM_USER + 10;
 
-function DialogProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
+function ProgressProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
 function ThreadProc(DirList: PTDirList): DWORD; stdcall;
 
 procedure DeleteDirectories(DirList: PTDirList);
 function DeleteTree(Path: String): Boolean;
-function DialogCancel(HDialog, HCancel: HWND): Boolean;
-procedure DialogCenter(HDialog: HWND);
-procedure DialogInit(HDialog: HWND);
+function ProgressCancel(HDialog, HCancel: HWND): Boolean;
+procedure ProgressCenter(HDialog: HWND);
+procedure ProgressInit(HDialog: HWND);
 
 implementation
 
 
-function DialogProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
+function ProgressProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): INT_PTR; stdcall;
 begin
 
   Result := 0;
@@ -34,14 +34,14 @@ begin
 
     WM_INITDIALOG:
     begin
-      DialogInit(hwndDlg);
+      ProgressInit(hwndDlg);
       Result := 1;
     end;
 
     WM_SYSCOMMAND:
     begin
 
-      if (wParam = SC_CLOSE) and DialogCancel(hwndDlg, 0) then
+      if (wParam = SC_CLOSE) and ProgressCancel(hwndDlg, 0) then
         Result := 1;
 
     end;
@@ -57,7 +57,7 @@ begin
 
       if LOWORD(wParam) = IDD_CANCEL then
       begin
-        DialogCancel(hwndDlg, HWND(lParam));
+        ProgressCancel(hwndDlg, HWND(lParam));
         Result := 1;
       end;
       
@@ -74,13 +74,17 @@ begin
 
   try
 
+    // the dialog signals this when it is shown
     if WaitForSingleObject(Status.HEvent, INFINITE) <> WAIT_OBJECT_0 then
       Exit;
 
-    // allow dialog to show Please wait
+    // allow the dialog to show Please wait
     Sleep(250);
+
+    // DeleteDirectories checks if the user has cancelled
     DeleteDirectories(DirList);
-      
+
+    // always send a message to close the dialog
     SendMessage(Status.HDialog, WM_CLOSE, 0, 0);
     Result := THD_EXIT_OK;
 
@@ -127,11 +131,15 @@ begin
     Exit;
   end;
 
-  if Path[Length(Path)] = '\' then
+  // set Path as ...\folder and BasePath as ...\folder\
+  if Path[Length(Path)] <> '\' then
+    BasePath := Path + '\'
+  else
+  begin
+    BasePath := Path;
     Path := Copy(Path, 1, Length(Path) - 1);
+  end;
 
-  BasePath := Path + '\';
-  
   FindSpec := BasePath + '*';
   Hnd := FindFirstFile(PChar(FindSpec), FindData);
 
@@ -176,7 +184,7 @@ begin
     
 end;
 
-function DialogCancel(HDialog, HCancel: HWND): Boolean;
+function ProgressCancel(HDialog, HCancel: HWND): Boolean;
 begin
 
   // HCancel is 0 when user clicks sys close
@@ -196,7 +204,7 @@ begin
 
 end;
 
-procedure DialogCenter(HDialog: HWND);
+procedure ProgressCenter(HDialog: HWND);
 var
   HwndOwner: HWND;
   RcDesktop: TRect;
@@ -247,7 +255,7 @@ var
 
  end;
 
- procedure DialogInit(HDialog: HWND);
+ procedure ProgressInit(HDialog: HWND);
  begin
 
   Status.HDialog := HDialog;
@@ -263,7 +271,9 @@ var
     GetWindowLong(Status.HProgress, GWL_STYLE) or PBS_MARQUEE);
   SendMessage(Status.HProgress, PBM_SETMARQUEE, 1, 0);
 
-  DialogCenter(HDialog);
+  ProgressCenter(HDialog);
+
+  // signal the thread that we are ready to work
   SetEvent(Status.HEvent);
 
  end;
