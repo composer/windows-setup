@@ -1350,7 +1350,7 @@ begin
 end;
 
 
-function CheckAlreadyInstalled: Boolean;
+function CheckAlreadyInstalledInBasePathWithMessage(BasePath: String; Message: String): Boolean;
 var
   Uninstaller: String;
   S: String;
@@ -1359,32 +1359,49 @@ begin
 
   Result := False;
 
+  Uninstaller := BasePath + '\Composer\bin\unins000.exe';
+
+  if FileExists(Uninstaller) then
+  begin
+    S := 'Composer is already installed ' + Message + LF + LF;
+    S := S + 'Please uninstall it if you wish to continue.';
+
+    MsgBox(S, mbCriticalError, mb_Ok);
+    Result := True;
+    Exit;
+  end;
+
+
+end;
+
+
+function CheckAlreadyInstalled: Boolean;
+var
+  Uninstaller: String;
+  Message: String;
+
+begin
+
+  Result := False;
+
   if IsAdminLoggedOn then
     Exit;
 
-  Uninstaller := ExpandConstant('{userappdata}') + '\Composer\bin\unins000.exe';
+  Message := 'for user ' + GetUserNameString() + '.';
 
-  if FileExists(Uninstaller) then
-  begin
-    S := 'Composer is already installed for user ' + GetUserNameString() + '.' + LF + LF;
-    S := S + 'Please uninstall it if you wish to continue.';
+  Uninstaller := ExpandConstant('{userappdata}');
+  Result := CheckAlreadyInstalledInBasePathWithMessage(Uninstaller, Message);
+  if Result then Exit;
 
-    MsgBox(S, mbCriticalError, mb_Ok);
-    Result := True;
-    Exit;
-  end;
+  Uninstaller := ExpandConstant('{userpf}');
+  Result := CheckAlreadyInstalledInBasePathWithMessage(Uninstaller, Message);
+  if Result then Exit;
 
-  Uninstaller := ExpandConstant('{commonappdata}') + '\Composer\bin\unins000.exe';
+  Message := 'on this computer for All Users.';
 
-  if FileExists(Uninstaller) then
-  begin
-    S := 'Composer is already installed on this computer for All Users.' + LF + LF;
-    S := S + 'Please uninstall it if you wish to continue.';
-
-    MsgBox(S, mbCriticalError, mb_Ok);
-    Result := True;
-    Exit;
-  end;
+  Uninstaller := ExpandConstant('{commonappdata}');
+  Result := CheckAlreadyInstalledInBasePathWithMessage(Uninstaller, Message);
+  if Result then Exit;
 
 end;
 
