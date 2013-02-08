@@ -12,6 +12,7 @@
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
+#define DllData "userdata.dll"
 
 #define AppDescription "Composer - Php Dependency Manager"
 #define AppUrl "getcomposer.org"
@@ -60,6 +61,7 @@ WizardSmallImageFile=wizsmall.bmp
 [Files]
 Source: "setup.php"; Flags: dontcopy
 Source: "setup.class.php"; Flags: dontcopy
+Source: "userdata.dll"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "shims\{#CmdShell}"; Flags: dontcopy
 Source: "shims\{#CmdBat}"; DestDir: "{app}\bin"; Flags: ignoreversion
 Source: "{tmp}\{#CmdShell}"; DestDir: "{app}\bin"; Flags: external ignoreversion
@@ -159,6 +161,7 @@ var
   GetRec: TGetRec;
   Flags: TFlagsRec;
   TmpDir: String;
+  TmpDll: String;
   Test: String;
   SettingsPage: TInputFileWizardPage;
   ProgressPage: TOutputProgressWizardPage;
@@ -196,194 +199,6 @@ procedure Debug(const Message: String); forward;
 
 #include "paths.iss"
 #include "userdata.iss"
-
-
-procedure UserDataShow(var List: TUserDataList; var Cancel: Boolean);
-var
-  Form: TSetupForm;
-  ListBox: TNewCheckListBox;
-  Note: TNewStaticText;
-  S: String;
-  I: Integer;
-  Sub: String;
-  Enabled: Boolean;
-  UserDefined: Boolean;
-  UserChecked: Integer;
-  Index: Integer;
-
-begin
-
-  Cancel := False;
-
-  if GetArrayLength(List) = 0 then
-  begin
-    Debug('No user data found');
-    Exit;
-  end;
-
-  Debug('User data found, showing Delete User Data form');
-
-  // create the form
-  Form := UserDataCreateForm();
-
-  try
-
-    // populate the listbox
-    ListBox := TNewCheckListBox(Form.FindComponent('List'));
-    UserDefined := False;
-
-    for I := 0 to GetArrayLength(List) - 1 do
-    begin
-
-      if not List[I].Other then
-      begin
-        Sub := 'cache/config';
-        Enabled := True;
-        ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
-      end
-      else
-      begin
-
-        if List[I].Cache <> '' then
-        begin
-          Sub := 'cache';
-          Enabled := True;
-          ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
-        end;
-
-        Sub := 'user-defined cache';
-        Enabled := False;
-        ListBox.AddCheckBox('User: ' + List[I].User, Sub, 0, False, Enabled, False, True, nil);
-        UserDefined := True;
-
-      end;
-
-    end;
-
-    // update Note text if we have user-defined caches
-    if UserDefined then
-    begin
-      S := ' Config and cache data will not be deleted for user-defined caches: this must be done manually.';
-      Note := TNewStaticText(Form.FindComponent('Note'));
-      Note.Caption := Note.Caption + S;
-    end;
-
-    // show the form
-    if Form.ShowModal() = mrCancel then
-    begin
-      Cancel := True;
-      Exit;
-    end;
-
-    UserChecked := 0;
-
-    // transfer checked items to Delete field
-    for I := 0 to ListBox.Items.Count - 1 do
-    begin
-
-      if ListBox.Checked[I] then
-      begin
-        Index := Integer(ListBox.ItemObject[I]);
-        List[Index].Delete := True;
-        UserChecked := UserChecked + 1;
-      end;
-
-    end;
-
-    if UserChecked > 0 then
-      Debug('User selected to delete ' + IntToStr(UserChecked) + ' item(s)')
-    else
-      Debug('User chose not to delete data');
-
-  finally
-    Form.Free();
-  end;
-
-end;
-
-
-function UserDataCreateForm(): TSetupForm;
-var
-  Left: Integer;
-  Top: Integer;
-  Width: Integer;
-  Text: TNewStaticText;
-  ListBox: TNewCheckListBox;
-  Note: TNewStaticText;
-  NextButton: TButton;
-  CancelButton: TButton;
-  S: String;
-
-begin
-
-  Result := CreateCustomForm();
-
-  Result.ClientWidth := ScaleX(380);
-  Result.ClientHeight := ScaleY(290);
-  Result.Caption := 'Delete User Data';
-  Result.CenterInsideControl(UninstallProgressForm, False);
-
-  Top := ScaleY(16);
-  Left := ScaleX(20);
-  Width := Result.ClientWidth - (Left * 2);
-
-  Text := TNewStaticText.Create(Result);
-  Text.Parent := Result;
-  Text.Top := Top;
-  Text.Left := Left;
-  Text.Width := Width;
-  Text.AutoSize := True;
-  Text.WordWrap := True;
-
-  S := 'Composer stores cache and config data on your computer. ';
-  S := S + 'Select the user data to delete then click Next to continue, ';
-  S := S + 'or Cancel to exit.';
-
-  Text.Caption := S;
-
-  ListBox := TNewCheckListBox.Create(Result);
-  ListBox.Name := 'List';
-  ListBox.Parent := Result;
-  ListBox.Top := Text.Top + Text.Height + Top;
-  ListBox.Left := Left;
-  ListBox.Width := Width;
-  ListBox.Height := ScaleY(132);
-
-  Note := TNewStaticText.Create(Result);
-  Note.Name := 'Note';
-  Note.Parent := Result;
-  Note.Top := ListBox.Top + ListBox.Height + ScaleY(6);
-  Note.Left := Left;
-  Note.Width := Width;
-  Note.AutoSize := True;
-  Note.WordWrap := True;
-  Note.Caption := 'Caches defined at project level will not be listed.';
-
-  NextButton := TButton.Create(Result);
-  NextButton.Parent := Result;
-  NextButton.Width := ScaleX(75);
-  NextButton.Height := ScaleY(23);
-  NextButton.Left := Result.ClientWidth - (ScaleX(75 + 6 + 75) + Left);
-  NextButton.Top := Result.ClientHeight - ScaleY(23 + 10);
-  NextButton.Caption := 'Next';
-  NextButton.ModalResult := mrOk;
-
-  CancelButton := TButton.Create(Result);
-  CancelButton.Parent := Result;
-  CancelButton.Width := ScaleX(75);
-  CancelButton.Height := ScaleY(23);
-  CancelButton.Left := NextButton.Left + ScaleX(75 + 6);
-  CancelButton.Top := NextButton.Top;
-  CancelButton.Caption := 'Cancel';
-  CancelButton.ModalResult := mrCancel;
-  CancelButton.Cancel := True;
-
-  Result.ActiveControl := NextButton;
-
-end;
-
-
-// -----------------userdata end
 
 
 procedure Debug(const Message: String);
@@ -1681,11 +1496,6 @@ begin
 
 end;
 
-//-------------- start usedata
-
-
-
-//----------------end userdata
 
 function InitializeSetup(): Boolean;
 begin
@@ -1943,22 +1753,40 @@ begin
 end;
 
 
+function InitializeUninstall(): Boolean;
+var
+  DllData: String;
+  S: String;
+
+begin
+
+  DllData := ExpandConstant('{app}\bin\{#DllData}');
+  TmpDll := ExpandConstant('{tmp}\{#DllData}');
+
+  Result := FileCopy(DllData, TmpDll, False);
+
+  if not Result then
+  begin
+    S := Format('File "%s" does not exist. Cannot uninstall.', [DllData]);
+    MsgBox(S, mbCriticalError, MB_OK);
+  end;
+
+end;
+
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Rec: TPathRec;
-  Dir: String;
 
 begin
 
   if CurUninstallStep = usUninstall then
   begin
 
-    // user can cancel uninstall from user-data page
-    if UserDataCancelDelete() then
-      Abort();
+    // we must call this here, or the dll and app dir will not be deleted
+    UserDataDelete();
 
-    Dir := GetInstallDir(ExpandConstant('{app}'));
-    SetPathRec(Rec, Dir);
+    SetPathRec(Rec, ExpandConstant('{app}\bin'));
     RemoveFromPath(Rec.Hive, Rec.Path);
     NotifyPathChange();
 

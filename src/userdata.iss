@@ -1,4 +1,3 @@
-
 [Code]
 
 const
@@ -26,8 +25,10 @@ end;
 type
   TUserProfileList = array of TUserProfileRec;
 
+function DeleteUserData(HParent: HWND; DirList: String): Boolean;
+  external 'DeleteUserData@{tmp}\{#DllData} stdcall delayload uninstallonly';
 
-function UserDataCancelDelete: Boolean; forward;
+procedure UserDataDelete; forward;
 function UserDataGet: TUserDataList; forward;
 procedure UserGetFolders(var List: TUserDataList); forward;
 function UserGetAccountsWmi(var Accounts: TUserProfileList): Boolean; forward;
@@ -38,31 +39,25 @@ procedure UserAddDataRec(Rec: TUserDataRec; var List: TUserDataList); forward;
 function UserGetFolderPrefix(const Folder: String; var Prefix: String): Boolean; forward;
 function UserDefinedCache(Rec: TUserDataRec): Boolean; forward;
 function UserCheckConfig(const Key, Json: String; var Location: String): Boolean; forward;
-procedure UserDataDelete(List: TUserDataList); forward;
-procedure UserDataShow(var List: TUserDataList; var Cancel: Boolean); forward;
+procedure UserDeleteData(List: TUserDataList); forward;
+function UserDataSelect(var List: TUserDataList): Boolean; forward;
 function UserDataCreateForm(): TSetupForm; forward;
 
 
-function UserDataCancelDelete: Boolean;
+procedure UserDataDelete;
 var
   List: TUserDataList;
-  Cancel: Boolean;
 
 begin
 
   {
-    The main function, called from Uninstall step usUninstall.
-
+    The main function, must be called from Uninstall step usUninstall,
+    otherwise the dll and app dir will not be deleted
   }
-  Result := False;
-
   List := UserDataGet();
-  UserDataShow(List, Cancel);
 
-  if not Cancel then
-    UserDataDelete(List);
-
-  Result := Cancel;
+  if UserDataSelect(List) then
+    UserDeleteData(List);
 
 end;
 
@@ -471,35 +466,220 @@ begin
 end;
 
 
-procedure UserDataDelete(List: TUserDataList);
+procedure UserDeleteData(List: TUserDataList);
 var
+  S: String;
   I: Integer;
-  DbgMsg: String;
 
 begin
 
-  for I := 0 to GetArrayLength(List) - 1 do
-  begin
+  try
 
-    if not List[I].Delete then
-      Continue;
+    S := '';
 
-    DbgMsg := 'Deleting data for user [' + List[I].User + ']: ';
-
-    if List[I].Cache <> '' then
+    for I := 0 to GetArrayLength(List) - 1 do
     begin
-      Debug(DbgMsg + List[I].Cache);
-      if not DelTree(List[I].Cache, True, True, True) then
-        Debug('Failed to delete directory tree');
+
+      if not List[I].Delete then
+        Continue;
+
+      if List[I].Cache <> '' then
+        S := S + List[I].Cache + ';';
+
+      if List[I].Home <> '' then
+        S := S + List[I].Home + ';';
+
     end;
 
-    if List[I].Home <> '' then
+    if S <> '' then
     begin
-      Debug(DbgMsg + List[I].Home);
-      if not DelTree(List[I].Home, True, True, True) then
-        Debug('Failed to delete directory tree');
+
+      Debug('Calling dll: ' + TmpDll + ' with directory list: ' + S);
+
+      if DeleteUserData(UninstallProgressForm.Handle, S) then
+        Debug('Deleted user data')
+      else
+        Debug('Failed to delete user data');
+
+      // update uninstall form so it repaints
+      Sleep(10);
+      UninstallProgressForm.Update;
+
     end;
 
+  finally
+    // important to unload dll, or it will not be deleted
+    UnloadDLL(TmpDll);
   end;
+
+end;
+
+function UserDataSelect(var List: TUserDataList): Boolean;
+var
+  Form: TSetupForm;
+  ListBox: TNewCheckListBox;
+  Note: TNewStaticText;
+  S: String;
+  I: Integer;
+  Sub: String;
+  Enabled: Boolean;
+  UserDefined: Boolean;
+  UserChecked: Integer;
+  Index: Integer;
+
+begin
+
+  if GetArrayLength(List) = 0 then
+  begin
+    Debug('No user data found');
+    Exit;
+  end;
+
+  Debug('User data found, showing Delete User Data form');
+
+  // create the form
+  Form := UserDataCreateForm();
+
+  try
+
+    // populate the listbox
+    ListBox := TNewCheckListBox(Form.FindComponent('List'));
+    UserDefined := False;
+
+    for I := 0 to GetArrayLength(List) - 1 do
+    begin
+
+      if not List[I].Other then
+      begin
+        Sub := 'cache/config';
+        Enabled := True;
+        ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
+      end
+      else
+      begin
+
+        if List[I].Cache <> '' then
+        begin
+          Sub := 'cache';
+          Enabled := True;
+          ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
+        end;
+
+        Sub := 'user-defined cache';
+        Enabled := False;
+        ListBox.AddCheckBox('User: ' + List[I].User, Sub, 0, False, Enabled, False, True, nil);
+        UserDefined := True;
+
+      end;
+
+    end;
+
+    // update Note text if we have user-defined caches
+    if UserDefined then
+    begin
+      S := ' Configuration and cache data must be deleted manually for user-defined caches.';
+      Note := TNewStaticText(Form.FindComponent('Note'));
+      Note.Caption := Note.Caption + S;
+    end;
+
+    // show the form
+    Form.ShowModal();
+
+    UserChecked := 0;
+
+    // transfer checked items to Delete field
+    for I := 0 to ListBox.Items.Count - 1 do
+    begin
+
+      if ListBox.Checked[I] then
+      begin
+        Index := Integer(ListBox.ItemObject[I]);
+        List[Index].Delete := True;
+        UserChecked := UserChecked + 1;
+      end;
+
+    end;
+
+    Result := UserChecked > 0;
+
+    if Result then
+      Debug('User selected to delete ' + IntToStr(UserChecked) + ' item(s)')
+    else
+      Debug('User chose not to delete data');
+
+  finally
+    Form.Free();
+  end;
+
+end;
+
+
+function UserDataCreateForm(): TSetupForm;
+var
+  Left: Integer;
+  Top: Integer;
+  Width: Integer;
+  Text: TNewStaticText;
+  ListBox: TNewCheckListBox;
+  Note: TNewStaticText;
+  OkButton: TButton;
+  S: String;
+
+begin
+
+  Result := CreateCustomForm();
+
+  Result.ClientWidth := ScaleX(380);
+  Result.ClientHeight := ScaleY(290);
+  Result.Caption := 'Delete User Data';
+  Result.CenterInsideControl(UninstallProgressForm, False);
+
+  Top := ScaleY(16);
+  Left := ScaleX(20);
+  Width := Result.ClientWidth - (Left * 2);
+
+  Text := TNewStaticText.Create(Result);
+  Text.Parent := Result;
+  Text.Top := Top;
+  Text.Left := Left;
+  Text.Width := Width;
+  Text.AutoSize := True;
+  Text.WordWrap := True;
+
+  S := 'Composer stores cache and configuration data on your computer. ';
+  S := S + 'Please select the user data you want to delete.';
+
+  Text.Caption := S;
+
+  ListBox := TNewCheckListBox.Create(Result);
+  ListBox.Name := 'List';
+  ListBox.Parent := Result;
+  ListBox.Top := Text.Top + Text.Height + Top;
+  ListBox.Left := Left;
+  ListBox.Width := Width;
+  ListBox.Height := ScaleY(132);
+
+  Note := TNewStaticText.Create(Result);
+  Note.Name := 'Note';
+  Note.Parent := Result;
+  Note.Top := ListBox.Top + ListBox.Height + ScaleY(6);
+  Note.Left := Left;
+  Note.Width := Width;
+  Note.AutoSize := True;
+  Note.WordWrap := True;
+  Note.Caption := 'Caches defined at project level will not be listed.';
+
+
+  OkButton := TButton.Create(Result);
+  OkButton.Parent := Result;
+  OkButton.Width := ScaleX(75);
+  OkButton.Height := ScaleY(23);
+  OkButton.Left := Result.ClientWidth - (ScaleX(75) + Left);
+  OkButton.Top := Result.ClientHeight - ScaleY(23 + 16);
+  OkButton.Caption := 'OK';
+  OkButton.ModalResult := mrOk;
+  OKButton.Default := True;
+
+  Result.ActiveControl := OkButton;
 
 end;
