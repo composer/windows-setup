@@ -13,9 +13,7 @@ A Windows installer for the [Composer][composer] PHP Dependency Manager. [**Down
 <a name="About"></a>
 ## About
 
-[Composer][composer] is a wonderful tool but it can sometimes be tricky to install on computers not blessed with the rich development environment that comes as standard on others. Yes, we are looking at you, Windows.
-
-This installer attempts to ease that pain by:
+[Composer][composer] is a wonderful tool but it can sometimes be tricky to install on Windows. This installer attempts to ease the pain by:
 
 * helping you set up PHP so it can be used from the command line
 * installing Composer so that you can use it from any location by typing: `composer`
@@ -39,14 +37,14 @@ The installer will then check that PHP and your path are set up correctly. If it
 The installation directory depends on whether you are an Administrator or not and is non-negotiable:
 
 * `%ALLUSERSPROFILE%\Composer\bin` for an Admin install for all users
-* `%APPDATA%\Composer\bin` for a User install
+* `%LOCALAPPDATA%\Programs\Composer\bin` for a User install
 
 After you have accepted these choices, the installer will download Composer and set everything up. Full usage documentation can be found at [http://getcomposer.org][composer] and a repository of packages can be browsed at [Packagist][packagist].
 
 <a name="Uninstalling"></a>
 ## Uninstalling
 
-The uninstall program is available from the Control Panel.
+The uninstall program is available from the Control Panel. It offers the option to remove cache and configuration data that Composer may have stored.
 
 <a name="Path"></a>
 ## Path
