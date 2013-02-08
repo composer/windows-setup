@@ -10,7 +10,7 @@ function DeleteUserData(HParent: HWND; DirList: PChar): Boolean; stdcall;
 begin
 
   try
-    
+
     Main := TMain.Create;
 
     try
