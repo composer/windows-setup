@@ -4,9 +4,9 @@ uses
   UserMain in 'UserMain.pas',
   UserProcs in 'UserProcs.pas';
 
-{$R UserResVersion.res}
-{$R UserResProgress.res}
-{$R UserResResult.res}
+{$R resource\version.res}
+{$R resource\progress.res}
+{$R resource\result.res}
 
 function DeleteUserData(HParent: HWND; DirList: PChar): Boolean; stdcall;
 begin
