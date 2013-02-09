@@ -72,6 +72,9 @@ Source: "{tmp}\composer.phar"; DestDir: "{app}\bin"; Flags: external ignoreversi
 ; we need to make all-users directory writeable so composer.phar can update
 Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
 
+[Run]
+Filename: "http://{#AppUrl}"; Description: "View online documentation"; Flags: postinstall shellexec unchecked;
+
 
 [UninstallDelete]
 ; to force deletion of \Composer
