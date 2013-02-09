@@ -170,6 +170,7 @@ var
   ErrorPage: TWizardPage;
   DownloadInfoPage: TWizardPage;
   FinishedInfoPage: TOutputMsgWizardPage;
+  SkipSettingsPage: Boolean;
 
 
 const
@@ -1524,6 +1525,8 @@ begin
   if Pos('/TEST', GetCmdTail) <> 0 then
     Test := TEST_FLAG;
 
+  SkipSettingsPage := (Test = '');
+
   Result := True;
 
 end;
@@ -1558,6 +1561,9 @@ begin
     SettingsPage.Add('', 'php.exe|php.exe', '.exe')
   else
     SettingsPage.Add('', 'All files|*.*', '');
+
+  if SkipSettingsPage and FileExists(PhpRec.Exe) then
+    SettingsPage.Values[0] := PhpRec.Exe;
 
   ErrorPage := CreateMessagePage(SettingsPage.ID,
     '', '', 'Please review and fix the issues listed below, then click Back and try again');
@@ -1623,6 +1629,16 @@ begin
 
   if PageID = ErrorPage.ID then
     Result := (PhpRec.Error = '') and (PathError = '')
+  else if SkipSettingsPage and (PageID = SettingsPage.ID) then
+  begin
+    SkipSettingsPage := False
+    if FileExists(SettingsPage.Values[0]) then
+      begin
+        ShowCheckPage()
+        if (PhpRec.Error = '') and (PathError = '') then
+          Result := True;
+      end
+  end
   else if PageID = DownloadInfoPage.ID then
     Result := GetRec.Text = ''
   else if PageId = FinishedInfoPage.ID then
