@@ -235,7 +235,7 @@ begin
 
   if ResultIdLine(Line, S) then
   begin
-    Log('DEBUG_PHP:: ' + S);
+    Log('PHPDBG:: ' + S);
     Result := True;
   end;
 

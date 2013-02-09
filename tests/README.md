@@ -126,4 +126,4 @@ The tests use test-mode and generally mimic responses from the install script. T
 #### Failed but no Composer errors sent
 * *Setup:* Run test: `d8`.
 
-* *Expected:* Reports a Composer error [ERR_INVALID], with a Next button.
+* *Expected:* Reports a Composer error [ERR_INVALID], with a Retry button.

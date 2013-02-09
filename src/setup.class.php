@@ -204,6 +204,11 @@ class ComposerSetup
         $_SERVER['http_proxy'] = $request->proxyUrl;
         $_SERVER['HTTP_PROXY'] = $request->proxyUrl;
       }
+      else
+      {
+        # clear any proxies from environment
+        $this->clearEnvironmentProxies();
+      }
 
       if ($errors)
       {
@@ -233,6 +238,37 @@ class ComposerSetup
 
     $this->errors = array();
     return $s ? $s : 'no errors reported';
+
+  }
+
+
+  /**
+  * Clears any http(s)_proxy values from environment
+  *
+  */
+  protected function clearEnvironmentProxies()
+  {
+
+    $list = array();
+
+    foreach ($_SERVER as $key => $value)
+    {
+
+      if ('http_proxy' === strtolower($key))
+      {
+        $list[] = $key;
+      }
+      elseif ('https_proxy' === strtolower($key))
+      {
+        $list[] = $key;
+      }
+
+    }
+
+    foreach ($list as $key)
+    {
+      unset($_SERVER[$key]);
+    }
 
   }
 
@@ -469,8 +505,8 @@ class ComposerSetup
   {
 
     /*
-      p6 - multiline, status 0
-      p7 - first line only, status 1
+      p5 - multiline, status 0
+      p6 - first line only, status 1
     */
 
     echo $this->getIndentity();
