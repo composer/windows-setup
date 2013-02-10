@@ -153,6 +153,15 @@ type
     Completed   : Boolean;
   end;
 
+type
+  TCustomPagesRec = record
+    Settings      : TInputFileWizardPage;
+    Progress      : TOutputProgressWizardPage;
+    Error         : TWizardPage;
+    DownloadMsg   : TWizardPage;
+    PathChanged   : TOutputMsgWizardPage;
+end;
+
 
 var
   Completed: Boolean;
@@ -165,11 +174,8 @@ var
   Flags: TFlagsRec;
   TmpDir: String;
   Test: String;
+  Pages: TCustomPagesRec;
   SettingsPage: TInputFileWizardPage;
-  ProgressPage: TOutputProgressWizardPage;
-  ErrorPage: TWizardPage;
-  DownloadInfoPage: TWizardPage;
-  FinishedInfoPage: TOutputMsgWizardPage;
 
 
 const
@@ -229,6 +235,7 @@ procedure TestUpdateCaption(); forward;
 function GetBaseDir(Param: String): String;
 begin
 
+  // code constant function for DefaultDirName
   if IsAdminLoggedOn then
     Result := ExpandConstant('{commonappdata}')
   else
@@ -1112,8 +1119,8 @@ end;
 procedure InitializeWizard;
 begin
 
-  ProgressPage := CreateOutputProgressPage('', '');
-  ProgressPage.ProgressBar.Style := npbstMarquee;
+  Pages.Progress := CreateOutputProgressPage('', '');
+  Pages.Progress.ProgressBar.Style := npbstMarquee;
 
   SettingsPage := CreateInputFilePage(wpWelcome,
     'Settings Check',
@@ -1125,12 +1132,12 @@ begin
   else
     SettingsPage.Add('', 'All files|*.*', '');
 
-  ErrorPage := CreateMessagePage(SettingsPage.ID,
+  Pages.Error := CreateMessagePage(SettingsPage.ID,
     '', '', 'Please review and fix the issues listed below, then click Back and try again');
 
-  DownloadInfoPage := CreateMessagePage(wpReady, '', '', '');
+  Pages.DownloadMsg := CreateMessagePage(wpReady, '', '', '');
 
-  FinishedInfoPage := CreateOutputMsgPage(wpInstalling,
+  Pages.PathChanged := CreateOutputMsgPage(wpInstalling,
   'Information',
   'Please read the following important information before continuing.',
   'Setup has changed your path variable, but not all running programs will be aware of this. ' +
@@ -1154,7 +1161,7 @@ begin
     WizardForm.ActiveControl := nil;
 
   end
-  else if CurPageID = ErrorPage.ID then
+  else if CurPageID = Pages.Error.ID then
   begin
 
     WizardForm.ActiveControl := nil;
@@ -1168,7 +1175,7 @@ begin
     WizardForm.BackButton.Enabled := False;
 
   end
-  else if CurPageID = DownloadInfoPage.ID then
+  else if CurPageID = Pages.DownloadMsg.ID then
   begin
 
     WizardForm.ActiveControl := nil;
@@ -1187,11 +1194,11 @@ begin
 
   Result := False;
 
-  if PageID = ErrorPage.ID then
+  if PageID = Pages.Error.ID then
     Result := (PhpRec.Error = '') and (PathError = '')
-  else if PageID = DownloadInfoPage.ID then
+  else if PageID = Pages.DownloadMsg.ID then
     Result := GetRec.Text = ''
-  else if PageId = FinishedInfoPage.ID then
+  else if PageId = Pages.PathChanged.ID then
     Result := not Flags.PathChanged;
 
 end;
@@ -1216,7 +1223,7 @@ begin
   end
   else if CurPageID = wpReady then
     Result := ShowDownloadPage(CurPageID)
-  else if CurPageID = DownloadInfoPage.ID then
+  else if CurPageID = Pages.DownloadMsg.ID then
     Result := ShowDownloadPage(CurPageID);
 
 end;
@@ -1226,7 +1233,7 @@ begin
 
   Result := True;
 
-  if CurPageID = DownloadInfoPage.ID then
+  if CurPageID = Pages.DownloadMsg.ID then
     ResetGetRec(False);
 
 end;
@@ -1238,8 +1245,8 @@ begin
   // remove cancel confirmation where it is not necessary
   case CurPageID of
     wpWelcome: Confirm := False;
-    ErrorPage.ID: Confirm := False;
-    DownloadInfoPage.ID: Confirm := False;
+    Pages.Error.ID: Confirm := False;
+    Pages.DownloadMsg.ID: Confirm := False;
    end;
 
 end;
@@ -1515,7 +1522,7 @@ begin
   Result := CreateCustomPage(Id, Caption, Description);
 
   StaticText := TNewStaticText.Create(Result);
-  StaticText.Name := 'Static';
+  StaticText.Name := 'Text';
   StaticText.Caption := Text;
   StaticText.AutoSize := True;
   StaticText.Parent := Result.Surface;
@@ -1538,35 +1545,30 @@ end;
 procedure ShowCheckPage;
 begin
 
-  ProgressPage.Caption := 'Checking your settings';
-  ProgressPage.Description := 'Please wait';
-  ProgressPage.SetText('Checking:', SettingsPage.Values[0]);
-  ProgressPage.SetProgress(25, 100);
-  ProgressPage.Show;
+  Pages.Progress.Caption := 'Checking your settings';
+  Pages.Progress.Description := 'Please wait';
+  Pages.Progress.SetText('Checking:', SettingsPage.Values[0]);
+  Pages.Progress.SetProgress(100, 100);
+  Pages.Progress.Show;
 
   try
 
-    ProgressPage.SetProgress(50, 100);
     CheckPhp(SettingsPage.Values[0]);
 
     if PhpRec.Error <> '' then
     begin
       UpdateErrorPage();
-      ProgressPage.SetProgress(100, 100);
       Exit;
     end;
 
-    ProgressPage.SetProgress(80, 100);
-    ProgressPage.SetText('Checking:', 'Environment paths');
+    Pages.Progress.SetText('Checking:', 'Environment paths');
     CheckPath;
-
-    ProgressPage.SetProgress(100, 100)
 
     if PathError <> '' then
       UpdateErrorPage();
 
   finally
-    ProgressPage.Hide;
+    Pages.Progress.Hide;
   end;
 
 end;
@@ -1580,17 +1582,16 @@ begin
   if GetRec.Next = NEXT_OK then
     Exit;
 
-  ProgressPage.Caption := 'Downloading Composer';
-  ProgressPage.Description := 'Please wait';
-  ProgressPage.SetText('Downloading from {#AppUrl}...', 'composer.phar');
-  ProgressPage.SetProgress(25, 100);
-  ProgressPage.Show;
+  Pages.Progress.Caption := 'Downloading Composer';
+  Pages.Progress.Description := 'Please wait';
+  Pages.Progress.SetText('Downloading from {#AppUrl}...', 'composer.phar');
+  Pages.Progress.SetProgress(100, 100);
+  Pages.Progress.Show;
 
   try
-    ProgressPage.SetProgress(50, 100);
     DownloadWork;
   finally
-    ProgressPage.Hide;
+    Pages.Progress.Hide;
   end;
 
   if GetRec.Text <> '' then
@@ -1604,34 +1605,34 @@ end;
 
 procedure UpdateDownloadMsgPage();
 var
-  PageStatic: TNewStaticText;
-  PageMemo: TNewMemo;
+  Text: TNewStaticText;
+  Memo: TNewMemo;
 
 begin
 
-  PageStatic := TNewStaticText(DownloadInfoPage.FindComponent('Static'));
-  PageMemo := TNewMemo(DownloadInfoPage.FindComponent('Memo'));
+  Text := TNewStaticText(Pages.DownloadMsg.FindComponent('Text'));
+  Memo := TNewMemo(Pages.DownloadMsg.FindComponent('Memo'));
 
   if GetRec.Error <> ERR_NONE then
   begin
 
-    DownloadInfoPage.Caption := 'Composer Download Error';
-    DownloadInfoPage.Description := 'Unable to continue with installation';
+    Pages.DownloadMsg.Caption := 'Composer Download Error';
+    Pages.DownloadMsg.Description := 'Unable to continue with installation';
 
     if GetRec.Error = ERR_INSTALL then
-      PageStatic.Caption := 'Please review and fix the issues listed below then try again.'
+      Text.Caption := 'Please review and fix the issues listed below then try again.'
     else
-      PageStatic.Caption := 'An error occurred. Clicking Retry may resolve this issue.'
+      Text.Caption := 'An error occurred. Clicking Retry may resolve this issue.'
 
   end
   else
   begin
-    DownloadInfoPage.Caption := 'Composer Warning';
-    DownloadInfoPage.Description := 'Please read the following information before continuing.';
-    PageStatic.Caption := 'Review the issues listed below then click Next to continue';
+    Pages.DownloadMsg.Caption := 'Composer Warning';
+    Pages.DownloadMsg.Description := 'Please read the following information before continuing.';
+    Text.Caption := 'Review the issues listed below then click Next to continue';
   end;
 
-  PageMemo.Text := GetRec.Text;
+  Memo.Text := GetRec.Text;
 
 end;
 
@@ -1642,18 +1643,18 @@ var
 
 begin
 
-  Memo := TNewMemo(ErrorPage.FindComponent('Memo'));
+  Memo := TNewMemo(Pages.Error.FindComponent('Memo'));
 
   if PhpRec.Error <> '' then
   begin
-    ErrorPage.Caption := 'PHP Settings Error';
-    ErrorPage.Description := 'Composer will not work with your current settings'
+    Pages.Error.Caption := 'PHP Settings Error';
+    Pages.Error.Description := 'Composer will not work with your current settings'
     Memo.Text := PhpRec.Error;
   end
   else if PathError <> '' then
   begin
-    ErrorPage.Caption := 'Path Settings Error';
-    ErrorPage.Description := 'Setup cannot continue with your current settings'
+    Pages.Error.Caption := 'Path Settings Error';
+    Pages.Error.Description := 'Setup cannot continue with your current settings'
     Memo.Text := PathError;
   end
 
