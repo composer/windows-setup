@@ -556,6 +556,8 @@ class ComposerSetup
       case 'd5':
         # [ERR_CONNECTION]
         $_SERVER['http_proxy'] = 'http://127.0.0.100:28000';
+        # important to force a new download
+        $this->switches['force'] = '';
         return;
 
       case 'd6':
