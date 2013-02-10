@@ -197,7 +197,30 @@ const
   NEXT_OK = 2;
 
 
+{Common functions}
+procedure AddLine(var Existing: String; const Value: String); forward;
+procedure AddSwitch(var Switches: String; const Name, Value: String); forward;
 procedure Debug(const Message: String); forward;
+function DebugPhp(const Line: String): Boolean; forward;
+function ExecCmd(const PhpExe, Switches: String; Show: Integer; var ExitCode: Integer): Boolean; forward;
+procedure GetCmdResults(Results: TArrayOfString; var Output: String); forward;
+function GetCommonCmdError(StatusCode, ExitCode: Integer): String; forward;
+function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
+function ResultIdLine(const Line: String; var S: String): Boolean; forward;
+
+{Custom page functions}
+function CreateMessagePage(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
+procedure ShowCheckPage; forward;
+function ShowDownloadPage(CurPageID: Integer): Boolean; forward;
+procedure UpdateDownloadMsgPage(); forward;
+procedure UpdateErrorPage(); forward;
+
+{Test page functions}
+procedure TestButtonClick(Sender: TObject); forward;
+procedure TestClearButtonClick(Sender: TObject); forward;
+procedure TestCreateButtons(ParentForm: TSetupForm; CancelButton: TNewButton); forward;
+procedure TestUpdateCaption(); forward;
+
 
 #include "paths.iss"
 #include "userdata.iss"
@@ -210,45 +233,6 @@ begin
     Result := ExpandConstant('{commonappdata}')
   else
     Result := ExpandConstant('{userpf}');
-
-end;
-
-
-procedure Debug(const Message: String);
-begin
-  Log('DEBUG:: ' + Message);
-end;
-
-
-function ResultIdLine(const Line: String; var S: String): Boolean;
-begin
-
-  Result := False;
-  S := '';
-
-  if Pos('{#CS_SETUP_GUID}', Line) <> 0 then
-  begin
-    S := Copy(Line, {#GUID_LEN} + 1, MaxInt);
-    Result := True;
-  end;
-
-end;
-
-
-function DebugPhp(const Line: String): Boolean;
-var
-  S: String;
-
-begin
-
-  Result := False;
-  S := '';
-
-  if ResultIdLine(Line, S) then
-  begin
-    Log('PHPDBG:: ' + S);
-    Result := True;
-  end;
 
 end;
 
@@ -278,65 +262,6 @@ begin
 
 end;
 
-
-procedure AddLine(var Existing: String; const Value: String);
-begin
-
-  if Existing <> '' then
-    Existing := Existing + LF;
-
-  Existing := Existing + Value;
-
-end;
-
-
-procedure AddSwitch(var Switches: String; const Name, Value: String);
-begin
-
-  if Switches = '' then
-    Switches := '--';
-
-  Switches := Switches + ' --' + Name;
-
-  if Value <> '' then
-  begin
-    // we don't want to send default test ? value
-    if (Name <> 'test') or (Test <> '?') then
-      Switches := Switches + ' "' + Value + '"';
-  end;
-
-end;
-
-
-procedure GetCmdResults(Results: TArrayOfString; var Output: String);
-var
-  Count: Integer;
-  I: Integer;
-  Line: String;
-
-begin
-
-  Count := GetArrayLength(Results);
-
-  for I := 0 to Count - 1 do
-  begin
-
-    Line := Results[I];
-
-    // filter any initial empty output
-    if (Output = '') and (Trim(Line) = '') then
-      Continue;
-
-    // filter any shebang
-    if Pos('#!', TrimLeft(Line)) = 1 then
-      Continue;
-
-    if not DebugPhp(Line) then
-      AddLine(Output, Line);
-
-  end;
-
-end;
 
 
 procedure SetSearchRec(var Rec: TSearchRec);
@@ -734,66 +659,6 @@ begin
 end;
 
 
-function ExecCmd(const PhpExe, Switches: String; Show: Integer; var ExitCode: Integer): Boolean;
-var
-  Args: String;
-  Params: String;
-
-begin
-
-  if FileExists(TmpFile.Result) then
-    DeleteFile(TmpFile.Result);
-
-  Args := Switches;
-
-  if Test <> '' then
-  begin
-    AddSwitch(Args, 'test', Test);
-    Debug('Running test: ' + Test);
-  end;
-
-  if Pos('/LOG', GetCmdTail) <> 0 then
-    AddSwitch(Args, 'debug', '');
-
-  // we must not quote Args since they are quoted individually
-  Params := Format('/c "%s %s %s > %s"', [AddQuotes(PhpExe), AddQuotes(TmpFile.Setup), Args, AddQuotes(TmpFile.Result)]);
-  Debug('Calling cmd.exe with params: ' + Params);
-  Result := Exec(CmdExe, Params, TmpDir, Show, ewWaitUntilTerminated, ExitCode);
-
-end;
-
-
-function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer;
-begin
-
-  Error := SysErrorMessage(ErrorCode);
-  Result := StringChangeEx(Error, '%1', '%s', True);
-
-  if Result = 1 then
-    Error := Format(Error, [Filename]);
-
-end;
-
-
-function GetCommonCmdError(StatusCode, ExitCode: Integer): String;
-var
-  Error: String;
-
-begin
-
-  Result := '';
-
-  if StatusCode = ERR_CMD then
-  begin
-    GetSysError(ExitCode, CmdExe, Error);
-    Result := 'Internal Error [ERR_CMD]: ' + Error;
-  end
-  else if StatusCode = ERR_CMD_EX then
-    Result := 'Internal Error [ERR_CMDEX]: A command did not run correctly';
-
-end;
-
-
 procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String);
 var
   Text: String;
@@ -1163,190 +1028,6 @@ begin
 end;
 
 
-function CreateMessagePage(Id: Integer; Caption, Description, Text: String): TWizardPage;
-var
-  StaticText: TNewStaticText;
-  Memo: TNewMemo;
-  Top: Integer;
-
-begin
-
-  Result := CreateCustomPage(Id, Caption, Description);
-
-  StaticText := TNewStaticText.Create(Result);
-  StaticText.Name := 'Static';
-  StaticText.Caption := Text;
-  StaticText.AutoSize := True;
-  StaticText.Parent := Result.Surface;
-
-  Top := StaticText.Top + StaticText.Height;
-
-  Memo := TNewMemo.Create(Result);
-  Memo.Name := 'Memo';
-  Memo.Top := Top + ScaleY(8);
-  Memo.Height := Result.SurfaceHeight - (Top + ScaleY(8) + ScaleY(15));
-  Memo.Width := Result.SurfaceWidth;
-  Memo.ScrollBars := ssVertical;
-  Memo.ReadOnly := True;
-  Memo.Parent := Result.Surface;
-  Memo.Text := '';
-
-end;
-
-
-procedure UpdateErrorPage();
-var
-  Memo: TNewMemo;
-
-begin
-
-  Memo := TNewMemo(ErrorPage.FindComponent('Memo'));
-
-  if PhpRec.Error <> '' then
-  begin
-    ErrorPage.Caption := 'PHP Settings Error';
-    ErrorPage.Description := 'Composer will not work with your current settings'
-    Memo.Text := PhpRec.Error;
-  end
-  else if PathError <> '' then
-  begin
-    ErrorPage.Caption := 'Path Settings Error';
-    ErrorPage.Description := 'Setup cannot continue with your current settings'
-    Memo.Text := PathError;
-  end
-
-end;
-
-
-procedure UpdateDownloadMsgPage();
-var
-  PageStatic: TNewStaticText;
-  PageMemo: TNewMemo;
-
-begin
-
-  PageStatic := TNewStaticText(DownloadInfoPage.FindComponent('Static'));
-  PageMemo := TNewMemo(DownloadInfoPage.FindComponent('Memo'));
-
-  if GetRec.Error <> ERR_NONE then
-  begin
-
-    DownloadInfoPage.Caption := 'Composer Download Error';
-    DownloadInfoPage.Description := 'Unable to continue with installation';
-
-    if GetRec.Error = ERR_INSTALL then
-      PageStatic.Caption := 'Please review and fix the issues listed below then try again.'
-    else
-      PageStatic.Caption := 'An error occurred. Clicking Retry may resolve this issue.'
-
-  end
-  else
-  begin
-    DownloadInfoPage.Caption := 'Composer Warning';
-    DownloadInfoPage.Description := 'Please read the following information before continuing.';
-    PageStatic.Caption := 'Review the issues listed below then click Next to continue';
-  end;
-
-  PageMemo.Text := GetRec.Text;
-
-end;
-
-
-procedure ShowCheckPage;
-begin
-
-  ProgressPage.Caption := 'Checking your settings';
-  ProgressPage.Description := 'Please wait';
-  ProgressPage.SetText('Checking:', SettingsPage.Values[0]);
-  ProgressPage.SetProgress(25, 100);
-  ProgressPage.Show;
-
-  try
-
-    ProgressPage.SetProgress(50, 100);
-    CheckPhp(SettingsPage.Values[0]);
-
-    if PhpRec.Error <> '' then
-    begin
-      UpdateErrorPage();
-      ProgressPage.SetProgress(100, 100);
-      Exit;
-    end;
-
-    ProgressPage.SetProgress(80, 100);
-    ProgressPage.SetText('Checking:', 'Environment paths');
-    CheckPath;
-
-    ProgressPage.SetProgress(100, 100)
-
-    if PathError <> '' then
-      UpdateErrorPage();
-
-  finally
-    ProgressPage.Hide;
-  end;
-
-end;
-
-
-function ShowDownloadPage(CurPageID: Integer): Boolean;
-begin
-
-  Result := True;
-
-  if GetRec.Next = NEXT_OK then
-    Exit;
-
-  ProgressPage.Caption := 'Downloading Composer';
-  ProgressPage.Description := 'Please wait';
-  ProgressPage.SetText('Downloading from {#AppUrl}...', 'composer.phar');
-  ProgressPage.SetProgress(25, 100);
-  ProgressPage.Show;
-
-  try
-    ProgressPage.SetProgress(50, 100);
-    DownloadWork;
-  finally
-    ProgressPage.Hide;
-  end;
-
-  if GetRec.Text <> '' then
-  begin
-    UpdateDownloadMsgPage;
-    Result := CurPageID = wpReady;
-  end;
-
-end;
-
-
-procedure TestUpdateCaption();
-var
-  Id: String;
-  Caption: String;
-  Index: Integer;
-  Value: String;
-  ClearBtn: TNewButton;
-
-begin
-
-  Id := ' /test: ';
-  Caption := WizardForm.Caption;
-  Index := Pos(Id, WizardForm.Caption);
-  Value := '';
-
-  if Test <> TEST_FLAG then
-    Value := Id + Test;
-
-  if Index <> 0 then
-    Caption := Copy(WizardForm.Caption, 1, Index - 1);
-
-  WizardForm.Caption := Caption + Value;
-  ClearBtn := TNewButton(WizardForm.FindComponent('BtnClear'));
-  ClearBtn.Enabled := Value <> '';
-
-end;
-
-
 function CheckAlreadyInstalled: Boolean;
 var
   Uninstaller: String;
@@ -1382,113 +1063,6 @@ begin
     Result := True;
     Exit;
   end;
-
-end;
-
-
-procedure TestButtonClick(Sender: TObject);
-var
-  Form: TSetupForm;
-  Edit: TNewEdit;
-  Btn: TNewButton;
-
-begin
-
-  Form := CreateCustomForm();
-
-  try
-
-    Form.ClientWidth := ScaleX(256);
-    Form.ClientHeight := ScaleY(128);
-    Form.Caption := 'Enter Test Identifier';
-    Form.CenterInsideControl(WizardForm, False);
-
-    Edit := TNewEdit.Create(Form);
-    Edit.Top := ScaleY(10);
-    Edit.Left := ScaleX(10);
-    Edit.Width := Form.ClientWidth - ScaleX(2 * 10);
-    Edit.Height := ScaleY(23);
-
-    if Test <> TEST_FLAG then
-      Edit.Text := Test;
-
-    Edit.Parent := Form;
-
-    Btn := TNewButton.Create(Form);
-    Btn.Parent := Form;
-    Btn.Width := ScaleX(75);
-    Btn.Height := ScaleY(23);
-    Btn.Left := Form.ClientWidth - ScaleX(75 + 6 + 75 + 10);
-    Btn.Top := Form.ClientHeight - ScaleY(23 + 10);
-    Btn.Caption := 'OK';
-    Btn.ModalResult := mrOk;
-    Btn.Default := True;
-
-    Btn := TNewButton.Create(Form);
-    Btn.Parent := Form;
-    Btn.Width := ScaleX(75);
-    Btn.Height := ScaleY(23);
-    Btn.Left := Form.ClientWidth - ScaleX(75 + 10);
-    Btn.Top := Form.ClientHeight - ScaleY(23 + 10);
-    Btn.Caption := 'Cancel';
-    Btn.ModalResult := mrCancel;
-    Btn.Cancel := True;
-
-    Form.ActiveControl := Edit;
-
-    if Form.ShowModal() = mrOk then
-    begin
-
-      if Edit.Text <> '' then
-        Test := Edit.Text
-      else
-        Test := TEST_FLAG;
-
-      TestUpdateCaption();
-
-    end;
-
-  finally
-    Form.Free();
-  end;
-
-end;
-
-
-procedure TestClearButtonClick(Sender: TObject);
-begin
-  Test := TEST_FLAG;
-  TestUpdateCaption();
-end;
-
-
-procedure TestCreateButtons(ParentForm: TSetupForm; CancelButton: TNewButton);
-var
-  BtnTest: TNewButton;
-  BtnClear: TNewButton;
-
-begin
-
-  BtnTest := TNewButton.Create(ParentForm);
-  BtnTest.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
-  BtnTest.Top := CancelButton.Top;
-  BtnTest.Width := CancelButton.Width;
-  BtnTest.Height := CancelButton.Height;
-  BtnTest.Caption := '&Enter Test';
-  BtnTest.OnClick := @TestButtonClick;
-  BtnTest.Parent := ParentForm;
-
-  BtnClear := TNewButton.Create(ParentForm);
-  BtnClear.Name := 'BtnClear';
-  BtnClear.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
-  BtnClear.Left := BtnTest.Left + BtnTest.Width + ScaleX(10);
-  BtnClear.Top := CancelButton.Top;
-  BtnClear.Width := CancelButton.Width;
-  BtnClear.Height := CancelButton.Height;
-  BtnClear.Caption := '&Clear Test';
-  BtnClear.OnClick := @TestClearButtonClick;
-  BtnClear.Parent := ParentForm;
-  BtnClear.Enabled := False;
 
 end;
 
@@ -1764,5 +1338,459 @@ begin
     NotifyPathChange();
 
   end;
+
+end;
+
+
+{Common functions}
+
+procedure AddLine(var Existing: String; const Value: String);
+begin
+
+  if Existing <> '' then
+    Existing := Existing + LF;
+
+  Existing := Existing + Value;
+
+end;
+
+
+procedure AddSwitch(var Switches: String; const Name, Value: String);
+begin
+
+  if Switches = '' then
+    Switches := '--';
+
+  Switches := Switches + ' --' + Name;
+
+  if Value <> '' then
+  begin
+    // we don't want to send default test ? value
+    if (Name <> 'test') or (Test <> '?') then
+      Switches := Switches + ' "' + Value + '"';
+  end;
+
+end;
+
+
+procedure Debug(const Message: String);
+begin
+  Log('DEBUG:: ' + Message);
+end;
+
+
+function DebugPhp(const Line: String): Boolean;
+var
+  S: String;
+
+begin
+
+  Result := False;
+  S := '';
+
+  if ResultIdLine(Line, S) then
+  begin
+    Log('PHPDBG:: ' + S);
+    Result := True;
+  end;
+
+end;
+
+
+function ExecCmd(const PhpExe, Switches: String; Show: Integer; var ExitCode: Integer): Boolean;
+var
+  Args: String;
+  Params: String;
+
+begin
+
+  if FileExists(TmpFile.Result) then
+    DeleteFile(TmpFile.Result);
+
+  Args := Switches;
+
+  if Test <> '' then
+  begin
+    AddSwitch(Args, 'test', Test);
+    Debug('Running test: ' + Test);
+  end;
+
+  if Pos('/LOG', GetCmdTail) <> 0 then
+    AddSwitch(Args, 'debug', '');
+
+  // we must not quote Args since they are quoted individually
+  Params := Format('/c "%s %s %s > %s"', [AddQuotes(PhpExe), AddQuotes(TmpFile.Setup), Args, AddQuotes(TmpFile.Result)]);
+  Debug('Calling cmd.exe with params: ' + Params);
+  Result := Exec(CmdExe, Params, TmpDir, Show, ewWaitUntilTerminated, ExitCode);
+
+end;
+
+
+procedure GetCmdResults(Results: TArrayOfString; var Output: String);
+var
+  Count: Integer;
+  I: Integer;
+  Line: String;
+
+begin
+
+  Count := GetArrayLength(Results);
+
+  for I := 0 to Count - 1 do
+  begin
+
+    Line := Results[I];
+
+    // filter any initial empty output
+    if (Output = '') and (Trim(Line) = '') then
+      Continue;
+
+    // filter any shebang
+    if Pos('#!', TrimLeft(Line)) = 1 then
+      Continue;
+
+    if not DebugPhp(Line) then
+      AddLine(Output, Line);
+
+  end;
+
+end;
+
+
+function GetCommonCmdError(StatusCode, ExitCode: Integer): String;
+var
+  Error: String;
+
+begin
+
+  Result := '';
+
+  if StatusCode = ERR_CMD then
+  begin
+    GetSysError(ExitCode, CmdExe, Error);
+    Result := 'Internal Error [ERR_CMD]: ' + Error;
+  end
+  else if StatusCode = ERR_CMD_EX then
+    Result := 'Internal Error [ERR_CMDEX]: A command did not run correctly';
+
+end;
+
+
+function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer;
+begin
+
+  Error := SysErrorMessage(ErrorCode);
+  Result := StringChangeEx(Error, '%1', '%s', True);
+
+  if Result = 1 then
+    Error := Format(Error, [Filename]);
+
+end;
+
+
+function ResultIdLine(const Line: String; var S: String): Boolean;
+begin
+
+  Result := False;
+  S := '';
+
+  if Pos('{#CS_SETUP_GUID}', Line) <> 0 then
+  begin
+    S := Copy(Line, {#GUID_LEN} + 1, MaxInt);
+    Result := True;
+  end;
+
+end;
+
+{Custom page functions}
+
+function CreateMessagePage(Id: Integer; Caption, Description, Text: String): TWizardPage;
+var
+  StaticText: TNewStaticText;
+  Memo: TNewMemo;
+  Top: Integer;
+
+begin
+
+  Result := CreateCustomPage(Id, Caption, Description);
+
+  StaticText := TNewStaticText.Create(Result);
+  StaticText.Name := 'Static';
+  StaticText.Caption := Text;
+  StaticText.AutoSize := True;
+  StaticText.Parent := Result.Surface;
+
+  Top := StaticText.Top + StaticText.Height;
+
+  Memo := TNewMemo.Create(Result);
+  Memo.Name := 'Memo';
+  Memo.Top := Top + ScaleY(8);
+  Memo.Height := Result.SurfaceHeight - (Top + ScaleY(8) + ScaleY(15));
+  Memo.Width := Result.SurfaceWidth;
+  Memo.ScrollBars := ssVertical;
+  Memo.ReadOnly := True;
+  Memo.Parent := Result.Surface;
+  Memo.Text := '';
+
+end;
+
+
+procedure ShowCheckPage;
+begin
+
+  ProgressPage.Caption := 'Checking your settings';
+  ProgressPage.Description := 'Please wait';
+  ProgressPage.SetText('Checking:', SettingsPage.Values[0]);
+  ProgressPage.SetProgress(25, 100);
+  ProgressPage.Show;
+
+  try
+
+    ProgressPage.SetProgress(50, 100);
+    CheckPhp(SettingsPage.Values[0]);
+
+    if PhpRec.Error <> '' then
+    begin
+      UpdateErrorPage();
+      ProgressPage.SetProgress(100, 100);
+      Exit;
+    end;
+
+    ProgressPage.SetProgress(80, 100);
+    ProgressPage.SetText('Checking:', 'Environment paths');
+    CheckPath;
+
+    ProgressPage.SetProgress(100, 100)
+
+    if PathError <> '' then
+      UpdateErrorPage();
+
+  finally
+    ProgressPage.Hide;
+  end;
+
+end;
+
+
+function ShowDownloadPage(CurPageID: Integer): Boolean;
+begin
+
+  Result := True;
+
+  if GetRec.Next = NEXT_OK then
+    Exit;
+
+  ProgressPage.Caption := 'Downloading Composer';
+  ProgressPage.Description := 'Please wait';
+  ProgressPage.SetText('Downloading from {#AppUrl}...', 'composer.phar');
+  ProgressPage.SetProgress(25, 100);
+  ProgressPage.Show;
+
+  try
+    ProgressPage.SetProgress(50, 100);
+    DownloadWork;
+  finally
+    ProgressPage.Hide;
+  end;
+
+  if GetRec.Text <> '' then
+  begin
+    UpdateDownloadMsgPage;
+    Result := CurPageID = wpReady;
+  end;
+
+end;
+
+
+procedure UpdateDownloadMsgPage();
+var
+  PageStatic: TNewStaticText;
+  PageMemo: TNewMemo;
+
+begin
+
+  PageStatic := TNewStaticText(DownloadInfoPage.FindComponent('Static'));
+  PageMemo := TNewMemo(DownloadInfoPage.FindComponent('Memo'));
+
+  if GetRec.Error <> ERR_NONE then
+  begin
+
+    DownloadInfoPage.Caption := 'Composer Download Error';
+    DownloadInfoPage.Description := 'Unable to continue with installation';
+
+    if GetRec.Error = ERR_INSTALL then
+      PageStatic.Caption := 'Please review and fix the issues listed below then try again.'
+    else
+      PageStatic.Caption := 'An error occurred. Clicking Retry may resolve this issue.'
+
+  end
+  else
+  begin
+    DownloadInfoPage.Caption := 'Composer Warning';
+    DownloadInfoPage.Description := 'Please read the following information before continuing.';
+    PageStatic.Caption := 'Review the issues listed below then click Next to continue';
+  end;
+
+  PageMemo.Text := GetRec.Text;
+
+end;
+
+
+procedure UpdateErrorPage();
+var
+  Memo: TNewMemo;
+
+begin
+
+  Memo := TNewMemo(ErrorPage.FindComponent('Memo'));
+
+  if PhpRec.Error <> '' then
+  begin
+    ErrorPage.Caption := 'PHP Settings Error';
+    ErrorPage.Description := 'Composer will not work with your current settings'
+    Memo.Text := PhpRec.Error;
+  end
+  else if PathError <> '' then
+  begin
+    ErrorPage.Caption := 'Path Settings Error';
+    ErrorPage.Description := 'Setup cannot continue with your current settings'
+    Memo.Text := PathError;
+  end
+
+end;
+
+{Test page functions}
+
+procedure TestButtonClick(Sender: TObject);
+var
+  Form: TSetupForm;
+  Edit: TNewEdit;
+  Btn: TNewButton;
+
+begin
+
+  Form := CreateCustomForm();
+
+  try
+
+    Form.ClientWidth := ScaleX(256);
+    Form.ClientHeight := ScaleY(128);
+    Form.Caption := 'Enter Test Identifier';
+    Form.CenterInsideControl(WizardForm, False);
+
+    Edit := TNewEdit.Create(Form);
+    Edit.Top := ScaleY(10);
+    Edit.Left := ScaleX(10);
+    Edit.Width := Form.ClientWidth - ScaleX(2 * 10);
+    Edit.Height := ScaleY(23);
+
+    if Test <> TEST_FLAG then
+      Edit.Text := Test;
+
+    Edit.Parent := Form;
+
+    Btn := TNewButton.Create(Form);
+    Btn.Parent := Form;
+    Btn.Width := ScaleX(75);
+    Btn.Height := ScaleY(23);
+    Btn.Left := Form.ClientWidth - ScaleX(75 + 6 + 75 + 10);
+    Btn.Top := Form.ClientHeight - ScaleY(23 + 10);
+    Btn.Caption := 'OK';
+    Btn.ModalResult := mrOk;
+    Btn.Default := True;
+
+    Btn := TNewButton.Create(Form);
+    Btn.Parent := Form;
+    Btn.Width := ScaleX(75);
+    Btn.Height := ScaleY(23);
+    Btn.Left := Form.ClientWidth - ScaleX(75 + 10);
+    Btn.Top := Form.ClientHeight - ScaleY(23 + 10);
+    Btn.Caption := 'Cancel';
+    Btn.ModalResult := mrCancel;
+    Btn.Cancel := True;
+
+    Form.ActiveControl := Edit;
+
+    if Form.ShowModal() = mrOk then
+    begin
+
+      if Edit.Text <> '' then
+        Test := Edit.Text
+      else
+        Test := TEST_FLAG;
+
+      TestUpdateCaption();
+
+    end;
+
+  finally
+    Form.Free();
+  end;
+
+end;
+
+
+procedure TestClearButtonClick(Sender: TObject);
+begin
+  Test := TEST_FLAG;
+  TestUpdateCaption();
+end;
+
+
+procedure TestCreateButtons(ParentForm: TSetupForm; CancelButton: TNewButton);
+var
+  BtnTest: TNewButton;
+  BtnClear: TNewButton;
+
+begin
+
+  BtnTest := TNewButton.Create(ParentForm);
+  BtnTest.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
+  BtnTest.Top := CancelButton.Top;
+  BtnTest.Width := CancelButton.Width;
+  BtnTest.Height := CancelButton.Height;
+  BtnTest.Caption := '&Enter Test';
+  BtnTest.OnClick := @TestButtonClick;
+  BtnTest.Parent := ParentForm;
+
+  BtnClear := TNewButton.Create(ParentForm);
+  BtnClear.Name := 'BtnClear';
+  BtnClear.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
+  BtnClear.Left := BtnTest.Left + BtnTest.Width + ScaleX(10);
+  BtnClear.Top := CancelButton.Top;
+  BtnClear.Width := CancelButton.Width;
+  BtnClear.Height := CancelButton.Height;
+  BtnClear.Caption := '&Clear Test';
+  BtnClear.OnClick := @TestClearButtonClick;
+  BtnClear.Parent := ParentForm;
+  BtnClear.Enabled := False;
+
+end;
+
+
+procedure TestUpdateCaption();
+var
+  Id: String;
+  Caption: String;
+  Index: Integer;
+  Value: String;
+  ClearBtn: TNewButton;
+
+begin
+
+  Id := ' /test: ';
+  Caption := WizardForm.Caption;
+  Index := Pos(Id, WizardForm.Caption);
+  Value := '';
+
+  if Test <> TEST_FLAG then
+    Value := Id + Test;
+
+  if Index <> 0 then
+    Caption := Copy(WizardForm.Caption, 1, Index - 1);
+
+  WizardForm.Caption := Caption + Value;
+  ClearBtn := TNewButton(WizardForm.FindComponent('BtnClear'));
+  ClearBtn.Enabled := Value <> '';
 
 end;
