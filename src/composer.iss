@@ -211,13 +211,25 @@ function DebugPhp(const Line: String): Boolean; forward;
 function ExecCmd(const PhpExe, Switches: String; Show: Integer; var ExitCode: Integer): Boolean; forward;
 procedure GetCmdResults(Results: TArrayOfString; var Output: String); forward;
 function GetCommonCmdError(StatusCode, ExitCode: Integer): String; forward;
+function GetStatusText(Status: Integer): String; forward;
 function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
 function ResultIdLine(const Line: String; var S: String): Boolean; forward;
 
+{Check php functions }
+function CheckPhp(const Filename: String): Boolean; forward;
+function CheckPhpExe(const Filename: String): Boolean; forward;
+procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String); forward;
+
+{Download functions}
+procedure DownloadWork; forward;
+procedure ResetGetRec(Full: Boolean); forward;
+procedure SetDownloadCmdError(ExitCode: Integer); forward;
+procedure SetDownloadStatus(StatusCode, ExitCode: Integer); forward;
+
 {Custom page functions}
 function CreateMessagePage(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
-procedure ShowCheckPage; forward;
-function ShowDownloadPage(CurPageID: Integer): Boolean; forward;
+procedure ShowProgressCheckPage; forward;
+function ShowProgressDownloadPage(CurPageID: Integer): Boolean; forward;
 procedure UpdateDownloadMsgPage(); forward;
 procedure UpdateErrorPage(); forward;
 
@@ -235,25 +247,11 @@ procedure TestUpdateCaption(); forward;
 function GetBaseDir(Param: String): String;
 begin
 
-  // code constant function for DefaultDirName
+  // code-constant function for DefaultDirName
   if IsAdminLoggedOn then
     Result := ExpandConstant('{commonappdata}')
   else
     Result := ExpandConstant('{userpf}');
-
-end;
-
-
-procedure ResetGetRec(Full: Boolean);
-begin
-
-  GetRec.Error := ERR_NONE;
-  GetRec.Next := NEXT_NONE;
-
-  if Full then
-    GetRec.Force := False;
-
-  GetRec.Text := '';
 
 end;
 
@@ -640,401 +638,6 @@ begin
 end;
 
 
-function StatusCodeText(Status: Integer): String;
-begin
-
- case Status of
-
-  ERR_NONE: Result := 'ERR_NONE';
-  ERR_INSTALL: Result := 'ERR_INSTALL';
-  ERR_UNKNOWN: Result := 'ERR_UNKNOWN';
-  ERR_CMD: Result := 'ERR_CMD';
-  ERR_CMD_EX: Result := 'ERR_CMD_EX';
-  ERR_CMD_PHP: Result := 'ERR_CMD_PHP';
-  ERR_PHP: Result := 'ERR_PHP';
-  ERR_STATUS: Result := 'ERR_STATUS';
-  ERR_RESULT: Result := 'ERR_RESULT';
-  ERR_INVALID: Result := 'ERR_INVALID';
-  ERR_LOGIC: Result := 'ERR_LOGIC';
-  ERR_CONN: Result := 'ERR_CONN';
-  ERR_DOWNLOAD: Result := 'ERR_DOWNLOAD';
-
- end;
-
- Result := Format('[%s]', [Result]);
-
-end;
-
-
-procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String);
-var
-  Text: String;
-  Error: String;
-  Name: String;
-
-begin
-
-  Text := '';
-  Name := StatusCodeText(ErrorCode);
-
-  case ErrorCode of
-
-    ERR_CMD_PHP:
-    begin
-
-      if GetSysError(ExitCode, Filename, Error) = 0 then
-        Text := 'The PHP exe file you specified did not execute correctly: ' + Filename + LF
-      else
-        Text := Error;
-
-    end;
-
-    ERR_CMD, ERR_CMD_EX:
-      Text := GetCommonCmdError(ErrorCode, ExitCode);
-
-    ERR_STATUS, ERR_RESULT, ERR_INVALID:
-    begin
-
-      Error := Format('The PHP exe file you specified did not execute correctly: %s%s%s', [LF, Filename, LF]);
-      Error := Error + LF + 'Running it from the command line might highlight the problem.'
-
-      if ErrorCode = ERR_STATUS then
-      begin
-
-        if ExitCode = 255 then
-          Error := Error + LF + 'Use the -v switch to show the PHP version - it must be at least 5.3.2';
-
-      end;
-
-      Text := Format('Internal Error %s, exit code %d', [Name, ExitCode]);
-      Text := Error + LF + Text;
-
-    end;
-
-    ERR_LOGIC:
-    begin
-      Text := Format('An internal script did not run correctly (exit code %d)', [ExitCode]);
-      Text := Format('Internal Error %s: %s', [Name, Text]);
-    end;
-
-  else
-
-    begin
-      ErrorCode := ERR_UNKNOWN;
-      Text := Format('Internal Error %s: An unspecified error occurred', [Name]);
-    end;
-
-  end;
-
-  PhpRec.Error := Text;
-  Debug(Format('Checking php: error %s', [Name]));
-
-end;
-
-
-function CheckPhpExe(const Filename: String): Boolean;
-var
-  Show: Integer;
-  ExitCode: Integer;
-
-begin
-
-  Result := False;
-
-  {
-   * Possible errors:
-   * Php.exe error - did not run [ERR_CMD_PHP]
-  }
-
-  if Test <> '' then
-    Show := SW_SHOW
-  else
-    Show := SW_HIDE;
-
-  Result := Exec(Filename, '-v', TmpDir, Show, ewWaitUntilTerminated, ExitCode);
-
-  if not Result then
-    SetPhpError(ERR_CMD_PHP, ExitCode, Filename);
-
-end;
-
-
-function CheckPhp(const Filename: String): Boolean;
-var
-  Switches: String;
-  Show: Integer;
-  ExitCode: Integer;
-  Results: TArrayOfString;
-
-begin
-
-  Result := False;
-
-  {
-   * Possible errors:
-   * Internal error - cmd did not run [ERR_CMD]
-   * Internal error - cmd did not create output file run [ERR_CMD_EX]
-   * ExitCode: 0 - Php check passed
-   * ExitCode: 1 - Php check failed
-   * ExitCode: ? - Php program error [ERR_STATUS] (Test=p1, Test=p2)
-   * Results file, empty: [ERR_RESULT] (Test=p3)
-   * Results file, non-matching guid: [ERR_INVALID] (Test=p4)
-   * Results file, ExitCode 0, multiline [ERR_LOGIC] (test=p5)
-   * Results file, ExitCode 1, guid only [ERR_LOGIC] (test=p6)
-  }
-
-  ResetPhp;
-
-  Debug('Checking php: ' + Filename);
-
-  if not CheckPhpExe(Filename) then
-    Exit;
-
-  AddSwitch(Switches, 'php', '');
-  Show := Integer(Test <> '');
-
-  if not ExecCmd(Filename, Switches, Show, ExitCode) then
-  begin
-    SetPhpError(ERR_CMD, ExitCode, Filename);
-    Exit;
-  end;
-
-  if not LoadStringsFromFile(TmpFile.Result, Results) then
-  begin
-    SetPhpError(ERR_CMD_EX, ExitCode, Filename);
-    Exit;
-  end;
-
-  if (ExitCode <> 0) and (ExitCode <> 1) then
-  begin
-    SetPhpError(ERR_STATUS, ExitCode, Filename);
-    Exit;
-  end;
-
-  if GetArrayLength(Results) = 0 then
-  begin
-    SetPhpError(ERR_RESULT, ExitCode, Filename);
-    Exit;
-  end;
-
-  // get php version
-  if not ResultIdLine(Results[0], PhpRec.Version) then
-  begin
-    SetPhpError(ERR_INVALID, ExitCode, Filename);
-    Exit;
-  end;
-
-  GetCmdResults(Results, PhpRec.Error);
-
-  if (ExitCode = 0) and (PhpRec.Error <> '') then
-  begin
-    SetPhpError(ERR_LOGIC, ExitCode, Filename);
-    Exit;
-  end;
-
-  if (ExitCode = 1) and (PhpRec.Error = '') then
-  begin
-    SetPhpError(ERR_LOGIC, ExitCode, Filename);
-    Exit;
-  end;
-
-  PhpRec.Exe := Filename;
-
-  Result := PhpRec.Error = '';
-
-end;
-
-
-procedure SetDownloadStatus(StatusCode, ExitCode: Integer);
-var
-  Text: String;
-
-begin
-
-  Text := '';
-  ResetGetRec(True);
-
-  case StatusCode of
-
-    ERR_NONE: GetRec.Next := NEXT_OK;
-
-    ERR_INSTALL: GetRec.Next := NEXT_NONE;
-
-    ERR_CMD, ERR_CMD_EX:
-    begin
-      GetRec.Next := NEXT_RETRY;
-      Text := GetCommonCmdError(StatusCode, ExitCode);
-    end;
-
-    ERR_PHP:
-    begin
-      GetRec.Next := NEXT_RETRY;
-      Text := 'Internal Error [ERR_PHP]: An internal script did not run correctly';
-    end;
-
-    ERR_STATUS:
-    begin
-      GetRec.Next := NEXT_RETRY;
-      GetRec.Force := True;
-      Text := Format('Composer Error [ERR_STATUS]: Unexpected exit code from Composer (%d)', [ExitCode]);
-     end;
-
-    ERR_DOWNLOAD:
-    begin
-      GetRec.Next := NEXT_RETRY;
-      GetRec.Force := True;
-      Text := 'Composer Error [ERR_DOWNLOAD]: Composer was not downloaded';
-    end;
-
-    ERR_INVALID:
-    begin
-      GetRec.Next := NEXT_RETRY;
-      GetRec.Force := True;
-      Text := 'Composer Error [ERR_INVALID]: The installer script did not run correctly';
-    end;
-
-    ERR_CONN:
-    begin
-      GetRec.Next := NEXT_RETRY;
-      GetRec.Force := True;
-      Text := 'Connection Error [ERR_CONNECTION]: Unable to connect to {#AppUrl}';
-    end;
-
-  else
-
-    begin
-      StatusCode := ERR_UNKNOWN;
-      GetRec.Next := NEXT_RETRY;
-      Text := 'Internal Error [ERR_UNKNOWN]: An unspecified error occurred';
-    end;
-
-  end;
-
-  GetRec.Error := StatusCode;
-  GetRec.Text := Text;
-
-end;
-
-
-procedure SetDownloadCmdError(ExitCode: Integer);
-var
-  Error: String;
-  Text: String;
-
-begin
-
-  SetDownloadStatus(ERR_CMD, ExitCode);
-
-  if GetSysError(ExitCode, CmdExe, Error) = 0 then
-    Text := Error + CmdExe
-  else
-    Text := Error;
-
-  GetRec.Text := GetRec.Text + Text;
-
-end;
-
-
-procedure DownloadWork;
-var
-  Switches: String;
-  ExitCode: Integer;
-  Results: TArrayOfString;
-
-begin
-
-  {
-   * Possible errors:
-   * Internal error - cmd did not run [ERR_CMD]
-   * Internal error - cmd did not create output file [ERR_CMD_EX]
-   * ExitCode: 0 - Installed, no warnings [ERR_NONE]
-   * ExitCode: 0 - Installed, warnings [ERR_NONE] (Test=d1)
-   * ExitCode: 1 - Not Installed, errors [ERR_INSTALL] (Test=d2)
-   * ExitCode: 2 - Php script did not run properly [ERR_PHP] (Test=d3)
-   * ExitCode: 3 - Connection error of some sort [ERR_CONNECTION] (Test=d4) (Test=d5)
-   * ExitCode: ? - Unexpected exit code from Composer, didn't return 0 or 1 [ERR_STATUS] (Test=d6)
-   * ExitCode: 0 - No composer.phar downloaded [ERR_DOWNLOAD] (Test=d7)
-   * ExitCode: 1 - No errors reported by Composer [ERR_INVALID] (Test=d8)
-  }
-
-  Debug('Downloading from {#AppUrl}');
-
-  AddSwitch(Switches, 'download', '');
-
-  if GetRec.Force then
-    AddSwitch(Switches, 'force', '');
-
-  if not ExecCmd(PhpRec.Exe, Switches, SW_HIDE, ExitCode) then
-  begin
-    SetDownloadCmdError(ExitCode);
-    Exit;
-  end;
-
-  if not LoadStringsFromFile(TmpFile.Result, Results) then
-  begin
-    SetDownloadStatus(ERR_CMD_EX, ExitCode);
-    Exit;
-  end;
-
-  // the following checks all exit
-  if ExitCode = 0 then
-  begin
-
-    if not FileExists(TmpDir + '\composer.phar') then
-    begin
-      SetDownloadStatus(ERR_DOWNLOAD, ExitCode);
-      Exit;
-    end;
-
-  end
-  else if ExitCode = 2 then
-  begin
-    SetDownloadStatus(ERR_PHP, ExitCode);
-    Exit;
-  end
-  else if ExitCode = 3 then
-  begin
-    SetDownloadStatus(ERR_CONN, ExitCode);
-    AddLine(GetRec.Text, '');
-    GetCmdResults(Results, GetRec.Text);
-    Exit;
-  end
-  else if ExitCode <> 1 then
-  begin
-    SetDownloadStatus(ERR_STATUS, ExitCode);
-    Exit;
-  end;
-
-  // must set status now
-  if ExitCode = 0 then
-    SetDownloadStatus(ERR_NONE, ExitCode)
-  else
-    SetDownloadStatus(ERR_INSTALL, ExitCode);
-
-  if GetArrayLength(Results) = 0 then
-  begin
-
-    // no output, check that we are not expecting errors
-    if ExitCode = 1 then
-      SetDownloadStatus(ERR_INVALID, ExitCode);
-
-    Exit;
-
-  end;
-
-  GetCmdResults(Results, GetRec.Text);
-  GetRec.Text := Trim(GetRec.Text);
-
-  // final check
-  if (ExitCode = 1) and (GetRec.Text = '') then
-    SetDownloadStatus(ERR_INVALID, ExitCode);
-
-  if GetRec.Text <> '' then
-    AddLine(GetRec.Text, '');
-
-end;
-
-
 function CheckAlreadyInstalled: Boolean;
 var
   Uninstaller: String;
@@ -1218,13 +821,23 @@ begin
       Result := False;
     end
     else
-      ShowCheckPage();
+      ShowProgressCheckPage();
 
   end
   else if CurPageID = wpReady then
-    Result := ShowDownloadPage(CurPageID)
+  begin
+    
+    // start the download
+    Result := ShowProgressDownloadPage(CurPageID);
+
+  end
   else if CurPageID = Pages.DownloadMsg.ID then
-    Result := ShowDownloadPage(CurPageID);
+  begin
+    
+    // the next button has been re-labelled Retry, so we download again
+    Result := ShowProgressDownloadPage(CurPageID);
+
+  end;
 
 end;
 
@@ -1234,7 +847,12 @@ begin
   Result := True;
 
   if CurPageID = Pages.DownloadMsg.ID then
+  begin
+    
+    // we are going back to wpReady
     ResetGetRec(False);
+
+  end;
 
 end;
 
@@ -1467,18 +1085,48 @@ end;
 function GetCommonCmdError(StatusCode, ExitCode: Integer): String;
 var
   Error: String;
-
+  Name: String;
+  
 begin
 
   Result := '';
 
+  Name := GetStatusText(StatusCode);
+
   if StatusCode = ERR_CMD then
-  begin
-    GetSysError(ExitCode, CmdExe, Error);
-    Result := 'Internal Error [ERR_CMD]: ' + Error;
-  end
-  else if StatusCode = ERR_CMD_EX then
-    Result := 'Internal Error [ERR_CMDEX]: A command did not run correctly';
+    GetSysError(ExitCode, CmdExe, Error)
+  else
+    Error := 'A command did not run correctly'; 
+
+  Result := Format('Internal Error %s: ', [Name]) + Error;
+
+end;
+
+
+function GetStatusText(Status: Integer): String;
+begin
+
+ case Status of
+
+  ERR_NONE: Result := 'ERR_NONE';
+  ERR_INSTALL: Result := 'ERR_INSTALL';
+  ERR_UNKNOWN: Result := 'ERR_UNKNOWN';
+  ERR_CMD: Result := 'ERR_CMD';
+  ERR_CMD_EX: Result := 'ERR_CMD_EX';
+  ERR_CMD_PHP: Result := 'ERR_CMD_PHP';
+  ERR_PHP: Result := 'ERR_PHP';
+  ERR_STATUS: Result := 'ERR_STATUS';
+  ERR_RESULT: Result := 'ERR_RESULT';
+  ERR_INVALID: Result := 'ERR_INVALID';
+  ERR_LOGIC: Result := 'ERR_LOGIC';
+  ERR_CONN: Result := 'ERR_CONN';
+  ERR_DOWNLOAD: Result := 'ERR_DOWNLOAD';
+
+ else
+    Result := 'ERR_UNKNOWN';
+ end;
+
+ Result := Format('[%s]', [Result]);
 
 end;
 
@@ -1508,6 +1156,394 @@ begin
   end;
 
 end;
+
+
+{Check php functions}
+
+function CheckPhp(const Filename: String): Boolean;
+var
+  Switches: String;
+  Show: Integer;
+  ExitCode: Integer;
+  Results: TArrayOfString;
+
+begin
+
+  Result := False;
+
+  {
+   * Possible errors:
+   * Internal error - cmd did not run [ERR_CMD]
+   * Internal error - cmd did not create output file run [ERR_CMD_EX]
+   * ExitCode: 0 - Php check passed
+   * ExitCode: 1 - Php check failed
+   * ExitCode: ? - Php program error [ERR_STATUS] (Test=p1, Test=p2)
+   * Results file, empty: [ERR_RESULT] (Test=p3)
+   * Results file, non-matching guid: [ERR_INVALID] (Test=p4)
+   * Results file, ExitCode 0, multiline [ERR_LOGIC] (test=p5)
+   * Results file, ExitCode 1, guid only [ERR_LOGIC] (test=p6)
+  }
+
+  ResetPhp;
+
+  Debug('Checking php: ' + Filename);
+
+  if not CheckPhpExe(Filename) then
+    Exit;
+
+  AddSwitch(Switches, 'php', '');
+  Show := Integer(Test <> '');
+
+  if not ExecCmd(Filename, Switches, Show, ExitCode) then
+  begin
+    SetPhpError(ERR_CMD, ExitCode, Filename);
+    Exit;
+  end;
+
+  if not LoadStringsFromFile(TmpFile.Result, Results) then
+  begin
+    SetPhpError(ERR_CMD_EX, ExitCode, Filename);
+    Exit;
+  end;
+
+  if (ExitCode <> 0) and (ExitCode <> 1) then
+  begin
+    SetPhpError(ERR_STATUS, ExitCode, Filename);
+    Exit;
+  end;
+
+  if GetArrayLength(Results) = 0 then
+  begin
+    SetPhpError(ERR_RESULT, ExitCode, Filename);
+    Exit;
+  end;
+
+  // get php version
+  if not ResultIdLine(Results[0], PhpRec.Version) then
+  begin
+    SetPhpError(ERR_INVALID, ExitCode, Filename);
+    Exit;
+  end;
+
+  GetCmdResults(Results, PhpRec.Error);
+
+  if (ExitCode = 0) and (PhpRec.Error <> '') then
+  begin
+    SetPhpError(ERR_LOGIC, ExitCode, Filename);
+    Exit;
+  end;
+
+  if (ExitCode = 1) and (PhpRec.Error = '') then
+  begin
+    SetPhpError(ERR_LOGIC, ExitCode, Filename);
+    Exit;
+  end;
+
+  PhpRec.Exe := Filename;
+
+  Result := PhpRec.Error = '';
+
+end;
+
+
+function CheckPhpExe(const Filename: String): Boolean;
+var
+  Show: Integer;
+  ExitCode: Integer;
+
+begin
+
+  Result := False;
+
+  {
+   * Possible errors:
+   * Php.exe error - did not run [ERR_CMD_PHP]
+  }
+
+  if Test <> '' then
+    Show := SW_SHOW
+  else
+    Show := SW_HIDE;
+
+  Result := Exec(Filename, '-v', TmpDir, Show, ewWaitUntilTerminated, ExitCode);
+
+  if not Result then
+    SetPhpError(ERR_CMD_PHP, ExitCode, Filename);
+
+end;
+
+
+procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String);
+var
+  Text: String;
+  Error: String;
+  Name: String;
+
+begin
+
+  Text := '';
+  Name := GetStatusText(ErrorCode);
+
+  case ErrorCode of
+
+    ERR_CMD_PHP:
+    begin
+
+      if GetSysError(ExitCode, Filename, Error) = 0 then
+        Text := 'The PHP exe file you specified did not execute correctly: ' + Filename + LF
+      else
+        Text := Error;
+
+    end;
+
+    ERR_CMD, ERR_CMD_EX:
+      Text := GetCommonCmdError(ErrorCode, ExitCode);
+
+    ERR_STATUS, ERR_RESULT, ERR_INVALID:
+    begin
+
+      Error := Format('The PHP exe file you specified did not execute correctly: %s%s%s', [LF, Filename, LF]);
+      Error := Error + LF + 'Running it from the command line might highlight the problem.'
+
+      if ErrorCode = ERR_STATUS then
+      begin
+
+        if ExitCode = 255 then
+          Error := Error + LF + 'Use the -v switch to show the PHP version - it must be at least 5.3.2';
+
+      end;
+
+      Text := Format('Internal Error %s, exit code %d', [Name, ExitCode]);
+      Text := Error + LF + Text;
+
+    end;
+
+    ERR_LOGIC:
+    begin
+      Text := Format('An internal script did not run correctly (exit code %d)', [ExitCode]);
+      Text := Format('Internal Error %s: %s', [Name, Text]);
+    end;
+
+  else
+
+    begin
+      ErrorCode := ERR_UNKNOWN;
+      Text := Format('Internal Error %s: An unspecified error occurred', [Name]);
+    end;
+
+  end;
+
+  PhpRec.Error := Text;
+  Debug(Format('Checking php: error %s', [Name]));
+
+end;
+
+
+{Download functions}
+
+procedure DownloadWork;
+var
+  Switches: String;
+  ExitCode: Integer;
+  Results: TArrayOfString;
+
+begin
+
+  {
+   * Possible errors:
+   * Internal error - cmd did not run [ERR_CMD]
+   * Internal error - cmd did not create output file [ERR_CMD_EX]
+   * ExitCode: 0 - Installed, no warnings [ERR_NONE]
+   * ExitCode: 0 - Installed, warnings [ERR_NONE] (Test=d1)
+   * ExitCode: 1 - Not Installed, errors [ERR_INSTALL] (Test=d2)
+   * ExitCode: 2 - Php script did not run properly [ERR_PHP] (Test=d3)
+   * ExitCode: 3 - Connection error of some sort [ERR_CONNECTION] (Test=d4) (Test=d5)
+   * ExitCode: ? - Unexpected exit code from Composer, didn't return 0 or 1 [ERR_STATUS] (Test=d6)
+   * ExitCode: 0 - No composer.phar downloaded [ERR_DOWNLOAD] (Test=d7)
+   * ExitCode: 1 - No errors reported by Composer [ERR_INVALID] (Test=d8)
+  }
+
+  Debug('Downloading from {#AppUrl}');
+
+  AddSwitch(Switches, 'download', '');
+
+  if GetRec.Force then
+    AddSwitch(Switches, 'force', '');
+
+  if not ExecCmd(PhpRec.Exe, Switches, SW_HIDE, ExitCode) then
+  begin
+    SetDownloadCmdError(ExitCode);
+    Exit;
+  end;
+
+  if not LoadStringsFromFile(TmpFile.Result, Results) then
+  begin
+    SetDownloadStatus(ERR_CMD_EX, ExitCode);
+    Exit;
+  end;
+
+  // the following checks all exit
+  if ExitCode = 0 then
+  begin
+
+    if not FileExists(TmpDir + '\composer.phar') then
+    begin
+      SetDownloadStatus(ERR_DOWNLOAD, ExitCode);
+      Exit;
+    end;
+
+  end
+  else if ExitCode = 2 then
+  begin
+    SetDownloadStatus(ERR_PHP, ExitCode);
+    Exit;
+  end
+  else if ExitCode = 3 then
+  begin
+    SetDownloadStatus(ERR_CONN, ExitCode);
+    AddLine(GetRec.Text, '');
+    GetCmdResults(Results, GetRec.Text);
+    Exit;
+  end
+  else if ExitCode <> 1 then
+  begin
+    SetDownloadStatus(ERR_STATUS, ExitCode);
+    Exit;
+  end;
+
+  // must set status now
+  if ExitCode = 0 then
+    SetDownloadStatus(ERR_NONE, ExitCode)
+  else
+    SetDownloadStatus(ERR_INSTALL, ExitCode);
+
+  if GetArrayLength(Results) = 0 then
+  begin
+
+    // no output, check that we are not expecting errors
+    if ExitCode = 1 then
+      SetDownloadStatus(ERR_INVALID, ExitCode);
+
+    Exit;
+
+  end;
+
+  GetCmdResults(Results, GetRec.Text);
+  GetRec.Text := Trim(GetRec.Text);
+
+  // final check
+  if (ExitCode = 1) and (GetRec.Text = '') then
+    SetDownloadStatus(ERR_INVALID, ExitCode);
+
+  if GetRec.Text <> '' then
+    AddLine(GetRec.Text, '');
+
+end;
+
+
+procedure ResetGetRec(Full: Boolean);
+begin
+
+  GetRec.Error := ERR_NONE;
+  GetRec.Next := NEXT_NONE;
+
+  if Full then
+    GetRec.Force := False;
+
+  GetRec.Text := '';
+
+end;
+
+
+procedure SetDownloadCmdError(ExitCode: Integer);
+var
+  Error: String;
+  Text: String;
+
+begin
+
+  SetDownloadStatus(ERR_CMD, ExitCode);
+
+  if GetSysError(ExitCode, CmdExe, Error) = 0 then
+    Text := Error + CmdExe
+  else
+    Text := Error;
+
+  GetRec.Text := GetRec.Text + Text;
+
+end;
+
+
+procedure SetDownloadStatus(StatusCode, ExitCode: Integer);
+var
+  Text: String;
+
+begin
+
+  Text := '';
+  ResetGetRec(True);
+
+  case StatusCode of
+
+    ERR_NONE: GetRec.Next := NEXT_OK;
+
+    ERR_INSTALL: GetRec.Next := NEXT_NONE;
+
+    ERR_CMD, ERR_CMD_EX:
+    begin
+      GetRec.Next := NEXT_RETRY;
+      Text := GetCommonCmdError(StatusCode, ExitCode);
+    end;
+
+    ERR_PHP:
+    begin
+      GetRec.Next := NEXT_RETRY;
+      Text := 'Internal Error [ERR_PHP]: An internal script did not run correctly';
+    end;
+
+    ERR_STATUS:
+    begin
+      GetRec.Next := NEXT_RETRY;
+      GetRec.Force := True;
+      Text := Format('Composer Error [ERR_STATUS]: Unexpected exit code from Composer (%d)', [ExitCode]);
+     end;
+
+    ERR_DOWNLOAD:
+    begin
+      GetRec.Next := NEXT_RETRY;
+      GetRec.Force := True;
+      Text := 'Composer Error [ERR_DOWNLOAD]: Composer was not downloaded';
+    end;
+
+    ERR_INVALID:
+    begin
+      GetRec.Next := NEXT_RETRY;
+      GetRec.Force := True;
+      Text := 'Composer Error [ERR_INVALID]: The installer script did not run correctly';
+    end;
+
+    ERR_CONN:
+    begin
+      GetRec.Next := NEXT_RETRY;
+      GetRec.Force := True;
+      Text := 'Connection Error [ERR_CONNECTION]: Unable to connect to {#AppUrl}';
+    end;
+
+  else
+
+    begin
+      StatusCode := ERR_UNKNOWN;
+      GetRec.Next := NEXT_RETRY;
+      Text := 'Internal Error [ERR_UNKNOWN]: An unspecified error occurred';
+    end;
+
+  end;
+
+  GetRec.Error := StatusCode;
+  GetRec.Text := Text;
+
+end;
+
 
 {Custom page functions}
 
@@ -1542,7 +1578,7 @@ begin
 end;
 
 
-procedure ShowCheckPage;
+procedure ShowProgressCheckPage;
 begin
 
   Pages.Progress.Caption := 'Checking your settings';
@@ -1574,7 +1610,7 @@ begin
 end;
 
 
-function ShowDownloadPage(CurPageID: Integer): Boolean;
+function ShowProgressDownloadPage(CurPageID: Integer): Boolean;
 begin
 
   Result := True;
