@@ -35,24 +35,24 @@ begin
 
   Result := False;
 
-  // NormalizePath UNC expands the path and removes any trailing backslash
+  {NormalizePath UNC expands the path and removes any trailing backslash}
   SafeDirectory := NormalizePath(Value);
 
-  // we exit if NormalizePath failed and/or we have no value
+  {we exit if NormalizePath failed and/or we have no value}
   if SafeDirectory = '' then
     Exit;
 
-  // get a list of normalized path entries
+  {get a list of normalized path entries}
   SafeList := GetSafePathList(Hive);
 
-  // see if our directory is already in the path
+  {see if our directory is already in the path}
   if DirectoryInPath(SafeDirectory, SafeList) then
   begin
     Result := True;
     Exit;
   end;
 
-  // get the current path values from registry
+  {get the current path values from registry}
   Key := GetPathKeyForHive(Hive);
   Path := '';
   RegQueryStringValue(Hive, Key, 'PATH', Path);
@@ -60,14 +60,14 @@ begin
   Debug(Format('Adding %s to %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
   Debug('Path before: ' + Path);
 
-  // add trailing separator to path if required
+  {add trailing separator to path if required}
   if (Path <> '') and (Path[Length(Path)] <> ';') then
     Path := Path + ';';
 
-  // add our new value to the path
+  {add our new value to the path}
   Path := Path + SafeDirectory;
 
-  // add a trailing separator if required
+  {add a trailing separator if required}
   if NeedsTrailingSeparator then
     Path := Path + ';';
 
@@ -95,47 +95,47 @@ begin
 
   Result := False;
 
-  // NormalizePath UNC expands the path and removes any trailing backslash
+  {NormalizePath UNC expands the path and removes any trailing backslash}
   SafeDirectory := NormalizePath(Value);
 
-  // we exit if NormalizePath failed
+  {we exit if NormalizePath failed}
   if SafeDirectory = '' then
     Exit;
 
-  // paranoid check to make sure we are not removing a system path - should not happen
+  {paranoid check to make sure we are not removing a system path - should not happen}
   if Pos(AnsiLowercase(GetSystemDir()), AnsiLowercase(SafeDirectory)) = 1 then
     Exit;
 
-  // get the current path values from registry
+  {get the current path values from registry}
   Key := GetPathKeyForHive(Hive);
   CurrentPath := '';
 
-  // if we fail, we have not got any
+  {if we fail, we have not got any}
   if not RegQueryStringValue(Hive, Key, 'PATH', CurrentPath) then
     Exit;
 
   Debug(Format('Removing %s from %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
   Debug('Path before: ' + CurrentPath);
 
-  // split current path into a list of raw entries
+  {split current path into a list of raw entries}
   RawList := SplitPath(CurrentPath);
   NewPath := '';
 
   for I := 0 to GetArrayLength(RawList) - 1 do
   begin
 
-    // normalize each raw entry - will be blank if we cannot expand it
+    {normalize each raw entry - will be blank if we cannot expand it}
     SafePath := NormalizePath(RawList[I]);
 
-    // add each raw entry if normalize failed or if it does not match the directory we are removing
+    {add each raw entry if normalize failed or if it does not match the directory we are removing}
     if (SafePath = '') or (CompareText(SafePath, SafeDirectory) <> 0) then
     begin
 
-      // add separator if required
+      {add separator if required}
       if NewPath <> '' then
         NewPath := NewPath + ';';
 
-      // important to add RAW value
+      {important to add RAW value}
       NewPath := NewPath + RawList[I];
 
     end;
@@ -143,10 +143,10 @@ begin
   end;
 
   if (NewPath = '') and (Hive = HKEY_CURRENT_USER) then
-    // we have an empty User PATH, so we can delete the subkey
+    {we have an empty User PATH, so we can delete the subkey}
     Result := RegDeleteValue(Hive, Key, 'PATH')
   else
-    // write the new path (could be empty for HKEY_LOCAL_MACHINE)
+    {write the new path (could be empty for HKEY_LOCAL_MACHINE)}
     Result := RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
 
   if not Result then
@@ -233,7 +233,7 @@ begin
   Path := Trim(Value);
   StringChangeEx(Path, '/', '\', True);
 
-  // see if we have any %variables%
+  {see if we have any %variables%}
   if Pos('%', Path) <> 0 then
   begin
 
@@ -252,7 +252,7 @@ begin
 
   end;
 
-  // check that we are a suitable path to expand, or a UNC name (not a complete check)
+  {check that we are a suitable path to expand, or a UNC name (not a complete check)}
   if (Length(Path) >= 3) and (Path[2] = ':') and (Uppercase(Path[1]) >= 'A') and (Uppercase(Path[1]) <= 'Z') then
     Path := ExpandUNCFileName(Path)
   else if (Length(Path) < 3) or (Pos('\\', Path) <> 1) then
@@ -392,7 +392,7 @@ begin
 
   Debug('Calling NotifyPathChange');
 
-  // WM_SETTINGCHANGE = $1A; SMTO_ABORTIFHUNG = $2;
+  {WM_SETTINGCHANGE = $1A; SMTO_ABORTIFHUNG = $2;}
   SendMessageTimeout(HWND_BROADCAST, $1A, 0, 'Environment', $2, 3000, Res);
 
 end;

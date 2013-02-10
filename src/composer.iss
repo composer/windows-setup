@@ -215,7 +215,7 @@ function GetStatusText(Status: Integer): String; forward;
 function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
 function ResultIdLine(const Line: String; var S: String): Boolean; forward;
 
-{Check php functions }
+{Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(const Filename: String): Boolean; forward;
 procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String); forward;
@@ -247,7 +247,7 @@ procedure TestUpdateCaption(); forward;
 function GetBaseDir(Param: String): String;
 begin
 
-  // code-constant function for DefaultDirName
+  {code-constant function for DefaultDirName}
   if IsAdminLoggedOn then
     Result := ExpandConstant('{commonappdata}')
   else
@@ -432,7 +432,7 @@ begin
       S := S + 'You must remove it first, if you want to continue this installation.' + LF;
     end;
 
-    // we only set Installed to true
+    {we only set Installed to true}
     Installed := True;
 
   end;
@@ -596,7 +596,7 @@ begin
 
       Error := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
 
-      // remove php path in the unlikely event we have just added it
+      {remove php path in the unlikely event we have just added it}
       if Flags.PathChanged then
       begin
         RemoveFromPath(Flags.AddPhp.Hive, Flags.AddPhp.Path);
@@ -774,7 +774,7 @@ begin
   else if CurPageID = wpPreparing then
   begin
 
-    // only shown for a major error
+    {only shown for a major error}
     WizardForm.BackButton.Enabled := False;
 
   end
@@ -827,14 +827,14 @@ begin
   else if CurPageID = wpReady then
   begin
     
-    // start the download
+    {start the download}
     Result := ShowProgressDownloadPage(CurPageID);
 
   end
   else if CurPageID = Pages.DownloadMsg.ID then
   begin
     
-    // the next button has been re-labelled Retry, so we download again
+    {the next button has been re-labelled Retry, so we download again}
     Result := ShowProgressDownloadPage(CurPageID);
 
   end;
@@ -849,7 +849,9 @@ begin
   if CurPageID = Pages.DownloadMsg.ID then
   begin
     
-    // we are going back to wpReady
+    {We are going back to wpReady, so we need to clear the Retry button flag
+      and any errors. However we need to keep the force flag which affects
+      if composer.phar is is redownloaded or not.}
     ResetGetRec(False);
 
   end;
@@ -860,7 +862,8 @@ end;
 procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
 begin
 
-  // remove cancel confirmation where it is not necessary
+  {remove cancel confirmation on pages where it is not necessary}
+
   case CurPageID of
     wpWelcome: Confirm := False;
     Pages.Error.ID: Confirm := False;
@@ -880,7 +883,7 @@ begin
 
   S := MemoDirInfo;
 
-  // this line left over from Start Menu days. Do not remove yet
+  {this line left over from Start Menu days. Do not remove yet}
   if (MemoGroupInfo <> '') and not Flags.Installed then
     S := S + NewLine + NewLine + MemoGroupInfo;
 
@@ -955,7 +958,7 @@ begin
   if CurUninstallStep = usUninstall then
   begin
 
-    // we must call this here, or the dll and app dir will not be deleted
+    {we must call this here, or the dll and app dir will not be deleted}
     UserDataDelete();
 
     SetPathRec(Rec, ExpandConstant('{app}\bin'));
@@ -1043,7 +1046,7 @@ begin
   if Pos('/LOG', GetCmdTail) <> 0 then
     AddSwitch(Args, 'debug', '');
 
-  // we must not quote Args since they are quoted individually
+  {we must not quote Args since they are quoted individually}
   Params := Format('/c "%s %s %s > %s"', [AddQuotes(PhpExe), AddQuotes(TmpFile.Setup), Args, AddQuotes(TmpFile.Result)]);
   Debug('Calling cmd.exe with params: ' + Params);
   Result := Exec(CmdExe, Params, TmpDir, Show, ewWaitUntilTerminated, ExitCode);
@@ -1066,11 +1069,11 @@ begin
 
     Line := Results[I];
 
-    // filter any initial empty output
+    {filter any initial empty output}
     if (Output = '') and (Trim(Line) = '') then
       Continue;
 
-    // filter any shebang
+    {filter any shebang}
     if Pos('#!', TrimLeft(Line)) = 1 then
       Continue;
 
@@ -1218,7 +1221,7 @@ begin
     Exit;
   end;
 
-  // get php version
+  {get php version}
   if not ResultIdLine(Results[0], PhpRec.Version) then
   begin
     SetPhpError(ERR_INVALID, ExitCode, Filename);
@@ -1382,7 +1385,7 @@ begin
     Exit;
   end;
 
-  // the following checks all exit
+  {the following checks all exit codes}
   if ExitCode = 0 then
   begin
 
@@ -1411,7 +1414,7 @@ begin
     Exit;
   end;
 
-  // must set status now
+  {we must set status now}
   if ExitCode = 0 then
     SetDownloadStatus(ERR_NONE, ExitCode)
   else
@@ -1420,7 +1423,7 @@ begin
   if GetArrayLength(Results) = 0 then
   begin
 
-    // no output, check that we are not expecting errors
+    {no output, check that we are not expecting errors}
     if ExitCode = 1 then
       SetDownloadStatus(ERR_INVALID, ExitCode);
 
@@ -1431,7 +1434,7 @@ begin
   GetCmdResults(Results, GetRec.Text);
   GetRec.Text := Trim(GetRec.Text);
 
-  // final check
+  {final check}
   if (ExitCode = 1) and (GetRec.Text = '') then
     SetDownloadStatus(ERR_INVALID, ExitCode);
 

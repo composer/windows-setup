@@ -66,7 +66,7 @@ begin
       UserDeleteData(List, DllData);
 
   finally
-    // important to unload dll, or it will not be deleted
+    {important to unload dll, or it will not be deleted}
     UnloadDLL(DllData);
   end;
 
@@ -81,7 +81,7 @@ var
 
 begin
 
-  // add current user as first item
+  {add current user as first item}
   SetArrayLength(List, 1);
   List[0].User := GetUserNameString;
   List[0].Home := ExpandConstant('{userappdata}\Composer');
@@ -90,7 +90,7 @@ begin
   if IsAdminLoggedOn then
     UserGetFolders(List);
 
-  // see if paths exist and add records to Result
+  {see if paths exist and add records to Result}
   for I := 0 to GetArrayLength(List) - 1 do
   begin
 
@@ -102,17 +102,17 @@ begin
     else
     begin
 
-      // if admin and bin dir exists, a user has an older setup of Composer installed
+      {if admin and bin dir exists, a user has an older setup of Composer installed}
       if IsAdminLoggedOn and (DirExists(List[I].Home + '\bin'))  then
         Continue;
 
-      // see if we have any user-defined caches in config
+      {see if we have any user-defined caches in config}
       if UserDefinedCache(List[I]) then
       begin
 
         List[I].Other := True;
 
-        // we don't delete Home config data
+        {we don't delete Home config data}
         List[I].Home := '';
 
       end;
@@ -165,11 +165,11 @@ begin
 
   SystemDir := AnsiLowercase(GetSystemDir());
 
-  // check profile paths and add suffixes
+  {check profile paths and add suffixes}
   for I := 0 to GetArrayLength(Accounts) - 1 do
   begin
 
-    // ignore current user - first item in List
+    {ignore current user - first item in List}
     if CompareText(List[0].User, Accounts[I].User) = 0 then
       Continue;
 
@@ -214,7 +214,7 @@ begin
   if not (Exec(Cmd, Params, TmpDir, 0, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
     Exit;
 
-   // we use TStringList because this handles the BOM produced in the output file
+  {we use TStringList because this handles the BOM produced in the output file}
   SList := TStringList.Create();
 
   try
@@ -231,13 +231,13 @@ begin
 
       Line := Trim(SList.Strings[I]);
 
-      // check and strip FALSE (ie not disabled)
+      {check and strip FALSE (ie not disabled)}
       if Pos('FALSE', Line) = 1 then
         Line := TrimLeft(Copy(Line, 6, MaxInt))
       else
         Continue;
 
-      // check for relevant SID
+      {check for relevant SID}
       P := Pos(SID_START, Line);
 
       if P > 0 then
@@ -413,7 +413,7 @@ begin
     if DirExists(Location) then
     begin
 
-      // check if Location is on a different path from default
+      {check if Location is on a different path from default}
       if Pos(AnsiLowercase(Rec.Cache), AnsiLowercase(Location)) <> 1 then
       begin
         Result := True;
@@ -441,7 +441,7 @@ begin
   Result := False;
   Location := '';
 
-  // check quoted Key
+  {check quoted Key}
   Key := '"' + Key + '"';
   P := Pos(Key, Json);
 
@@ -450,25 +450,25 @@ begin
 
   Json := TrimLeft(Copy(Json, P + Length(Key), MaxInt));
 
-  // check colon
+  {check colon}
   if Json[1] = ':' then
     Json := TrimLeft(Copy(Json, 2, MaxInt))
   else
     Exit;
 
-  // check opening double-quote
+  {check opening double-quote}
   if Json[1] = '"' then
     Json := TrimLeft(Copy(Json, 2, MaxInt))
   else
     Exit;
 
-  // check closing double-quote
+  {check closing double-quote}
   P := Pos('"', Json);
 
   if P <> 0 then
   begin
     Location := Copy(Json, 1, P - 1);
-    // important to return backslashes in path
+    {important to return backslashes in path}
     StringChangeEx(Location, '/', '\', True);
   end;
 
@@ -510,7 +510,7 @@ begin
     else
       Debug('Failed to delete user data');
 
-    // update uninstall form so it repaints
+    {update uninstall form so it repaints}
     Sleep(10);
     UninstallProgressForm.Update;
 
@@ -541,12 +541,12 @@ begin
 
   Debug('User data found, showing Delete User Data form');
 
-  // create the form
+  {create the form}
   Form := UserDataCreateForm();
 
   try
 
-    // populate the listbox
+    {populate the listbox}
     ListBox := TNewCheckListBox(Form.FindComponent('List'));
     UserDefined := False;
 
@@ -578,7 +578,7 @@ begin
 
     end;
 
-    // update Note text if we have user-defined caches
+    {update Note text if we have user-defined caches}
     if UserDefined then
     begin
       S := ' Configuration and cache data must be deleted manually for user-defined caches.';
@@ -586,12 +586,12 @@ begin
       Note.Caption := Note.Caption + S;
     end;
 
-    // show the form
+    {show the form}
     Form.ShowModal();
 
     UserChecked := 0;
 
-    // transfer checked items to Delete field
+    {transfer checked items to Delete field}
     for I := 0 to ListBox.Items.Count - 1 do
     begin
 
