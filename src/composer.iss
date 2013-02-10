@@ -37,7 +37,7 @@ PrivilegesRequired=none
 AllowCancelDuringInstall=false
 
 ; directory stuff
-DefaultDirName={commonappdata}\Composer
+DefaultDirName={code:GetBaseDir}\Composer
 DisableDirPage=yes
 AppendDefaultDirName=no
 DirExistsWarning=no
@@ -201,6 +201,17 @@ procedure Debug(const Message: String); forward;
 
 #include "paths.iss"
 #include "userdata.iss"
+
+
+function GetBaseDir(Param: String): String;
+begin
+
+  if IsAdminLoggedOn then
+    Result := ExpandConstant('{commonappdata}')
+  else
+    Result := ExpandConstant('{userpf}');
+
+end;
 
 
 procedure Debug(const Message: String);
@@ -407,23 +418,6 @@ begin
 end;
 
 
-function GetAppDir(): String;
-begin
-
-  if IsAdminLoggedOn then
-    Result := ExpandConstant('{commonappdata}\Composer')
-  else
-    Result := ExpandConstant('{userpf}\Composer');
-
-end;
-
-
-function GetInstallDir(const AppDir: String): String;
-begin
-  Result := AddBackslash(AppDir) + 'bin';
-end;
-
-
 procedure InitRecordsFromPath;
 var
   Info: TPathInfo;
@@ -529,7 +523,7 @@ begin
 
   Debug('Checking for composer path');
 
-  BinPath := GetInstallDir(WizardDirValue);
+  BinPath := AddBackslash(WizardDirValue) + 'bin';
 
   if (Info.Bat.Path = '') and (Info.Shell.Path = '') then
   begin
@@ -1543,8 +1537,6 @@ end;
 
 procedure InitializeWizard;
 begin
-
-  WizardForm.DirEdit.Text := GetAppDir();
 
   ProgressPage := CreateOutputProgressPage('', '');
   ProgressPage.ProgressBar.Style := npbstMarquee;
