@@ -1,6 +1,6 @@
 [Code]
 
-{ This code section is included into the main script and keeps the
+{This code section is included into the main script and keeps the
 important path functions separate from it. There should be no need
 to change this.}
 
@@ -21,8 +21,7 @@ function GetSafePathList(Hive: Integer; var SafeList: TPathList): String; forwar
 function GetSafePath(PathList: TPathList; Index: Integer): String; forward;
 function DirectoryInPath(var Directory: String; PathList: TPathList; Hive: Integer): Boolean; forward;
 function SearchPath(PathList: TPathList; Hive: Integer; const Cmd: String): String; forward;
-function SearchPathEx(SafeList: TPathList; Hive: Integer; const Cmd: String): Integer; forward;
-function SearchPathWork(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String; forward;
+function SearchPathEx(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String; forward;
 procedure NotifyPathChange; forward;
 function NeedsTrailingSeparator: Boolean; forward;
 
@@ -44,24 +43,24 @@ begin
   {NormalizePath UNC expands the path and removes any trailing backslash}
   SafeDirectory := NormalizePath(Value);
 
-  {we exit if NormalizePath failed and/or we have no value}
+  {We exit if NormalizePath failed and/or we have no value}
   if SafeDirectory = '' then
   begin
     Result := PATH_MOD_FAILED;
     Exit;
   end;
 
-  {get a list of normalized path entries}
+  {Get a list of normalized path entries}
   GetSafePathList(Hive, SafeList);
 
-  {see if our directory is already in the path}
+  {See if our directory is already in the path}
   if DirectoryInPath(SafeDirectory, SafeList, Hive) then
   begin
     Result := PATH_MOD_NONE;
     Exit;
   end;
 
-  {get the current path values from registry}
+  {Get the current path values from registry}
   Key := GetPathKeyForHive(Hive);
   Path := '';
   RegQueryStringValue(Hive, Key, 'PATH', Path);
@@ -69,14 +68,14 @@ begin
   Debug(Format('Adding %s to %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
   Debug('Path before: ' + Path);
 
-  {add trailing separator to path if required}
+  {Add trailing separator to path if required}
   if (Path <> '') and (Path[Length(Path)] <> ';') then
     Path := Path + ';';
 
-  {add our new value to the path}
+  {Add our new value to the path}
   Path := Path + SafeDirectory;
 
-  {add a trailing separator if required}
+  {Add a trailing separator if required}
   if NeedsTrailingSeparator then
     Path := Path + ';';
 
@@ -111,21 +110,21 @@ begin
   {NormalizePath UNC expands the path and removes any trailing backslash}
   SafeDirectory := NormalizePath(Value);
 
-  {we exit if NormalizePath failed}
+  {We exit if NormalizePath failed}
   if SafeDirectory = '' then
   begin
     Result := PATH_MOD_FAILED;
     Exit;
   end;
 
-  {paranoid check to make sure we are not removing a system path - should not happen}
+  {Paranoid check to make sure we are not removing a system path - should not happen}
   if Pos(AnsiLowercase(GetSystemDir()), AnsiLowercase(SafeDirectory)) = 1 then
   begin
     Result := PATH_MOD_FAILED;
     Exit;
   end;
 
-  {get the current path values from registry. If we fail, we have not got any}
+  {Get the current path values from registry. If we fail, we have not got any}
   Key := GetPathKeyForHive(Hive);
   CurrentPath := '';
 
@@ -138,7 +137,7 @@ begin
   Debug(Format('Removing %s from %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
   Debug('Path before: ' + CurrentPath);
 
-  {split current path into a list of raw entries}
+  {Split current path into a list of raw entries}
   RawList := SplitPath(CurrentPath);
   NewPath := '';
   FoundEntry := False;
@@ -146,18 +145,18 @@ begin
   for I := 0 to GetArrayLength(RawList) - 1 do
   begin
 
-    {normalize each raw entry - will be blank if we cannot expand it}
+    {Normalize each raw entry - will be blank if we cannot expand it}
     SafePath := NormalizePath(RawList[I]);
 
-    {add each raw entry if normalize failed or if it does not match the directory we are removing}
+    {Add each raw entry if normalize failed or if it does not match the directory we are removing}
     if (SafePath = '') or (CompareText(SafePath, SafeDirectory) <> 0) then
     begin
 
-      {add separator if required}
+      {Add separator if required}
       if NewPath <> '' then
         NewPath := NewPath + ';';
 
-      {important to add RAW value}
+      {Important to add RAW value}
       NewPath := NewPath + RawList[I];
 
     end
@@ -166,7 +165,7 @@ begin
 
   end;
 
-  {see if we found the entry we want to remove}
+  {See if we found the entry we want to remove}
   if not FoundEntry then
   begin
     Result := PATH_MOD_NONE;
@@ -174,10 +173,10 @@ begin
   end;
 
   if (NewPath = '') and (Hive = HKEY_CURRENT_USER) then
-    {we have an empty User PATH, so we can delete the subkey}
+    {We have an empty User PATH, so we can delete the subkey}
     Res := RegDeleteValue(Hive, Key, 'PATH')
   else
-    {write the new path (could be empty for HKEY_LOCAL_MACHINE)}
+    {Write the new path (could be empty for HKEY_LOCAL_MACHINE)}
     Res := RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
 
   if Res then
@@ -283,7 +282,7 @@ begin
   Path := Trim(Value);
   StringChangeEx(Path, '/', '\', True);
 
-  {see if we have any %variables%}
+  {See if we have any %variables%}
   if Pos('%', Path) <> 0 then
   begin
 
@@ -302,7 +301,7 @@ begin
 
   end;
 
-  {check that we are a suitable path to expand, or a UNC name (not a complete check)}
+  {Check that we are a suitable path to expand, or a UNC name - not a complete check}
   if (Length(Path) >= 3) and (Path[2] = ':') and (Uppercase(Path[1]) >= 'A') and (Uppercase(Path[1]) <= 'Z') then
     Path := ExpandUNCFileName(Path)
   else if (Length(Path) < 3) or (Pos('\\', Path) <> 1) then
@@ -410,18 +409,12 @@ var
 
 begin
 
-  Result := SearchPathWork(PathList, Hive, Cmd, Index);
+  Result := SearchPathEx(PathList, Hive, Cmd, Index);
 
 end;
 
 
-function SearchPathEx(SafeList: TPathList; Hive: Integer; const Cmd: String): Integer;
-begin
-  SearchPathWork(SafeList, Hive, Cmd, Result);
-end;
-
-
-function SearchPathWork(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String;
+function SearchPathEx(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String;
 var
   I: Integer;
   SafePath: String;
@@ -467,7 +460,7 @@ begin
 
   Debug('Calling NotifyPathChange');
 
-  {WM_SETTINGCHANGE = $1A; SMTO_ABORTIFHUNG = $2;}
+  {WM_SETTINGCHANGE = $1A, SMTO_ABORTIFHUNG = $2}
   SendMessageTimeout(HWND_BROADCAST, $1A, 0, 'Environment', $2, 3000, Res);
 
 end;

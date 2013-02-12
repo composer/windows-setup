@@ -2,4 +2,5 @@ output/
 release*
 *.exe
 *.phar
+*.tmp
 *test*
