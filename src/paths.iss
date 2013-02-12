@@ -22,13 +22,15 @@ function GetSafePath(PathList: TPathList; Index: Integer): String; forward;
 function DirectoryInPath(var Directory: String; PathList: TPathList; Hive: Integer): Boolean; forward;
 function SearchPath(PathList: TPathList; Hive: Integer; const Cmd: String): String; forward;
 function SearchPathEx(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String; forward;
-procedure NotifyPathChange; forward;
 function NeedsTrailingSeparator: Boolean; forward;
 
 const
   PATH_MOD_CHANGED = 0;
   PATH_MOD_NONE = 1;
   PATH_MOD_FAILED = 2;
+
+  DEBUG_PATH_START = 'Path start: ';
+  DEBUG_PATH_AFTER = 'Path after: ';
 
 
 function AddToPath(Hive: Integer; Value: String): Integer;
@@ -66,7 +68,7 @@ begin
   RegQueryStringValue(Hive, Key, 'PATH', Path);
 
   Debug(Format('Adding %s to %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
-  Debug('Path before: ' + Path);
+  Debug(DEBUG_PATH_START + Path);
 
   {Add trailing separator to path if required}
   if (Path <> '') and (Path[Length(Path)] <> ';') then
@@ -82,7 +84,7 @@ begin
   if RegWriteExpandStringValue(Hive, Key, 'PATH', Path) then
   begin
     Result := PATH_MOD_CHANGED;
-    Debug('Path after:  ' + Path);
+    Debug(DEBUG_PATH_AFTER + Path);
   end
   else
   begin
@@ -135,7 +137,7 @@ begin
   end;
 
   Debug(Format('Removing %s from %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
-  Debug('Path before: ' + CurrentPath);
+  Debug(DEBUG_PATH_START + CurrentPath);
 
   {Split current path into a list of raw entries}
   RawList := SplitPath(CurrentPath);
@@ -182,7 +184,7 @@ begin
   if Res then
   begin
     Result := PATH_MOD_CHANGED;
-    Debug('Path after:  ' + NewPath);
+    Debug(DEBUG_PATH_AFTER + NewPath);
   end
   else
   begin
@@ -448,20 +450,6 @@ begin
     end;
 
   end;
-
-end;
-
-
-procedure NotifyPathChange;
-var
-  Res: DWord;
-
-begin
-
-  Debug('Calling NotifyPathChange');
-
-  {WM_SETTINGCHANGE = $1A, SMTO_ABORTIFHUNG = $2}
-  SendMessageTimeout(HWND_BROADCAST, $1A, 0, 'Environment', $2, 3000, Res);
 
 end;
 

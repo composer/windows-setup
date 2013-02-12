@@ -35,6 +35,7 @@ SolidCompression=yes
 MinVersion=5.1
 PrivilegesRequired=none
 AllowCancelDuringInstall=false
+ChangesEnvironment=yes
 
 ; directory stuff
 DefaultDirName={code:GetBaseDir}\Composer
@@ -256,6 +257,9 @@ function GetStatusText(Status: Integer): String; forward;
 function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
 function ResultIdLine(const Line: String; var S: String): Boolean; forward;
 
+{Misc functions}
+function UnixifyShellFile(var Error: String): Boolean; forward;
+
 {Installer related functions}
 function CheckAlreadyInstalled: Boolean; forward;
 function GetBaseDir(Param: String): String; forward;
@@ -322,7 +326,12 @@ procedure TestUpdateCaption(); forward;
 function InitializeSetup(): Boolean;
 begin
 
+  {Initialize our flags}
+  Flags.PathChanged := False;
+  Flags.ProgressPage := False;
   Flags.Completed := False;
+  Flags.RoamingBin := '';
+
   CmdExe := ExpandConstant('{cmd}');
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
 
@@ -336,7 +345,7 @@ begin
   TmpFile.Result := TmpDir + '\result.txt';
 
   SetPathInfo(False);
-  
+
   if CheckAlreadyInstalled() then
     Exit;
 
@@ -365,7 +374,7 @@ begin
 
   Pages.Progress := CreateOutputProgressPage('', '');
   Pages.Progress.ProgressBar.Style := npbstMarquee;
-  
+
   Pages.Settings := SettingsPageCreate(wpWelcome, 'Settings Check', 'We need to check your PHP and path settings.');
 
   Pages.ErrorMsg := MessagePageCreate(Pages.Settings.ID,
@@ -493,7 +502,7 @@ begin
     {We are going back to wpReady, so we need to clear the Retry button flag
     and any errors. However we need to keep the force flag which affects
     if composer.phar is re-downloaded or not.}
-    
+
     ResetGetRec(False);
 
   end;
@@ -531,33 +540,17 @@ end;
 
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var
-  Lines: TArrayOfString;
-  S: AnsiString;
-  I: Integer;
-
 begin
 
   Result := '';
 
   Debug('Running PrepareToInstall tasks');
-  
-  if PathChangesMake(Result) = PATH_MOD_FAILED then
-    PathChangesRevoke();
 
-  if Result <> '' then
+  if not UnixifyShellFile(Result) then
     Exit;
-  
-  if LoadStringsFromFile(TmpFile.Composer, Lines) then
-  begin
 
-    S := '';
-    for I := 0 to GetArrayLength(Lines) - 1 do
-      S := S + Lines[I] + #10;
-
-    SaveStringToFile(TmpDir + '\composer', S, False);
-
-  end;
+  {Any failures will be reverted in DeinitializeSetup}
+  PathChangesMake(Result);
 
 end;
 
@@ -580,9 +573,10 @@ begin
   if CurUninstallStep = usUninstall then
   begin
 
-    {We must call this here, or the dll and app dir will not be deleted}
+    {We must call this in usUninstall, or the dll and app dir will not be deleted}
     UserDataDelete();
 
+    {We must call this in usUninstall, or it will miss the ChangesEnvironment call}
     AddPathChange(ExpandConstant('{app}\bin'), MOD_PATH_REMOVE);
 
     if PathChangesMake(Error) = PATH_MOD_FAILED then
@@ -593,7 +587,7 @@ begin
 end;
 
 
-{Common functions}
+{*************** Common functions ***************}
 
 procedure AddLine(var Existing: String; const Value: String);
 begin
@@ -783,17 +777,55 @@ begin
 
 end;
 
-{Installer related functions}
+
+{*************** Misc functions ***************}
+
+function UnixifyShellFile(var Error: String): Boolean;
+var
+  Lines: TArrayOfString;
+  S: AnsiString;
+  I: Integer;
+
+begin
+
+  Result := False;
+  S := '';
+
+  Debug('Writing Unix line-endings to ' + TmpFile.Composer);
+
+  if not LoadStringsFromFile(TmpFile.Composer, Lines) then
+  begin
+    Error := 'Unable to open ' + TmpFile.Composer;
+    Debug(Error);
+    Exit;
+  end;
+
+  for I := 0 to GetArrayLength(Lines) - 1 do
+    S := S + Lines[I] + #10;
+
+  if not SaveStringToFile(TmpFile.Composer, S, False) then
+  begin
+    Error := 'Unable to write to ' + TmpFile.Composer;
+    Debug(Error);
+    Exit;
+  end;
+
+  Result := True;
+
+end;
+
+
+{*************** Installer related functions ***************}
 
 function CheckAlreadyInstalled: Boolean;
 var
   Path: String;
   S: String;
-  
+
 begin
 
   Result := False;
-  
+
   if IsAdminLoggedOn then
     Exit;
 
@@ -812,10 +844,10 @@ begin
 
   {Check for an existing installation in AppData\Roaming directory}
   Path := ExpandConstant('{userappdata}\Composer\bin');
-  
-  if DirExists(Path) then 
+
+  if DirExists(Path) then
     Flags.RoamingBin := Path;
- 
+
 end;
 
 
@@ -836,7 +868,8 @@ begin
   Result := Flags.RoamingBin <> '';
 end;
 
-{Path retrieve functions}
+
+{*************** Path retrieve functions ***************}
 
 function GetPathHash(const SystemPath, UserPath: String): String;
 begin
@@ -913,7 +946,7 @@ begin
   IsUser := not IsAdminLoggedOn;
 
   {To save continually iterating the paths, we use a hash comparison system}
-  
+
   if PathChanged(Info.PathList.Hash, not IsUser) then
   begin
 
@@ -1031,7 +1064,8 @@ begin
 
 end;
 
-{Path check functions}
+
+{*************** Path check functions ***************}
 
 procedure CheckPath;
 begin
@@ -1083,16 +1117,16 @@ begin
       Exit
     else if CompareText(Info.Bin.Path, Flags.RoamingBin) = 0 then
     begin
-      
+
       {If it matches Flags.RoamingBin we add BinPath and remove RoamingBin}
       AddPathChange(BinPath, MOD_PATH_ADD);
 
       Rec.Path := Flags.RoamingBin;
       Rec.Hive := HKEY_CURRENT_USER;
       Rec.Action := MOD_PATH_REMOVE;
-      Rec.Silent := True; 
+      Rec.Silent := True;
       AddPathChangeEx(Rec);
-      
+
       Exit;
 
     end;
@@ -1195,7 +1229,8 @@ begin
 
 end;
 
-{Path modify functions}
+
+{*************** Path modify functions ***************}
 
 procedure AddPathChange(const Path: String; Action: Boolean);
 var
@@ -1252,7 +1287,6 @@ var
 begin
 
   Result := PATH_MOD_NONE;
-  Flags.PathChanged := False;
 
   for I := 0 to GetArrayLength(PathChanges) - 1 do
   begin
@@ -1272,7 +1306,7 @@ begin
     else if Result = PATH_MOD_FAILED then
     begin
 
-      {Any successful changes will be reverted if there is an error}
+      {Any unsuccessful changes will be reverted if there is an error}
 
       if PathChanges[I].Action = MOD_PATH_ADD then
         Info := Format('adding %s to your %s', [PathChanges[I].Path, PathChanges[I].Caption])
@@ -1286,9 +1320,6 @@ begin
 
   end;
 
-  if Flags.PathChanged then
-    NotifyPathChange;
-
 end;
 
 
@@ -1300,10 +1331,8 @@ var
 
 begin
 
-  {We haven't really got a way to display any errors, but
-  something must be seriously wrong with the system if these calls fail}
-
-  Flags.PathChanged := False;
+  {We haven't really got a way to display any errors, but something must
+  be seriously wrong with the system if we need to call this and we fail}
 
   for I := 0 to GetArrayLength(PathChanges) - 1 do
   begin
@@ -1318,13 +1347,7 @@ begin
     else
       Res := RemoveFromPath(PathChanges[I].Hive, PathChanges[I].Path);
 
-    if Res = PATH_MOD_CHANGED then
-      Flags.PathChanged := True;
-
   end;
-
-  if Flags.PathChanged then
-    NotifyPathChange;
 
 end;
 
@@ -1358,7 +1381,8 @@ begin
 
 end;
 
-{Check php functions}
+
+{*************** Check php functions ***************}
 
 function CheckPhp(const Filename: String): Boolean;
 var
@@ -1549,7 +1573,8 @@ begin
 
 end;
 
-{Download functions}
+
+{*************** Download functions ***************}
 
 procedure DownloadWork;
 var
@@ -1756,7 +1781,7 @@ begin
 end;
 
 
-{Custom page functions}
+{*************** Custom page functions ***************}
 
 procedure DownloadMsgUpdate;
 var
@@ -2117,7 +2142,7 @@ begin
 end;
 
 
-{Test page functions}
+{*************** Test page functions ***************}
 
 procedure TestButtonClick(Sender: TObject);
 var
