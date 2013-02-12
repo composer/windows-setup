@@ -101,7 +101,7 @@ type
   end;
 
 type
-  TSearchRec = record
+  TPathRec = record
     System  : String;
     User    : String;
     Cmd     : String;
@@ -109,17 +109,27 @@ type
   end;
 
 type
+  TPathListRec = record
+    Hive    : Integer;
+    Path    : String;
+  end;
+
+type
   TPathList = record
     Safe    : Boolean;
-    Items   : TArrayOfString;
+    Hash    : String;
+    Items   : Array of TPathListRec;
   end;
 
 type
   TPathInfo = record
-    Php       : TSearchRec;
-    Bat       : TSearchRec;
-    Shell     : TSearchRec;
-    PathList  : TPathList;
+    CheckedPhp  : Boolean;
+    CheckedBin  : Boolean;
+    StatusPhp   : Integer;
+    StatusBin   : Integer;
+    Php         : TPathRec;
+    Bin         : TPathRec;
+    PathList    : TPathList;
   end;
 
 type
@@ -138,51 +148,74 @@ type
   end;
 
 type
-  TPathRec = record
+  TPathChangeRec = record
     Path    : String;
     Hive    : Integer;
+    Action  : Boolean;
+    Silent  : Boolean;
     Name    : String;
+    Caption : String;
+    Done    : Boolean;
   end;
 
 type
+  TPathChangeList = Array of TPathChangeRec;
+
+type
   TFlagsRec = record
-    AddPhp      : TPathRec;
-    AddComposer : TPathRec;
     PathChanged : Boolean;
+    LastNextID  : Integer;
     Installed   : Boolean;
     Completed   : Boolean;
   end;
 
 type
   TCustomPagesRec = record
-    Settings      : TInputFileWizardPage;
+    Settings      : TWizardPage;
     Progress      : TOutputProgressWizardPage;
-    Error         : TWizardPage;
+    ErrorMsg      : TWizardPage;
     DownloadMsg   : TWizardPage;
     PathChanged   : TOutputMsgWizardPage;
 end;
 
+type
+  TSettingsPageRec = record
+    Text: TNewStaticText;
+    Edit: TNewEdit;
+    Button: TNewButton;
+    CheckBox: TNewCheckbox;
+    Info: TNewStaticText;
+end;
+
 
 var
-  Completed: Boolean;
-  TmpFile: TTmpFile;
-  PhpRec: TPhpRec;
-  CmdExe: String;
-  ComposerPath: String;
-  PathError: String;
-  GetRec: TGetRec;
-  Flags: TFlagsRec;
-  TmpDir: String;
-  Test: String;
-  Pages: TCustomPagesRec;
-  SettingsPage: TInputFileWizardPage;
+  TmpFile: TTmpFile;            {contains full pathname of temp files}
+  TmpDir: String;               {the temp directory that setup/uninstall uses}
+  PhpRec: TPhpRec;              {contains selected php.exe data and any error}
+  Info: TPathInfo;              {contains latest path info}
+  CmdExe: String;               {full pathname to system cmd}
+  PathError: String;            {used to show ErrorMsg page}
+  PathChanges: TPathChangeList; {list of path changes to make, or made}
+  GetRec: TGetRec;              {contains result of download, to show ErrorMsg and buttons}
+  Flags: TFlagsRec;             {contains global flags that won't go anywhere else}
+  Test: String;                 {flags test mode and contains any test to run}
+  Pages: TCustomPagesRec;       {group of custom pages}
+  Settings: TSettingsPageRec;   {contains Settings page controls}
 
 
 const
   CSIDL_PROFILE = $0028;
   SEP_PATH = ';';
   LF = #13#10;
+  SP = #32#32#32#32#32#32;
   TEST_FLAG = '?';
+
+  PATH_NONE = 0;
+  PATH_OK = 1;
+  PATH_FIXED = 2;
+
+  MOD_PATH_ADD = True;
+  MOD_PATH_REMOVE = False;
 
   ERR_NONE = 0;
   ERR_INSTALL = 1;
@@ -215,10 +248,32 @@ function GetStatusText(Status: Integer): String; forward;
 function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
 function ResultIdLine(const Line: String; var S: String): Boolean; forward;
 
+{Path retrieve functions}
+function GetPathHash(const SystemPath, UserPath: String): String; forward;
+function PathChanged(const Hash: String; SystemOnly: Boolean): Boolean; forward;
+function SearchPathBin(Hive: Integer): String; forward;
+procedure SetPathInfo(Full: Boolean); forward;
+procedure SetPathRec(var Rec: TPathRec); forward;
+procedure SetPathStatus(Rec: TPathRec; var Status: Integer); forward;
+
+{Path modify functions}
+procedure AddPathChange(const Path: String; Action: Boolean); forward;
+procedure AddPathChangeEx(Rec: TPathChangeRec); forward;
+function PathChangesMake(var Error: String): Integer; forward;
+procedure PathChangesRevoke; forward;
+function PathChangesToString: String; forward;
+
 {Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(const Filename: String): Boolean; forward;
 procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String); forward;
+
+{Check path functions}
+procedure CheckPath; forward;
+function CheckPathBin: String; forward;
+function CheckPathExt: String; forward;
+procedure CheckPathPhp; forward;
+function GetPathExt(Hive: Integer; var Value: String): Boolean; forward;
 
 {Download functions}
 procedure DownloadWork; forward;
@@ -227,11 +282,16 @@ procedure SetDownloadCmdError(ExitCode: Integer); forward;
 procedure SetDownloadStatus(StatusCode, ExitCode: Integer); forward;
 
 {Custom page functions}
-function CreateMessagePage(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
-procedure ShowProgressCheckPage; forward;
-function ShowProgressDownloadPage(CurPageID: Integer): Boolean; forward;
-procedure UpdateDownloadMsgPage(); forward;
-procedure UpdateErrorPage(); forward;
+procedure DownloadMsgUpdate; forward;
+procedure ErrorMsgUpdate; forward;
+function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
+procedure ProgressCheckShow; forward;
+function ProgressDownloadShow(CurPageID: Integer): Boolean; forward;
+procedure SettingsButtonClick(Sender: TObject); forward;
+procedure SettingsCheckBoxClick(Sender: TObject); forward;
+function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+procedure SettingsPageShow; forward;
+procedure SettingsPageUpdate; forward;
 
 {Test page functions}
 procedure TestButtonClick(Sender: TObject); forward;
@@ -264,376 +324,6 @@ begin
   PhpRec.Error := '';
 
   ResetGetRec(True);
-
-end;
-
-
-
-procedure SetSearchRec(var Rec: TSearchRec);
-begin
-
-  if Rec.System <> '' then
-  begin
-    Rec.Cmd := Rec.System;
-    Rec.Path := ExtractFileDir(Rec.System);
-    Rec.User := '';
-  end
-  else if Rec.User <> '' then
-  begin
-    Rec.Cmd := Rec.User;
-    Rec.Path := ExtractFileDir(Rec.User);
-  end
-  else
-  begin
-    Rec.Cmd := '';
-    Rec.Path := '';
-  end;
-
-end;
-
-
-function GetPathInfo: TPathInfo;
-var
-  List1: TPathList;
-  List2: TPathList;
-  C1: Integer;
-  C2: Integer;
-  I: Integer;
-
-begin
-
-  Debug('Getting path info from registry');
-
-  List1 := GetSafePathList(HKEY_LOCAL_MACHINE);
-  Result.Php.System := SearchPath(List1, '{#CmdPhp}');
-  Result.Bat.System := SearchPath(List1, '{#CmdBat}');
-  Result.Shell.System := SearchPath(List1, '{#CmdShell}');
-
-  List2 := GetSafePathList(HKEY_CURRENT_USER);
-  Result.Php.User := SearchPath(List2, '{#CmdPhp}');
-  Result.Bat.User := SearchPath(List2, '{#CmdBat}');
-  Result.Shell.User := SearchPath(List2, '{#CmdShell}');
-
-  SetSearchRec(Result.Php);
-  SetSearchRec(Result.Bat);
-  SetSearchRec(Result.Shell);
-
-  Result.PathList.Safe := True;
-  C1 := GetArrayLength(List1.Items);
-  C2 := GetArrayLength(List2.Items);
-  SetArrayLength(Result.PathList.Items, C1 + C2);
-
-  for I := 0 to C1 - 1 do
-    Result.PathList.Items[I] := List1.Items[I];
-
-  for I := 0 to C2 - 1 do
-    Result.PathList.Items[C1 + I] := List2.Items[I];
-
-end;
-
-
-procedure SetPathRec(var Rec: TPathRec; const Path: String);
-begin
-
-  Rec.Path := Path;
-  Rec.Hive := HKEY_CURRENT_USER;
-  Rec.Name := 'User';
-
-  if (Rec.Path <> '') and IsAdminLoggedOn then
-  begin
-    Rec.Hive := HKEY_LOCAL_MACHINE;
-    Rec.Name := 'System';
-  end;
-
-end;
-
-
-procedure InitRecordsFromPath;
-var
-  Info: TPathInfo;
-
-begin
-
-  Info := GetPathInfo;
-  PhpRec.Exe := Info.Php.Cmd;
-
-end;
-
-
-function CheckPhpPath(PathList: TPathList; Rec: TSearchRec): String;
-var
-  S: String;
-  Env: String;
-  PhpPath: String;
-
-begin
-
-  Result := '';
-
-  Debug('Checking for php path');
-
-  if Rec.Path = '' then
-  begin
-
-    PhpPath := ExtractFileDir(PhpRec.Exe);
-
-    if not DirectoryInPath(PhpPath, PathList) then
-      SetPathRec(Flags.AddPhp, PhpPath);
-
-    Exit;
-
-  end;
-
-  if CompareText(Rec.Cmd, PhpRec.Exe) = 0 then
-    Exit;
-
-  S := 'The php exe you selected does not match the one found in your path.' + LF;
-  S := S + LF;
-  S := S + 'Selected: ' + PhpRec.Exe + LF;
-  S := S + 'In Path: ' + Rec.Cmd + LF;
-  S := S + LF;
-
-  if Rec.System <> '' then
-    Env := 'System'
-  else
-    Env := 'User';
-
-  S := S + 'You can either select the one in your path, or remove its entry from your ';
-  S := S + Env + ' Path Environment variable:' + LF;
-  S := S + '   ' + Rec.Path + LF;
-  S := S + LF;
-
-  S := S + 'Note: Only change your path if you are sure that it will not affect anything else.' + LF;
-  S := S + LF;
-
-  S := S + 'If neither of these options are suitable, you will have to install Composer manually.';
-
-  Result := S;
-
-end;
-
-
-function CheckShim(Rec: TSearchRec; Cmd: String; var Installed: Boolean): String;
-var
-  S: String;
-
-begin
-
-  S := '';
-
-  if Rec.Path <> '' then
-  begin
-
-    if CompareText(Rec.Cmd, Cmd) <> 0 then
-    begin
-      S := 'Composer is already installed in the following directory:' + LF;
-      S := S + Rec.Path + LF;
-      S := S + LF;
-      S := S + 'You must remove it first, if you want to continue this installation.' + LF;
-    end;
-
-    {we only set Installed to true}
-    Installed := True;
-
-  end;
-
-  Result := S;
-
-end;
-
-
-function CheckComposerPath(Info: TPathInfo): String;
-var
-  BinPath: String;
-  Cmd: String;
-
-begin
-
-  Result := '';
-
-  Debug('Checking for composer path');
-
-  BinPath := AddBackslash(WizardDirValue) + 'bin';
-
-  if (Info.Bat.Path = '') and (Info.Shell.Path = '') then
-  begin
-
-    if not DirectoryInPath(BinPath, Info.PathList) then
-      SetPathRec(Flags.AddComposer, BinPath);
-
-    Exit;
-
-  end;
-
-  Cmd := AddBackslash(BinPath) + '{#CmdBat}';
-
-  Result := CheckShim(Info.Bat, Cmd, Flags.Installed)
-
-  if Result = '' then
-  begin
-    Cmd := AddBackslash(BinPath) + '{#CmdShell}';
-    Result := CheckShim(Info.Shell, Cmd, Flags.Installed);
-  end;
-
-end;
-
-
-function CheckPathExt: String;
-var
-  Hive: Integer;
-  Key: String;
-  Value: String;
-  PathExt: String;
-  Missing: String;
-  Space: String;
-
-begin
-
-  Result := '';
-
-  Debug('Checking PathExt values');
-
-  PathExt := '';
-
-  Hive := HKEY_LOCAL_MACHINE;
-  Key := GetPathKeyForHive(Hive);
-  Value := '';
-
-  if RegQueryStringValue(Hive, Key, 'PathExt', Value) then
-    PathExt := Value;
-
-  Hive := HKEY_CURRENT_USER;
-  Key := GetPathKeyForHive(Hive);
-  Value := '';
-
-  if RegQueryStringValue(Hive, Key, 'PathExt', Value) then
-    PathExt := PathExt + ';' + Value;
-
-  PathExt := Uppercase(PathExt  + ';');
-
-  Missing := '';
-  Space := '    ';
-
-  if Pos('.EXE;', PathExt) = 0 then
-    Missing := LF + Space + '.EXE';
-
-  if Pos('.BAT;', PathExt) = 0 then
-    Missing := Missing + LF + Space + '.BAT';
-
-  if Missing <> '' then
-    Result := 'Your PathExt Environment variable is missing required values:' + Missing;
-
-end;
-
-
-procedure CheckPath;
-var
-  Info: TPathInfo;
-
-begin
-
-  Debug('Checking paths');
-
-  SetPathRec(Flags.AddPhp, '');
-  SetPathRec(Flags.AddComposer, '');
-  Flags.Installed := False;
-  Flags.PathChanged := False;
-
-  Info := GetPathInfo;
-
-  PathError := CheckPhpPath(Info.PathList, Info.Php);
-
-  if PathError = '' then
-    PathError := CheckComposerPath(Info);
-
-  if PathError = '' then
-    PathError := CheckPathExt;
-
-  ComposerPath := '';
-
-  if Info.Bat.Path <> '' then
-  begin
-
-    if FileExists(Info.Bat.Path + '\composer.phar') then
-      ComposerPath := Info.Bat.Path;
-
-  end;
-
-  if (ComposerPath = '') and (Info.Shell.Path <> '') then
-  begin
-
-    if FileExists(Info.Shell.Path + '\composer.phar') then
-      ComposerPath := Info.Shell.Path;
-
-  end;
-
-end;
-
-
-procedure PathsAdd(var Error: String);
-begin
-
-  Error := '';
-
-  if Flags.AddPhp.Path <> '' then
-  begin
-
-    if not AddToPath(Flags.AddPhp.Hive, Flags.AddPhp.Path) then
-    begin
-      Error := 'Error setting ' + Flags.AddPhp.Name + ' Path variable';
-      Exit;
-    end;
-
-    Flags.PathChanged := True;
-
-  end;
-
-  if Flags.AddComposer.Path <> '' then
-  begin
-
-    if not AddToPath(Flags.AddComposer.Hive, Flags.AddComposer.Path) then
-    begin
-
-      Error := 'Error setting ' + Flags.AddComposer.Name + ' Path variable';
-
-      {remove php path in the unlikely event we have just added it}
-      if Flags.PathChanged then
-      begin
-        RemoveFromPath(Flags.AddPhp.Hive, Flags.AddPhp.Path);
-        Flags.PathChanged := False;
-        NotifyPathChange;
-      end;
-
-      Exit;
-
-    end;
-
-    Flags.PathChanged := True;
-
-  end;
-
-  if Flags.PathChanged then
-    NotifyPathChange;
-
-end;
-
-
-procedure PathsRemove;
-begin
-
-  if Flags.PathChanged then
-  begin
-
-    if Flags.AddPhp.Path <> '' then
-      RemoveFromPath(Flags.AddPhp.Hive, Flags.AddPhp.Path);
-
-    if Flags.AddComposer.Path <> '' then
-      RemoveFromPath(Flags.AddComposer.Hive, Flags.AddComposer.Path);
-
-    Flags.PathChanged := False;
-    NotifyPathChange;
-
-  end;
 
 end;
 
@@ -680,21 +370,22 @@ end;
 function InitializeSetup(): Boolean;
 begin
 
-  Completed := False;
+  Flags.Completed := False;
   CmdExe := ExpandConstant('{cmd}');
-  TmpDir := ExpandConstant('{tmp}');
+  TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
 
   ExtractTemporaryFile('setup.php');
-  TmpFile.Setup := AddBackslash(TmpDir) + 'setup.php';
+  TmpFile.Setup := TmpDir + '\setup.php';
   ExtractTemporaryFile('setup.class.php');
 
   ExtractTemporaryFile('composer');
-  TmpFile.Composer := AddBackslash(TmpDir) +'composer';
+  TmpFile.Composer := TmpDir + '\composer';
 
-  TmpFile.Result := AddBackslash(TmpDir) + 'result.txt';
+  TmpFile.Result := TmpDir + '\result.txt';
 
   ResetPhp();
-  InitRecordsFromPath();
+  SetPathInfo(False);
+  PhpRec.Exe := Info.Php.Cmd;
 
   if CheckAlreadyInstalled() then
     Exit;
@@ -710,10 +401,10 @@ end;
 procedure DeinitializeSetup();
 begin
 
-  if not Completed then
+  if not Flags.Completed then
   begin
     Debug('Setup cancelled or aborted');
-    PathsRemove();
+    PathChangesRevoke();
   end;
 
 end;
@@ -724,7 +415,7 @@ begin
 
   Pages.Progress := CreateOutputProgressPage('', '');
   Pages.Progress.ProgressBar.Style := npbstMarquee;
-
+  {
   SettingsPage := CreateInputFilePage(wpWelcome,
     'Settings Check',
     'We need to check your PHP and path settings.',
@@ -734,11 +425,13 @@ begin
     SettingsPage.Add('', 'php.exe|php.exe', '.exe')
   else
     SettingsPage.Add('', 'All files|*.*', '');
+  }
+  Pages.Settings := SettingsPageCreate(wpWelcome, 'Settings Check', 'We need to check your PHP and path settings.');
 
-  Pages.Error := CreateMessagePage(SettingsPage.ID,
+  Pages.ErrorMsg := MessagePageCreate(Pages.Settings.ID,
     '', '', 'Please review and fix the issues listed below, then click Back and try again');
 
-  Pages.DownloadMsg := CreateMessagePage(wpReady, '', '', '');
+  Pages.DownloadMsg := MessagePageCreate(wpReady, '', '', '');
 
   Pages.PathChanged := CreateOutputMsgPage(wpInstalling,
   'Information',
@@ -755,16 +448,22 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
 
-  if CurPageID = SettingsPage.ID then
+  if CurPageID = Pages.Settings.ID then
   begin
 
-    if FileExists(PhpRec.Exe) then
-      SettingsPage.Values[0] := PhpRec.Exe;
+    {we have to flag the last next because we have inserted the progress page}
+    if Flags.LastNextID <> CurPageID then
+    begin
+      SettingsPageShow();
+      //if FileExists(PhpRec.Exe) then
+      //  Settings.Edit.Text := PhpRec.Exe;
+      //SettingsPage.Values[0] := PhpRec.Exe;
 
-    WizardForm.ActiveControl := nil;
+      WizardForm.ActiveControl := nil;
+    end;
 
   end
-  else if CurPageID = Pages.Error.ID then
+  else if CurPageID = Pages.ErrorMsg.ID then
   begin
 
     WizardForm.ActiveControl := nil;
@@ -797,7 +496,7 @@ begin
 
   Result := False;
 
-  if PageID = Pages.Error.ID then
+  if PageID = Pages.ErrorMsg.ID then
     Result := (PhpRec.Error = '') and (PathError = '')
   else if PageID = Pages.DownloadMsg.ID then
     Result := GetRec.Text = ''
@@ -811,31 +510,32 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 begin
 
   Result := True;
+  Flags.LastNextID := CurPageID;
 
-  if CurPageID = SettingsPage.ID then
+  if CurPageID = Pages.Settings.ID then
   begin
 
-    if not FileExists(SettingsPage.Values[0]) then
+    if not FileExists(Settings.Edit.Text) then
     begin
       MsgBox('The file you specified does not exist.', mbCriticalError, MB_OK);
       Result := False;
     end
     else
-      ShowProgressCheckPage();
+      ProgressCheckShow();
 
   end
   else if CurPageID = wpReady then
   begin
-    
+
     {start the download}
-    Result := ShowProgressDownloadPage(CurPageID);
+    Result := ProgressDownloadShow(CurPageID);
 
   end
   else if CurPageID = Pages.DownloadMsg.ID then
   begin
-    
+
     {the next button has been re-labelled Retry, so we download again}
-    Result := ShowProgressDownloadPage(CurPageID);
+    Result := ProgressDownloadShow(CurPageID);
 
   end;
 
@@ -848,10 +548,10 @@ begin
 
   if CurPageID = Pages.DownloadMsg.ID then
   begin
-    
+
     {We are going back to wpReady, so we need to clear the Retry button flag
       and any errors. However we need to keep the force flag which affects
-      if composer.phar is is redownloaded or not.}
+      if composer.phar is re-downloaded or not.}
     ResetGetRec(False);
 
   end;
@@ -866,7 +566,7 @@ begin
 
   case CurPageID of
     wpWelcome: Confirm := False;
-    Pages.Error.ID: Confirm := False;
+    Pages.ErrorMsg.ID: Confirm := False;
     Pages.DownloadMsg.ID: Confirm := False;
    end;
 
@@ -877,34 +577,13 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
   S: String;
-  Env: String;
 
 begin
 
   S := MemoDirInfo;
-
-  {this line left over from Start Menu days. Do not remove yet}
-  if (MemoGroupInfo <> '') and not Flags.Installed then
-    S := S + NewLine + NewLine + MemoGroupInfo;
-
   S := S + NewLine + NewLine + 'PHP version ' + PhpRec.Version;
   S := S + NewLine + Space + PhpRec.Exe;
-
-  Env := ' Path environment variable:';
-
-  if Flags.AddPhp.Path <> '' then
-  begin
-    S := S + NewLine + NewLine + 'Add to ' + Flags.AddPhp.Name + Env;
-    S := S + NewLine + Space + Flags.AddPhp.Path;
-  end;
-
-  if Flags.AddComposer.Path <> '' then
-  begin
-    S := S + NewLine + NewLine + 'Add to ' + Flags.AddComposer.Name + Env;
-    S := S + NewLine + Space + Flags.AddComposer.Path;
-  end;
-
-  Result := S;
+  Result := S + PathChangesToString();
 
 end;
 
@@ -920,8 +599,7 @@ begin
   Result := '';
 
   Debug('Running PrepareToInstall tasks');
-
-  PathsAdd(Result);
+  PathChangesMake(Result);
 
   if Result <> '' then
     Exit;
@@ -944,14 +622,14 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
 
   if CurStep = ssPostInstall then
-    Completed := True;
+    Flags.Completed := True;
 
 end;
 
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  Rec: TPathRec;
+  Error: String;
 
 begin
 
@@ -961,9 +639,10 @@ begin
     {we must call this here, or the dll and app dir will not be deleted}
     UserDataDelete();
 
-    SetPathRec(Rec, ExpandConstant('{app}\bin'));
-    RemoveFromPath(Rec.Hive, Rec.Path);
-    NotifyPathChange();
+    AddPathChange(ExpandConstant('{app}\bin'), MOD_PATH_REMOVE);
+
+    if PathChangesMake(Error) = PATH_MOD_FAILED then
+      MsgBox(Error, mbCriticalError, mb_Ok);
 
   end;
 
@@ -1089,7 +768,7 @@ function GetCommonCmdError(StatusCode, ExitCode: Integer): String;
 var
   Error: String;
   Name: String;
-  
+
 begin
 
   Result := '';
@@ -1099,7 +778,7 @@ begin
   if StatusCode = ERR_CMD then
     GetSysError(ExitCode, CmdExe, Error)
   else
-    Error := 'A command did not run correctly'; 
+    Error := 'A command did not run correctly';
 
   Result := Format('Internal Error %s: ', [Name]) + Error;
 
@@ -1160,6 +839,356 @@ begin
 
 end;
 
+{Path retrieve functions}
+
+function GetPathHash(const SystemPath, UserPath: String): String;
+begin
+  Result := GetMD5OfUnicodeString(SystemPath + UserPath);
+end;
+
+
+function PathChanged(const Hash: String; SystemOnly: Boolean): Boolean;
+var
+  SystemPath: String;
+  UserPath: String;
+
+begin
+
+  if Hash = '' then
+    Result := True
+  else
+  begin
+
+    GetRawPath(HKEY_LOCAL_MACHINE, SystemPath);
+
+    if not SystemOnly then
+      GetRawPath(HKEY_CURRENT_USER, UserPath)
+    else
+      UserPath := '';
+
+    Result := CompareText(Hash, GetPathHash(SystemPath, UserPath)) <> 0;
+
+  end;
+
+end;
+
+
+function SearchPathBin(Hive: Integer): String;
+var
+  Indexes: Array[0..1] of Integer;
+  I: Integer;
+  Low: Integer;
+
+begin
+
+  {we grab the first reference in the path to either the bat or the shell shim}
+
+  Result := '';
+
+  Indexes[0] := SearchPathEx(Info.PathList, Hive, '{#CmdBat}');
+  Indexes[1] := SearchPathEx(Info.PathList, Hive, '{#CmdShell}')
+
+  Low := MaxInt;
+
+  for I := 0 to 1 do
+  begin
+
+    if (Indexes[I] > -1) and (Indexes[I] < Low) then
+    begin
+      Low := Indexes[I];
+      Result := Info.PathList.Items[Low].Path;
+    end;
+
+  end;
+
+end;
+
+
+procedure SetPathInfo(Full: Boolean);
+var
+  IsUser: Boolean;
+  RawSystem: String;
+  RawUser: String;
+
+begin
+
+  IsUser := not IsAdminLoggedOn;
+
+  {to save continually iterating the paths, we use a hash comparison system}
+  if PathChanged(Info.PathList.Hash, not IsUser) then
+  begin
+
+    Debug('Getting path info from registry');
+
+    {always get System path}
+    RawSystem := GetSafePathList(HKEY_LOCAL_MACHINE, Info.PathList);
+
+    {only get User path if not an admin}
+    if IsUser then
+      RawUser := GetSafePathList(HKEY_CURRENT_USER, Info.PathList)
+    else
+      RawUser := '';
+
+    Info.CheckedPhp := False;
+    Info.CheckedBin := False;
+
+    {create our hash for the next comparision}
+    Info.PathList.Hash := GetPathHash(RawSystem, RawUser);
+
+  end
+  else
+  begin
+
+    if not Full and Info.CheckedPhp then
+      Exit
+    else if Full and Info.CheckedPhp and Info.CheckedBin then
+      Exit;
+
+  end;
+
+  if not Info.CheckedPhp then
+  begin
+
+    Info.Php.System := SearchPath(Info.PathList, HKEY_LOCAL_MACHINE, '{#CmdPhp}');
+
+    if IsUser then
+      Info.Php.User := SearchPath(Info.PathList, HKEY_CURRENT_USER, '{#CmdPhp}');
+
+    SetPathRec(Info.Php);
+    SetPathStatus(Info.Php, Info.StatusPhp);
+    Info.CheckedPhp := True;
+
+  end;
+
+  if Full and not Info.CheckedBin then
+  begin
+
+    Info.Bin.System := SearchPathBin(HKEY_LOCAL_MACHINE);
+
+    if IsUser then
+      Info.Bin.User := SearchPathBin(HKEY_CURRENT_USER);
+
+    SetPathRec(Info.Bin);
+    SetPathStatus(Info.Bin, Info.StatusBin);
+    Info.CheckedBin := True;
+
+  end;
+
+end;
+
+
+procedure SetPathRec(var Rec: TPathRec);
+begin
+
+  {We discard User path values if a System one has been found.
+  We always overwrite values because they are stored in a global
+  and may have already been set}
+
+  if Rec.System <> '' then
+  begin
+    Rec.Cmd := Rec.System;
+    Rec.Path := ExtractFileDir(Rec.System);
+    {Invalidate any User value}
+    Rec.User := '';
+  end
+  else if Rec.User <> '' then
+  begin
+    Rec.Cmd := Rec.User;
+    Rec.Path := ExtractFileDir(Rec.User);
+  end
+  else
+  begin
+    Rec.Cmd := '';
+    Rec.Path := '';
+  end;
+
+end;
+
+
+procedure SetPathStatus(Rec: TPathRec; var Status: Integer);
+begin
+
+  if Rec.Path = '' then
+    Status := PATH_NONE
+  else
+  begin
+
+    if IsAdminLoggedOn then
+      Status := PATH_OK
+    else
+    begin
+
+      {we are a user, so we cannot modify any System path}
+      if Rec.System <> '' then
+        Status := PATH_FIXED
+      else
+        Status := PATH_OK;
+
+    end;
+
+  end;
+
+end;
+
+
+{Path modify functions}
+
+procedure AddPathChange(const Path: String; Action: Boolean);
+var
+  Rec: TPathChangeRec;
+
+begin
+
+  Rec.Path := Path;
+
+  if IsAdminLoggedOn then
+    Rec.Hive := HKEY_LOCAL_MACHINE
+  else
+    Rec.Hive := HKEY_CURRENT_USER;
+
+  Rec.Action := Action;
+  Rec.Silent := False;
+  Rec.Done := False;
+
+  AddPathChangeEx(Rec);
+
+end;
+
+
+procedure AddPathChangeEx(Rec: TPathChangeRec);
+var
+  Next: Integer;
+
+begin
+
+  Next := GetArrayLength(PathChanges);
+  SetArrayLength(PathChanges, Next + 1);
+
+  PathChanges[Next].Path := Rec.Path;
+  PathChanges[Next].Hive := Rec.Hive;
+  PathChanges[Next].Action := Rec.Action;
+  PathChanges[Next].Silent := Rec.Silent;
+  PathChanges[Next].Name := GetHiveName(Rec.Hive);
+
+  if Rec.Hive = HKEY_LOCAL_MACHINE then
+    PathChanges[Next].Caption := 'System'
+  else
+    PathChanges[Next].Caption := 'User';
+
+  PathChanges[Next].Done := False;
+
+end;
+
+
+function PathChangesMake(var Error: String): Integer;
+var
+  I: Integer;
+  Info: String;
+
+begin
+
+  Result := PATH_MOD_NONE;
+  Flags.PathChanged := False;
+
+  for I := 0 to GetArrayLength(PathChanges) - 1 do
+  begin
+
+    if PathChanges[I].Action = MOD_PATH_ADD then
+      Result := AddToPath(PathChanges[I].Hive, PathChanges[I].Path)
+    else
+      Result := RemoveFromPath(PathChanges[I].Hive, PathChanges[I].Path);
+
+    if Result = PATH_MOD_CHANGED then
+    begin
+      PathChanges[I].Done := True;
+      Flags.PathChanged := True;
+    end
+    else if Result = PATH_MOD_FAILED then
+    begin
+
+      if PathChanges[I].Action = MOD_PATH_ADD then
+        Info := Format('adding %s to your %s', [PathChanges[I].Path, PathChanges[I].Caption])
+      else
+        Info := Format('removing %s from your %s', [PathChanges[I].Path, PathChanges[I].Caption]);
+
+      Error := 'Error ' + Info + ' path variable';
+      Exit;
+
+    end;
+
+  end;
+
+  if Flags.PathChanged then
+    NotifyPathChange;
+
+end;
+
+
+procedure PathChangesRevoke;
+var
+  I: Integer;
+  Action: Boolean;
+  Res: Integer;
+
+begin
+
+  {we haven't really got a way to display any errors, but
+  something must be seriously wrong with the system if these calls fail}
+
+  Flags.PathChanged := False;
+
+  for I := 0 to GetArrayLength(PathChanges) - 1 do
+  begin
+
+    if not PathChanges[I].Done then
+      Continue;
+
+    Action := not PathChanges[I].Action;
+
+    if PathChanges[I].Action = MOD_PATH_ADD then
+      Res := AddToPath(PathChanges[I].Hive, PathChanges[I].Path)
+    else
+      Res := RemoveFromPath(PathChanges[I].Hive, PathChanges[I].Path);
+
+    if Res = PATH_MOD_CHANGED then
+      Flags.PathChanged := True;
+
+  end;
+
+  if Flags.PathChanged then
+    NotifyPathChange;
+
+end;
+
+
+function PathChangesToString: String;
+var
+  I: Integer;
+  Env: String;
+  Action: String;
+
+begin
+
+  Result := '';
+  Env := ' path variable:';
+
+  for I := 0 to GetArrayLength(PathChanges) - 1 do
+  begin
+
+    if PathChanges[I].Silent then
+      Continue;
+
+    if PathChanges[I].Action = MOD_PATH_ADD then
+      Action := 'Add to '
+    else
+      Action := 'Remove from ';
+
+    Result := Result + LF + LF + Action + PathChanges[I].Caption + Env;
+    Result := Result + LF + SP + PathChanges[I].Path;
+
+  end;
+
+end;
 
 {Check php functions}
 
@@ -1243,7 +1272,6 @@ begin
   end;
 
   PhpRec.Exe := Filename;
-
   Result := PhpRec.Error = '';
 
 end;
@@ -1341,6 +1369,154 @@ begin
 
 end;
 
+{Check path functions}
+
+procedure CheckPath;
+begin
+
+  Debug('Checking paths');
+
+  Flags.Installed := False;
+  Flags.PathChanged := False;
+
+  SetArrayLength(PathChanges, 0);
+  SetPathInfo(True);
+
+  CheckPathPhp();
+
+  PathError := CheckPathBin;
+
+  if PathError = '' then
+    PathError := CheckPathExt;
+
+end;
+
+
+function CheckPathBin: String;
+var
+  BinPath: String;
+  S: String;
+
+begin
+
+  Result := '';
+
+  Debug('Checking for composer bin path');
+
+  BinPath := AddBackslash(WizardDirValue) + 'bin';
+
+  if Info.StatusBin = PATH_NONE then
+  begin
+
+    {Path empty, so add BinPath and exit}
+    AddPathChange(BinPath, MOD_PATH_ADD);
+    Exit;
+
+  end
+  else if Info.StatusBin = PATH_OK then
+  begin
+
+    {Existing path. If it matches BinPath we are okay to exit}
+    if CompareText(Info.Bin.Path, BinPath) = 0 then
+      Exit
+
+  end;
+
+  {if we have got here, then we have an error}
+  S := 'Composer is already installed in the following directory:' + LF;
+  S := S + Info.Bin.Path + LF;
+  S := S + LF;
+  S := S + 'You must remove it first, if you want to continue this installation.' + LF;
+
+  Result := S;
+
+end;
+
+
+function CheckPathExt: String;
+var
+  Value: String;
+  PathExt: String;
+  S: String;
+
+begin
+
+  Result := '';
+
+  Debug('Checking PathExt values');
+
+  PathExt := '';
+
+  if GetPathExt(HKEY_LOCAL_MACHINE, Value) then
+    PathExt := Value;
+
+  if not IsAdminLoggedOn then
+  begin
+
+    if GetPathExt(HKEY_CURRENT_USER, Value) then
+      PathExt := PathExt + ';' + Value;
+
+  end;
+
+  PathExt := Uppercase(PathExt  + ';');
+
+  S := '';
+
+  if Pos('.BAT;', PathExt) = 0 then
+  begin
+    S := 'Your PathExt Environment variable is missing a required value:' + LF;
+    S := S + SP + '.BAT' + LF;
+  end;
+
+  Result := S;
+
+end;
+
+
+procedure CheckPathPhp;
+var
+  PhpPath: String;
+
+begin
+
+  Debug('Checking for php path');
+
+  PhpPath := ExtractFileDir(PhpRec.Exe);
+
+  if Info.StatusPhp = PATH_NONE then
+  begin
+
+    {Path empty, so add PhpPath}
+    AddPathChange(PhpPath, MOD_PATH_ADD);
+
+  end
+  else if Info.StatusPhp = PATH_OK then
+  begin
+
+    {Existing path. If it does not match PhpPath, we need to add
+    the new one and remove the existing one}
+    if CompareText(Info.Php.Path, PhpPath) <> 0 then
+    begin
+      AddPathChange(PhpPath, MOD_PATH_ADD);
+      AddPathChange(Info.Php.Path, MOD_PATH_REMOVE);
+    end;
+
+  end;
+
+end;
+
+
+function GetPathExt(Hive: Integer; var Value: String): Boolean;
+var
+  Key: String;
+
+begin
+
+  Value := '';
+  Key := GetPathKeyForHive(Hive);
+  Result := RegQueryStringValue(Hive, Key, 'PathExt', Value);
+
+end;
 
 {Download functions}
 
@@ -1550,99 +1726,7 @@ end;
 
 {Custom page functions}
 
-function CreateMessagePage(Id: Integer; Caption, Description, Text: String): TWizardPage;
-var
-  StaticText: TNewStaticText;
-  Memo: TNewMemo;
-  Top: Integer;
-
-begin
-
-  Result := CreateCustomPage(Id, Caption, Description);
-
-  StaticText := TNewStaticText.Create(Result);
-  StaticText.Name := 'Text';
-  StaticText.Caption := Text;
-  StaticText.AutoSize := True;
-  StaticText.Parent := Result.Surface;
-
-  Top := StaticText.Top + StaticText.Height;
-
-  Memo := TNewMemo.Create(Result);
-  Memo.Name := 'Memo';
-  Memo.Top := Top + ScaleY(8);
-  Memo.Height := Result.SurfaceHeight - (Top + ScaleY(8) + ScaleY(15));
-  Memo.Width := Result.SurfaceWidth;
-  Memo.ScrollBars := ssVertical;
-  Memo.ReadOnly := True;
-  Memo.Parent := Result.Surface;
-  Memo.Text := '';
-
-end;
-
-
-procedure ShowProgressCheckPage;
-begin
-
-  Pages.Progress.Caption := 'Checking your settings';
-  Pages.Progress.Description := 'Please wait';
-  Pages.Progress.SetText('Checking:', SettingsPage.Values[0]);
-  Pages.Progress.SetProgress(100, 100);
-  Pages.Progress.Show;
-
-  try
-
-    CheckPhp(SettingsPage.Values[0]);
-
-    if PhpRec.Error <> '' then
-    begin
-      UpdateErrorPage();
-      Exit;
-    end;
-
-    Pages.Progress.SetText('Checking:', 'Environment paths');
-    CheckPath;
-
-    if PathError <> '' then
-      UpdateErrorPage();
-
-  finally
-    Pages.Progress.Hide;
-  end;
-
-end;
-
-
-function ShowProgressDownloadPage(CurPageID: Integer): Boolean;
-begin
-
-  Result := True;
-
-  if GetRec.Next = NEXT_OK then
-    Exit;
-
-  Pages.Progress.Caption := 'Downloading Composer';
-  Pages.Progress.Description := 'Please wait';
-  Pages.Progress.SetText('Downloading from {#AppUrl}...', 'composer.phar');
-  Pages.Progress.SetProgress(100, 100);
-  Pages.Progress.Show;
-
-  try
-    DownloadWork;
-  finally
-    Pages.Progress.Hide;
-  end;
-
-  if GetRec.Text <> '' then
-  begin
-    UpdateDownloadMsgPage;
-    Result := CurPageID = wpReady;
-  end;
-
-end;
-
-
-procedure UpdateDownloadMsgPage();
+procedure DownloadMsgUpdate;
 var
   Text: TNewStaticText;
   Memo: TNewMemo;
@@ -1676,28 +1760,301 @@ begin
 end;
 
 
-procedure UpdateErrorPage();
+procedure ErrorMsgUpdate;
 var
   Memo: TNewMemo;
 
 begin
 
-  Memo := TNewMemo(Pages.Error.FindComponent('Memo'));
+  Memo := TNewMemo(Pages.ErrorMsg.FindComponent('Memo'));
 
   if PhpRec.Error <> '' then
   begin
-    Pages.Error.Caption := 'PHP Settings Error';
-    Pages.Error.Description := 'Composer will not work with your current settings'
+    Pages.ErrorMsg.Caption := 'PHP Settings Error';
+    Pages.ErrorMsg.Description := 'Composer will not work with your current settings'
     Memo.Text := PhpRec.Error;
   end
   else if PathError <> '' then
   begin
-    Pages.Error.Caption := 'Path Settings Error';
-    Pages.Error.Description := 'Setup cannot continue with your current settings'
+    Pages.ErrorMsg.Caption := 'Path Settings Error';
+    Pages.ErrorMsg.Description := 'Setup cannot continue with your current settings'
     Memo.Text := PathError;
   end
 
 end;
+
+
+function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage;
+var
+  StaticText: TNewStaticText;
+  Memo: TNewMemo;
+  Top: Integer;
+
+begin
+
+  Result := CreateCustomPage(Id, Caption, Description);
+
+  StaticText := TNewStaticText.Create(Result);
+  StaticText.Name := 'Text';
+  StaticText.Caption := Text;
+  StaticText.AutoSize := True;
+  StaticText.Parent := Result.Surface;
+
+  Top := StaticText.Top + StaticText.Height;
+
+  Memo := TNewMemo.Create(Result);
+  Memo.Name := 'Memo';
+  Memo.Top := Top + ScaleY(8);
+  Memo.Height := Result.SurfaceHeight - (Top + ScaleY(8) + ScaleY(15));
+  Memo.Width := Result.SurfaceWidth;
+  Memo.ScrollBars := ssVertical;
+  Memo.ReadOnly := True;
+  Memo.Parent := Result.Surface;
+  Memo.Text := '';
+
+end;
+
+
+procedure ProgressCheckShow;
+begin
+
+  Pages.Progress.Caption := 'Checking your settings';
+  Pages.Progress.Description := 'Please wait';
+  Pages.Progress.SetText('Checking:', Settings.Edit.Text);
+  Pages.Progress.SetProgress(100, 100);
+  Pages.Progress.Show;
+
+  try
+
+    CheckPhp(Settings.Edit.Text);
+
+    if PhpRec.Error <> '' then
+    begin
+      ErrorMsgUpdate();
+      Exit;
+    end;
+
+    Pages.Progress.SetText('Checking:', 'Environment paths');
+    CheckPath;
+
+    if PathError <> '' then
+      ErrorMsgUpdate();
+
+  finally
+    Pages.Progress.Hide;
+  end;
+
+end;
+
+
+function ProgressDownloadShow(CurPageID: Integer): Boolean;
+begin
+
+  Result := True;
+
+  if GetRec.Next = NEXT_OK then
+    Exit;
+
+  Pages.Progress.Caption := 'Downloading Composer';
+  Pages.Progress.Description := 'Please wait';
+  Pages.Progress.SetText('Downloading from {#AppUrl}...', 'composer.phar');
+  Pages.Progress.SetProgress(100, 100);
+  Pages.Progress.Show;
+
+  try
+    DownloadWork;
+  finally
+    Pages.Progress.Hide;
+  end;
+
+  if GetRec.Text <> '' then
+  begin
+    DownloadMsgUpdate();
+    Result := CurPageID = wpReady;
+  end;
+
+end;
+
+
+procedure SettingsButtonClick(Sender: TObject);
+var
+  Filename: String;
+  Dir: String;
+  Filter: String;
+  Extension: String;
+
+begin
+
+  Filename := '';
+  Dir := ExtractFileDir(Settings.Edit.Text);
+
+  if Dir = '' then
+    Dir := ExpandConstant('{pf}');
+
+  if Test = '' then
+  begin
+    Filter := 'php.exe|php.exe';
+    Extension := '.exe';
+  end
+  else
+  begin
+    Filter := 'All files|*.*';
+    Extension := '';
+  end;
+
+  if GetOpenFileName('', Filename, Dir, Filter, Extension) then
+    Settings.Edit.Text := Filename;
+
+end;
+
+
+procedure SettingsCheckBoxClick(Sender: TObject);
+begin
+
+  if Settings.CheckBox.Checked then
+    Settings.Edit.Text := '';
+
+  SettingsPageUpdate();
+
+end;
+
+
+function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
+var
+  Text: TNewStaticText;
+  Top: Integer;
+  Edit: TNewEdit;
+  Button: TNewButton;
+  CheckBox: TNewCheckbox;
+  Info: TNewStaticText;
+
+begin
+
+  Result := CreateCustomPage(wpWelcome, Caption, Description);
+
+  Text := TNewStaticText.Create(Result);
+  Text.Name := 'Text';
+  Text.AutoSize := True;
+  Text.Caption := '';
+  Text.Parent := Result.Surface;
+
+  Top := Text.Top + Text.Height;
+
+  Edit := TNewEdit.Create(Result);
+  Edit.Name := 'Edit';
+  Edit.Top := Top + ScaleY(10);
+  Edit.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
+  Edit.ReadOnly := True;
+  Edit.Text := '';
+  Edit.Parent := Result.Surface;
+
+  Button := TNewButton.Create(Result);
+  Button.Name := 'Button';
+  Button.Top := Edit.Top - ScaleY(1);
+  Button.Left := Result.SurfaceWidth - ScaleX(75);
+  Button.Width := ScaleX(75);
+  Button.Height := ScaleY(23);
+  Button.Caption := 'Browse...';
+  Button.Enabled := False;
+  Button.OnClick := @SettingsButtonClick;
+  Button.Parent := Result.Surface;
+
+  Top := Button.Top + Button.Height;
+
+  CheckBox := TNewCheckbox.Create(Result);
+  CheckBox.Name := 'CheckBox';
+  CheckBox.Top := Top + ScaleY(10);
+  CheckBox.Width := Result.SurfaceWidth;
+  CheckBox.Caption := 'Select a different php.exe from the one in your path.';
+  CheckBox.Enabled := False;
+  CheckBox.OnClick := @SettingsCheckBoxClick;
+  CheckBox.Parent := Result.Surface;
+
+  Top := CheckBox.Top + CheckBox.Height;
+
+  Info := TNewStaticText.Create(Result);
+  Info.Name := 'Info';
+  Info.Top := Top + ScaleY(6);
+  Info.Width := Result.SurfaceWidth;
+  Info.WordWrap := True;
+  Info.AutoSize := True;
+  Info.Caption := '';
+  Info.Parent := Result.Surface;
+
+  Settings.Text := Text;
+  Settings.Edit := Edit;
+  Settings.Button := Button;
+  Settings.CheckBox := CheckBox;
+  Settings.Info := Info;
+
+end;
+
+
+procedure SettingsPageShow;
+begin
+
+  SetPathInfo(False);
+
+  if Info.StatusPhp = PATH_NONE then
+  begin
+    Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
+    Settings.Edit.Text := '';
+    Settings.Edit.ReadOnly := False;
+    Settings.Button.Enabled := True;
+    Settings.CheckBox.Visible := False;
+    Settings.Info.Caption := '';
+  end
+  else
+  begin
+
+    if Info.StatusPhp = PATH_OK then
+      Settings.CheckBox.Enabled := True
+    else
+    begin
+      Settings.CheckBox.Enabled := False;
+      Settings.CheckBox.Checked := False;
+    end;
+
+    SettingsPageUpdate();
+
+  end;
+
+end;
+
+
+procedure SettingsPageUpdate;
+var
+  S: String;
+
+begin
+
+  if Settings.CheckBox.Checked then
+  begin
+    {checked, Edit.Text already set}
+    Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
+    Settings.Edit.ReadOnly := False;
+    Settings.Button.Enabled := True;
+    S := 'Warning: This will overwrite the php entry in your path. ';
+    S := S + 'You must be certain that this will not affect anything else.';
+    Settings.Info.Caption := S;
+  end
+  else
+  begin
+    {unchecked, so we need to add path php.exe to Edit.Text}
+    Settings.Text.Caption := 'We found php.exe in your path. Click Next to use it.';
+    Settings.Edit.ReadOnly := True;
+    Settings.Edit.Text := Info.Php.Cmd;
+    Settings.Button.Enabled := False;
+
+    if Settings.CheckBox.Enabled then
+      Settings.Info.Caption := ''
+    else
+      Settings.Info.Caption := 'To use a different php.exe, you must remove this one from your System path.';
+
+  end;
+
+end;
+
 
 {Test page functions}
 
