@@ -164,7 +164,7 @@ type
 type
   TFlagsRec = record
     PathChanged : Boolean;
-    LastNextID  : Integer;
+    Progress    : Boolean;
     Installed   : Boolean;
     Completed   : Boolean;
   end;
@@ -289,6 +289,7 @@ procedure ProgressCheckShow; forward;
 function ProgressDownloadShow(CurPageID: Integer): Boolean; forward;
 procedure SettingsButtonClick(Sender: TObject); forward;
 procedure SettingsCheckBoxClick(Sender: TObject); forward;
+function SettingsCheckInPath: Boolean; forward;
 function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure SettingsPageShow; forward;
 procedure SettingsPageUpdate; forward;
@@ -451,13 +452,14 @@ begin
   if CurPageID = Pages.Settings.ID then
   begin
 
-    {we have to flag the last next because we have inserted the progress page}
-    if Flags.LastNextID <> CurPageID then
+    {we have to set Flags.Progress since we the progress page has no PageID}
+    if Flags.Progress then
+      Flags.Progress := False
+    else
     begin
       SettingsPageShow();
       //if FileExists(PhpRec.Exe) then
       //  Settings.Edit.Text := PhpRec.Exe;
-      //SettingsPage.Values[0] := PhpRec.Exe;
 
       WizardForm.ActiveControl := nil;
     end;
@@ -510,7 +512,6 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 begin
 
   Result := True;
-  Flags.LastNextID := CurPageID;
 
   if CurPageID = Pages.Settings.ID then
   begin
@@ -521,20 +522,24 @@ begin
       Result := False;
     end
     else
+    begin
+      {Important to set Flags.Progress before showing the page}
+      Flags.Progress := True;
       ProgressCheckShow();
+    end;
 
   end
   else if CurPageID = wpReady then
   begin
 
-    {start the download}
+    {Start the download}
     Result := ProgressDownloadShow(CurPageID);
 
   end
   else if CurPageID = Pages.DownloadMsg.ID then
   begin
 
-    {the next button has been re-labelled Retry, so we download again}
+    {The next button has been re-labelled Retry, so we download again}
     Result := ProgressDownloadShow(CurPageID);
 
   end;
@@ -562,7 +567,7 @@ end;
 procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
 begin
 
-  {remove cancel confirmation on pages where it is not necessary}
+  {Remove cancel confirmation on pages where it is not necessary}
 
   case CurPageID of
     wpWelcome: Confirm := False;
@@ -636,7 +641,7 @@ begin
   if CurUninstallStep = usUninstall then
   begin
 
-    {we must call this here, or the dll and app dir will not be deleted}
+    {W must call this here, or the dll and app dir will not be deleted}
     UserDataDelete();
 
     AddPathChange(ExpandConstant('{app}\bin'), MOD_PATH_REMOVE);
@@ -672,7 +677,7 @@ begin
 
   if Value <> '' then
   begin
-    // we don't want to send default test ? value
+    {We don't want to send default test ? value}
     if (Name <> 'test') or (Test <> '?') then
       Switches := Switches + ' "' + Value + '"';
   end;
@@ -1888,9 +1893,6 @@ begin
   Filename := '';
   Dir := ExtractFileDir(Settings.Edit.Text);
 
-  if Dir = '' then
-    Dir := ExpandConstant('{pf}');
-
   if Test = '' then
   begin
     Filter := 'php.exe|php.exe';
@@ -1903,7 +1905,14 @@ begin
   end;
 
   if GetOpenFileName('', Filename, Dir, Filter, Extension) then
+  begin
+
     Settings.Edit.Text := Filename;
+
+    if SettingsCheckInPath() then
+      SettingsPageUpdate();
+
+  end;
 
 end;
 
@@ -1915,6 +1924,25 @@ begin
     Settings.Edit.Text := '';
 
   SettingsPageUpdate();
+
+end;
+
+
+function SettingsCheckInPath: Boolean;
+begin
+
+  Result := False;
+
+  if Settings.CheckBox.Checked and (Settings.Edit.Text <> '') then
+  begin
+
+    if CompareText(NormalizePath(Settings.Edit.Text), Info.Php.Cmd) = 0 then
+    begin
+      Settings.CheckBox.Checked := False;
+      Result := True;
+    end;
+
+  end;
 
 end;
 
@@ -2007,8 +2035,16 @@ begin
   else
   begin
 
+    Settings.Edit.ReadOnly := True;
+
     if Info.StatusPhp = PATH_OK then
-      Settings.CheckBox.Enabled := True
+    begin
+
+      {SettingsCheckInPath only disables the checkbox}
+      if not SettingsCheckInPath() then
+        Settings.CheckBox.Enabled := True;
+
+    end
     else
     begin
       Settings.CheckBox.Enabled := False;
@@ -2024,6 +2060,7 @@ end;
 
 procedure SettingsPageUpdate;
 var
+  SafeFile: String;
   S: String;
 
 begin
@@ -2032,7 +2069,6 @@ begin
   begin
     {checked, Edit.Text already set}
     Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
-    Settings.Edit.ReadOnly := False;
     Settings.Button.Enabled := True;
     S := 'Warning: This will overwrite the php entry in your path. ';
     S := S + 'You must be certain that this will not affect anything else.';
@@ -2042,7 +2078,6 @@ begin
   begin
     {unchecked, so we need to add path php.exe to Edit.Text}
     Settings.Text.Caption := 'We found php.exe in your path. Click Next to use it.';
-    Settings.Edit.ReadOnly := True;
     Settings.Edit.Text := Info.Php.Cmd;
     Settings.Button.Enabled := False;
 
