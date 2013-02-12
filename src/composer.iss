@@ -2111,9 +2111,6 @@ end;
 
 
 procedure SettingsPageUpdate;
-var
-  S: String;
-
 begin
 
   if Settings.CheckBox.Checked then
@@ -2121,9 +2118,7 @@ begin
     {Checked, Edit.Text already set}
     Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
     Settings.Button.Enabled := True;
-    S := 'Warning: This will overwrite the php entry in your path. ';
-    S := S + 'You must be certain that this will not affect anything else.';
-    Settings.Info.Caption := S;
+    Settings.Info.Caption := 'This will replace the php entry in your path. Are you sure you want to do this?';
   end
   else
   begin
