@@ -1120,13 +1120,7 @@ begin
 
       {If it matches Flags.RoamingBin we add BinPath and remove RoamingBin}
       AddPathChange(BinPath, MOD_PATH_ADD);
-
-      Rec.Path := Flags.RoamingBin;
-      Rec.Hive := HKEY_CURRENT_USER;
-      Rec.Action := MOD_PATH_REMOVE;
-      Rec.Silent := True;
-      AddPathChangeEx(Rec);
-
+      AddPathChange(Flags.RoamingBin, MOD_PATH_REMOVE);
       Exit;
 
     end;
@@ -2118,7 +2112,7 @@ begin
     {Checked, Edit.Text already set}
     Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
     Settings.Button.Enabled := True;
-    Settings.Info.Caption := 'This will replace the php entry in your path. You must be sure you want to do this.';
+    Settings.Info.Caption := 'This will replace the php entry in your path. You must be certain you want to do this.';
   end
   else
   begin

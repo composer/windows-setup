@@ -1,28 +1,40 @@
 # Tests
 
-These are made up of automated Php Tests, and manual Installer Tests that are described below.
+These are made up of automated Php Tests, General Tests and manual Installer Tests. To run most of the Installer Tests you must call setup with the `/TEST` command-line argument. This displays an *Enter Test* button that allows you to input the test identifier.
 
 ## Php Tests
 
 [![Build Status](https://secure.travis-ci.org/johnstevenson/composer-setup.png)](https://travis-ci.org/johnstevenson/composer-setup)
 
-These test `setup.class.php` that is used by the setup exe to perform php-checking and downloading the Composer installer.
+These test `setup.class.php` which is called by setup to perform php checking and downloading the Composer installer.
 
-## Installer Tests
+## General Tests
 
-The following is a list of Installer Tests, which are not automated. In most cases these are initiated by running setup in *Test-Mode*, which is enabled with the `/TEST` command-line argument. This displays an *Enter Test* button that allows you to input the test identifier. Note that the command console will show briefly when checking the php settings in test-mode.
+These are observational tests that require running setup/uninstall to check for the required behaviour.
+
+#### Usage
+* *Setup:* Run setup, open a new command window and run ```composer```
+* *Expected:* Composer usage/help information should be displayed
+
+This test must be completed for cmd.exe, Cygwin, Msys and Git Bash, and also for an installation folder with spaces in its name, for example: ```C:\Users\Test User\AppData\Local\Programs\Composer```.
+
+#### Installation Folders
+Check that an **Admin** setup installs to (and removes from):
+
+```C:\ProgramData\Composer```
+
+<sub>XP: *C:\Documents and Settings\All Users\Composer*</sub>
+
+Check that a **User** setup installs to (and removes from):
+
+```C:\Users\Name\AppData\Local\Programs\Composer```
+
+<sub>XP: *C:\Documents and Settings\Name\Local Settings\Application Data\Programs\Composer*</sub>
 
 
-### Installer Php Tests
+## Installer Php Tests
 
-These tests are for checking the input on the *Php Settings* page. They should display the *Php Settings Error* page with the Next button disabled.
-
-#### Invalid php.exe
-* *Setup:* Run test-mode and select a file which isn't php.exe.
-
-* *Expected:* Describes file as not a valid exe file, showing filename.
-
-
+These tests are for checking the input on the *Settings Check* page. They should display the *Php Settings Error* page with the Next button disabled. Note that the command console will show briefly when checking the php settings.
 
 #### Invalid version
 * *Setup:* Select a version of PHP < 5.3.2
@@ -78,7 +90,7 @@ Run the installer/uninstaller with the `/LOG="path\to\log.txt"` command-line arg
 
 
 ## Installer Download Tests
-The tests use test-mode and generally mimic responses from the install script. These should display the the *Composer Download Error*, except for test `d1` which should show the *Composer Warning* page.
+The tests generally simulate responses from the install script. These should display the the *Composer Download Error*, except for test `d1` which should show the *Composer Warning* page.
 
 
 #### Success with a warning
