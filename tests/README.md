@@ -21,13 +21,17 @@ This test must be completed for cmd.exe, Cygwin, Msys and Git Bash, and also for
 #### Installation Folders
 Check that an **Admin** setup installs to (and removes from):
 
-```C:\ProgramData\Composer```
+```
+C:\ProgramData\Composer
+```
 
 <sub>XP: *C:\Documents and Settings\All Users\Composer*</sub>
 
 Check that a **User** setup installs to (and removes from):
 
-```C:\Users\Name\AppData\Local\Programs\Composer```
+```
+C:\Users\Name\AppData\Local\Programs\Composer
+```
 
 <sub>XP: *C:\Documents and Settings\Name\Local Settings\Application Data\Programs\Composer*</sub>
 
