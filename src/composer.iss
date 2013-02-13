@@ -149,7 +149,7 @@ type
   end;
 
 type
-  TGetRec = record
+  TDownloadRec = record
     Error   : Integer;
     Next    : Integer;
     Force   : Boolean;
@@ -205,7 +205,7 @@ var
   CmdExe: String;               {full pathname to system cmd}
   PathError: String;            {used to show ErrorMsg page}
   PathChanges: TPathChangeList; {list of path changes to make, or made}
-  GetRec: TGetRec;              {contains result of download, to show ErrorMsg and buttons}
+  DownloadRec: TDownloadRec;    {contains result of download, to show ErrorMsg and buttons}
   Flags: TFlagsRec;             {contains global flags that won't go anywhere else}
   Test: String;                 {flags test mode and contains any test to run}
   Pages: TCustomPagesRec;       {group of custom pages}
@@ -295,7 +295,7 @@ procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String); for
 
 {Download functions}
 procedure DownloadWork; forward;
-procedure ResetGetRec(Full: Boolean); forward;
+procedure ResetDownloadRec(Full: Boolean); forward;
 procedure SetDownloadCmdError(ExitCode: Integer); forward;
 procedure SetDownloadStatus(StatusCode, ExitCode: Integer); forward;
 
@@ -428,9 +428,9 @@ begin
   begin
 
     WizardForm.ActiveControl := nil;
-    WizardForm.NextButton.Enabled := GetRec.Next <> NEXT_NONE;
+    WizardForm.NextButton.Enabled := DownloadRec.Next <> NEXT_NONE;
 
-    if GetRec.Next = NEXT_RETRY then
+    if DownloadRec.Next = NEXT_RETRY then
       WizardForm.NextButton.Caption := 'Retry';
 
   end;
@@ -446,7 +446,7 @@ begin
   if PageID = Pages.ErrorMsg.ID then
     Result := (PhpRec.Error = '') and (PathError = '')
   else if PageID = Pages.DownloadMsg.ID then
-    Result := GetRec.Text = ''
+    Result := DownloadRec.Text = ''
   else if PageId = Pages.PathChanged.ID then
     Result := not Flags.PathChanged;
 
@@ -503,7 +503,7 @@ begin
     and any errors. However we need to keep the force flag which affects
     if composer.phar is re-downloaded or not.}
 
-    ResetGetRec(False);
+    ResetDownloadRec(False);
 
   end;
 
@@ -1503,7 +1503,7 @@ begin
   PhpRec.Version := '';
   PhpRec.Error := '';
 
-  ResetGetRec(True);
+  ResetDownloadRec(True);
 
 end;
 
@@ -1602,7 +1602,7 @@ begin
 
   AddSwitch(Switches, 'download', '');
 
-  if GetRec.Force then
+  if DownloadRec.Force then
     AddSwitch(Switches, 'force', '');
 
   if not ExecCmd(PhpRec.Exe, Switches, SW_HIDE, ExitCode) then
@@ -1637,8 +1637,8 @@ begin
   else if ExitCode = 3 then
   begin
     SetDownloadStatus(ERR_CONN, ExitCode);
-    AddLine(GetRec.Text, '');
-    GetCmdResults(Results, GetRec.Text);
+    AddLine(DownloadRec.Text, '');
+    GetCmdResults(Results, DownloadRec.Text);
     Exit;
   end
   else if ExitCode <> 1 then
@@ -1664,29 +1664,29 @@ begin
 
   end;
 
-  GetCmdResults(Results, GetRec.Text);
-  GetRec.Text := Trim(GetRec.Text);
+  GetCmdResults(Results, DownloadRec.Text);
+  DownloadRec.Text := Trim(DownloadRec.Text);
 
   {Final check}
-  if (ExitCode = 1) and (GetRec.Text = '') then
+  if (ExitCode = 1) and (DownloadRec.Text = '') then
     SetDownloadStatus(ERR_INVALID, ExitCode);
 
-  if GetRec.Text <> '' then
-    AddLine(GetRec.Text, '');
+  if DownloadRec.Text <> '' then
+    AddLine(DownloadRec.Text, '');
 
 end;
 
 
-procedure ResetGetRec(Full: Boolean);
+procedure ResetDownloadRec(Full: Boolean);
 begin
 
-  GetRec.Error := ERR_NONE;
-  GetRec.Next := NEXT_NONE;
+  DownloadRec.Error := ERR_NONE;
+  DownloadRec.Next := NEXT_NONE;
 
   if Full then
-    GetRec.Force := False;
+    DownloadRec.Force := False;
 
-  GetRec.Text := '';
+  DownloadRec.Text := '';
 
 end;
 
@@ -1705,7 +1705,7 @@ begin
   else
     Text := Error;
 
-  GetRec.Text := GetRec.Text + Text;
+  DownloadRec.Text := DownloadRec.Text + Text;
 
 end;
 
@@ -1717,51 +1717,51 @@ var
 begin
 
   Text := '';
-  ResetGetRec(True);
+  ResetDownloadRec(True);
 
   case StatusCode of
 
-    ERR_NONE: GetRec.Next := NEXT_OK;
+    ERR_NONE: DownloadRec.Next := NEXT_OK;
 
-    ERR_INSTALL: GetRec.Next := NEXT_NONE;
+    ERR_INSTALL: DownloadRec.Next := NEXT_NONE;
 
     ERR_CMD, ERR_CMD_EX:
     begin
-      GetRec.Next := NEXT_RETRY;
+      DownloadRec.Next := NEXT_RETRY;
       Text := GetCommonCmdError(StatusCode, ExitCode);
     end;
 
     ERR_PHP:
     begin
-      GetRec.Next := NEXT_RETRY;
+      DownloadRec.Next := NEXT_RETRY;
       Text := 'Internal Error [ERR_PHP]: An internal script did not run correctly';
     end;
 
     ERR_STATUS:
     begin
-      GetRec.Next := NEXT_RETRY;
-      GetRec.Force := True;
+      DownloadRec.Next := NEXT_RETRY;
+      DownloadRec.Force := True;
       Text := Format('Composer Error [ERR_STATUS]: Unexpected exit code from Composer (%d)', [ExitCode]);
      end;
 
     ERR_DOWNLOAD:
     begin
-      GetRec.Next := NEXT_RETRY;
-      GetRec.Force := True;
+      DownloadRec.Next := NEXT_RETRY;
+      DownloadRec.Force := True;
       Text := 'Composer Error [ERR_DOWNLOAD]: Composer was not downloaded';
     end;
 
     ERR_INVALID:
     begin
-      GetRec.Next := NEXT_RETRY;
-      GetRec.Force := True;
+      DownloadRec.Next := NEXT_RETRY;
+      DownloadRec.Force := True;
       Text := 'Composer Error [ERR_INVALID]: The installer script did not run correctly';
     end;
 
     ERR_CONN:
     begin
-      GetRec.Next := NEXT_RETRY;
-      GetRec.Force := True;
+      DownloadRec.Next := NEXT_RETRY;
+      DownloadRec.Force := True;
       Text := 'Connection Error [ERR_CONNECTION]: Unable to connect to {#AppUrl}';
     end;
 
@@ -1769,14 +1769,14 @@ begin
 
     begin
       StatusCode := ERR_UNKNOWN;
-      GetRec.Next := NEXT_RETRY;
+      DownloadRec.Next := NEXT_RETRY;
       Text := 'Internal Error [ERR_UNKNOWN]: An unspecified error occurred';
     end;
 
   end;
 
-  GetRec.Error := StatusCode;
-  GetRec.Text := Text;
+  DownloadRec.Error := StatusCode;
+  DownloadRec.Text := Text;
 
 end;
 
@@ -1793,13 +1793,13 @@ begin
   Text := TNewStaticText(Pages.DownloadMsg.FindComponent('Text'));
   Memo := TNewMemo(Pages.DownloadMsg.FindComponent('Memo'));
 
-  if GetRec.Error <> ERR_NONE then
+  if DownloadRec.Error <> ERR_NONE then
   begin
 
     Pages.DownloadMsg.Caption := 'Composer Download Error';
     Pages.DownloadMsg.Description := 'Unable to continue with installation';
 
-    if GetRec.Error = ERR_INSTALL then
+    if DownloadRec.Error = ERR_INSTALL then
       Text.Caption := 'Please review and fix the issues listed below then try again.'
     else
       Text.Caption := 'An error occurred. Clicking Retry may resolve this issue.'
@@ -1812,7 +1812,7 @@ begin
     Text.Caption := 'Review the issues listed below then click Next to continue';
   end;
 
-  Memo.Text := GetRec.Text;
+  Memo.Text := DownloadRec.Text;
 
 end;
 
@@ -1909,7 +1909,7 @@ begin
 
   Result := True;
 
-  if GetRec.Next = NEXT_OK then
+  if DownloadRec.Next = NEXT_OK then
     Exit;
 
   Pages.Progress.Caption := 'Downloading Composer';
@@ -1924,7 +1924,7 @@ begin
     Pages.Progress.Hide;
   end;
 
-  if GetRec.Text <> '' then
+  if DownloadRec.Text <> '' then
   begin
     DownloadMsgUpdate();
     Result := CurPageID = wpReady;
@@ -2118,7 +2118,7 @@ begin
     {Checked, Edit.Text already set}
     Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
     Settings.Button.Enabled := True;
-    Settings.Info.Caption := 'This will replace the php entry in your path. Are you sure you want to do this?';
+    Settings.Info.Caption := 'This will replace the php entry in your path. You must be sure you want to do this.';
   end
   else
   begin
