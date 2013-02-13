@@ -25,7 +25,7 @@ Check that an **Admin** setup installs to (and removes from):
 C:\ProgramData\Composer
 ```
 
-<sub>XP: *C:\Documents and Settings\All Users\Composer*</sub>
+<sub>XP: *C:\Documents and Settings\All Users\Application Data\Composer*</sub>
 
 Check that a **User** setup installs to (and removes from):
 

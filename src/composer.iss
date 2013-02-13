@@ -82,7 +82,7 @@ Filename: "http://{#AppUrl}"; Description: "View online documentation"; Flags: p
 [InstallDelete]
 ; only for upgrade
 Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: HasRoamingBin;
-Type: filesandordirs; Name: "{commonprograms}\Composer";
+Type: filesandordirs; Name: "{commonprograms}\Composer"; Check: HasStartMenu;
 
 
 [UninstallDelete]
@@ -171,11 +171,17 @@ type
   TPathChangeList = Array of TPathChangeRec;
 
 type
+  TUpgradeRec = record
+    RoamingBin  : String;
+    StartMenu   : Boolean;
+  end;
+
+type
   TFlagsRec = record
     PathChanged   : Boolean;
     ProgressPage  : Boolean;
     Completed     : Boolean;
-    RoamingBin    : String;
+    Upgrade       : TUpgradeRec;
   end;
 
 type
@@ -245,6 +251,11 @@ const
   NEXT_OK = 2;
 
 
+{Installer related functions}
+function GetBaseDir(Param: String): String; forward;
+function HasRoamingBin: Boolean; forward;
+function HasStartMenu: Boolean; forward;
+
 {Common functions}
 procedure AddLine(var Existing: String; const Value: String); forward;
 procedure AddSwitch(var Switches: String; const Name, Value: String); forward;
@@ -258,12 +269,8 @@ function GetSysError(ErrorCode: Integer; const Filename: String; var Error: Stri
 function ResultIdLine(const Line: String; var S: String): Boolean; forward;
 
 {Misc functions}
-function UnixifyShellFile(var Error: String): Boolean; forward;
-
-{Installer related functions}
 function CheckAlreadyInstalled: Boolean; forward;
-function GetBaseDir(Param: String): String; forward;
-function HasRoamingBin: Boolean; forward;
+function UnixifyShellFile(var Error: String): Boolean; forward;
 
 {Path retrieve functions}
 function GetPathHash(const SystemPath, UserPath: String): String; forward;
@@ -330,7 +337,6 @@ begin
   Flags.PathChanged := False;
   Flags.ProgressPage := False;
   Flags.Completed := False;
-  Flags.RoamingBin := '';
 
   CmdExe := ExpandConstant('{cmd}');
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
@@ -587,6 +593,32 @@ begin
 end;
 
 
+{*************** Installer related functions ***************}
+
+function GetBaseDir(Param: String): String;
+begin
+
+  {Code-constant function for DefaultDirName}
+  if IsAdminLoggedOn then
+    Result := ExpandConstant('{commonappdata}')
+  else
+    Result := ExpandConstant('{userpf}');
+
+end;
+
+function HasRoamingBin: Boolean;
+begin
+  {Check function for InstallDelete section}
+  Result := Flags.Upgrade.RoamingBin <> '';
+end;
+
+function HasStartMenu: Boolean;
+begin
+  {Check function for InstallDelete section}
+  Result := (Flags.Upgrade.RoamingBin <> '') or Flags.Upgrade.StartMenu;
+end;
+
+
 {*************** Common functions ***************}
 
 procedure AddLine(var Existing: String; const Value: String);
@@ -780,6 +812,44 @@ end;
 
 {*************** Misc functions ***************}
 
+function CheckAlreadyInstalled: Boolean;
+var
+  Path: String;
+  S: String;
+
+begin
+
+  Result := False;
+
+  if IsAdminLoggedOn then
+  begin
+    Path := ExpandConstant('{commonprograms}\Composer\Uninstall Composer.lnk');
+    Flags.Upgrade.StartMenu := FileExists(Path);
+    Exit;
+  end;
+
+  {Check for an existing All Users installation}
+  Path := ExpandConstant('{commonappdata}\Composer\bin\unins000.exe');
+
+  if FileExists(Path) then
+  begin
+    S := 'Composer is already installed on this computer for All Users.' + LF + LF;
+    S := S + 'Please uninstall it if you wish to continue.';
+
+    MsgBox(S, mbCriticalError, mb_Ok);
+    Result := True;
+    Exit;
+  end;
+
+  {Check for an existing installation in AppData\Roaming directory}
+  Path := ExpandConstant('{userappdata}\Composer\bin');
+
+  if DirExists(Path) then
+    Flags.Upgrade.RoamingBin := Path;
+
+end;
+
+
 function UnixifyShellFile(var Error: String): Boolean;
 var
   Lines: TArrayOfString;
@@ -812,60 +882,6 @@ begin
 
   Result := True;
 
-end;
-
-
-{*************** Installer related functions ***************}
-
-function CheckAlreadyInstalled: Boolean;
-var
-  Path: String;
-  S: String;
-
-begin
-
-  Result := False;
-
-  if IsAdminLoggedOn then
-    Exit;
-
-  {Check for an existing All Users installation}
-  Path := ExpandConstant('{commonappdata}\Composer\bin\unins000.exe');
-
-  if FileExists(Path) then
-  begin
-    S := 'Composer is already installed on this computer for All Users.' + LF + LF;
-    S := S + 'Please uninstall it if you wish to continue.';
-
-    MsgBox(S, mbCriticalError, mb_Ok);
-    Result := True;
-    Exit;
-  end;
-
-  {Check for an existing installation in AppData\Roaming directory}
-  Path := ExpandConstant('{userappdata}\Composer\bin');
-
-  if DirExists(Path) then
-    Flags.RoamingBin := Path;
-
-end;
-
-
-function GetBaseDir(Param: String): String;
-begin
-
-  {Code-constant function for DefaultDirName}
-  if IsAdminLoggedOn then
-    Result := ExpandConstant('{commonappdata}')
-  else
-    Result := ExpandConstant('{userpf}');
-
-end;
-
-function HasRoamingBin: Boolean;
-begin
-  {Check function for InstallDelete section}
-  Result := Flags.RoamingBin <> '';
 end;
 
 
@@ -999,7 +1015,7 @@ begin
     Info.Bin.System := SearchPathBin(HKEY_LOCAL_MACHINE);
 
     {Only check User if we have no System entry, or we have an old user install to upgrade}
-    if IsUser and ((Info.Bin.System = '') or (Flags.RoamingBin <> '')) then
+    if IsUser and ((Info.Bin.System = '') or (Flags.Upgrade.RoamingBin <> '')) then
       Info.Bin.User := SearchPathBin(HKEY_CURRENT_USER);
 
     SetPathRec(Info.Bin);
@@ -1114,12 +1130,12 @@ begin
     {Existing path. If it matches BinPath we are okay to exit}
     if CompareText(Info.Bin.Path, BinPath) = 0 then
       Exit
-    else if CompareText(Info.Bin.Path, Flags.RoamingBin) = 0 then
+    else if CompareText(Info.Bin.Path, Flags.Upgrade.RoamingBin) = 0 then
     begin
 
-      {If it matches Flags.RoamingBin we add BinPath and remove RoamingBin}
+      {If it matches RoamingBin we add BinPath and remove RoamingBin}
       AddPathChange(BinPath, MOD_PATH_ADD);
-      AddPathChange(Flags.RoamingBin, MOD_PATH_REMOVE);
+      AddPathChange(Flags.Upgrade.RoamingBin, MOD_PATH_REMOVE);
       Exit;
 
     end;
