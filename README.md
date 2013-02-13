@@ -64,7 +64,7 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
 
 
   [composer]:   http://getcomposer.org
-  [download]:   https://s3-eu-west-1.amazonaws.com/johnstevenson/composer/Composer-Setup.2.6.exe
+  [download]:   https://s3-eu-west-1.amazonaws.com/johnstevenson/composer/Composer-Setup.2.7.exe
   [inno]:       http://www.jrsoftware.org/isinfo.php
   [packagist]:  https://packagist.org/
   [manual]:     https://github.com/johnstevenson/composer-setup/wiki/Manual-installation

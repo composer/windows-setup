@@ -1090,7 +1090,6 @@ end;
 function CheckPathBin: String;
 var
   BinPath: String;
-  Rec: TPathChangeRec;
   S: String;
 
 begin
