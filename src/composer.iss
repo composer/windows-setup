@@ -81,8 +81,8 @@ Filename: "http://{#AppUrl}"; Description: "View online documentation"; Flags: p
 
 [InstallDelete]
 ; only for upgrade
-Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: HasRoamingBin;
-Type: filesandordirs; Name: "{commonprograms}\Composer"; Check: HasStartMenu;
+Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: IsUpgrade;
+Type: filesandordirs; Name: "{commonprograms}\Composer"; Check: IsUpgrade;
 
 
 [UninstallDelete]
@@ -171,17 +171,11 @@ type
   TPathChangeList = Array of TPathChangeRec;
 
 type
-  TUpgradeRec = record
-    RoamingBin  : String;
-    StartMenu   : Boolean;
-  end;
-
-type
   TFlagsRec = record
     PathChanged   : Boolean;
     ProgressPage  : Boolean;
     Completed     : Boolean;
-    Upgrade       : TUpgradeRec;
+    Upgrade       : Boolean;
   end;
 
 type
@@ -253,8 +247,7 @@ const
 
 {Installer related functions}
 function GetBaseDir(Param: String): String; forward;
-function HasRoamingBin: Boolean; forward;
-function HasStartMenu: Boolean; forward;
+function IsUpgrade: Boolean; forward;
 
 {Common functions}
 procedure AddLine(var Existing: String; const Value: String); forward;
@@ -337,6 +330,7 @@ begin
   Flags.PathChanged := False;
   Flags.ProgressPage := False;
   Flags.Completed := False;
+  Flags.Upgrade := False;
 
   CmdExe := ExpandConstant('{cmd}');
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
@@ -570,6 +564,12 @@ begin
 end;
 
 
+procedure RegisterPreviousData(PreviousDataKey: Integer);
+begin
+  SetPreviousData(PreviousDataKey, 'Version', '{#SetupVersion}');
+end;
+
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Error: String;
@@ -606,16 +606,10 @@ begin
 
 end;
 
-function HasRoamingBin: Boolean;
+function IsUpgrade: Boolean;
 begin
   {Check function for InstallDelete section}
-  Result := Flags.Upgrade.RoamingBin <> '';
-end;
-
-function HasStartMenu: Boolean;
-begin
-  {Check function for InstallDelete section}
-  Result := (Flags.Upgrade.RoamingBin <> '') or Flags.Upgrade.StartMenu;
+  Result := Flags.Upgrade;
 end;
 
 
@@ -821,12 +815,11 @@ begin
 
   Result := False;
 
+  {Set upgrade from previous install}
+  Flags.Upgrade := GetPreviousData('Version', '') = '';
+
   if IsAdminLoggedOn then
-  begin
-    Path := ExpandConstant('{commonprograms}\Composer\Uninstall Composer.lnk');
-    Flags.Upgrade.StartMenu := FileExists(Path);
     Exit;
-  end;
 
   {Check for an existing All Users installation}
   Path := ExpandConstant('{commonappdata}\Composer\bin\unins000.exe');
@@ -840,12 +833,6 @@ begin
     Result := True;
     Exit;
   end;
-
-  {Check for an existing installation in AppData\Roaming directory}
-  Path := ExpandConstant('{userappdata}\Composer\bin');
-
-  if DirExists(Path) then
-    Flags.Upgrade.RoamingBin := Path;
 
 end;
 
@@ -1015,7 +1002,7 @@ begin
     Info.Bin.System := SearchPathBin(HKEY_LOCAL_MACHINE);
 
     {Only check User if we have no System entry, or we have an old user install to upgrade}
-    if IsUser and ((Info.Bin.System = '') or (Flags.Upgrade.RoamingBin <> '')) then
+    if IsUser and ((Info.Bin.System = '') or Flags.Upgrade) then
       Info.Bin.User := SearchPathBin(HKEY_CURRENT_USER);
 
     SetPathRec(Info.Bin);
@@ -1106,6 +1093,7 @@ end;
 function CheckPathBin: String;
 var
   BinPath: String;
+  RoamingBin: String;
   S: String;
 
 begin
@@ -1129,14 +1117,21 @@ begin
 
     {Existing path. If it matches BinPath we are okay to exit}
     if CompareText(Info.Bin.Path, BinPath) = 0 then
-      Exit
-    else if CompareText(Info.Bin.Path, Flags.Upgrade.RoamingBin) = 0 then
+      Exit;
+
+    {See if we are a User upgrading}
+    if not IsAdminLoggedOn and Flags.Upgrade then
     begin
 
+      RoamingBin := ExpandConstant('{userappdata}\Composer\bin');
+
       {If it matches RoamingBin we add BinPath and remove RoamingBin}
-      AddPathChange(BinPath, MOD_PATH_ADD);
-      AddPathChange(Flags.Upgrade.RoamingBin, MOD_PATH_REMOVE);
-      Exit;
+      if CompareText(Info.Bin.Path, RoamingBin) = 0 then
+      begin
+        AddPathChange(BinPath, MOD_PATH_ADD);
+        AddPathChange(RoamingBin, MOD_PATH_REMOVE);
+        Exit;
+      end;
 
     end;
 
