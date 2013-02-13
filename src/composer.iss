@@ -85,11 +85,6 @@ Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: IsUpgrade;
 Type: filesandordirs; Name: "{commonprograms}\Composer"; Check: IsUpgrade;
 
 
-[UninstallDelete]
-; to force deletion of \Composer
-Type: filesandordirs; Name: "{app}"
-
-
 [Messages]
 SetupWindowTitle=%1 Setup
 WelcomeLabel1=[name] Setup
