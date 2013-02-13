@@ -80,9 +80,9 @@ Filename: "http://{#AppUrl}"; Description: "View online documentation"; Flags: p
 
 
 [InstallDelete]
-; only for User upgrades
+; only for upgrade
 Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: HasRoamingBin;
-Type: filesandordirs; Name: "{group}"; Check: HasRoamingBin;
+Type: filesandordirs; Name: "{commonprograms}\Composer";
 
 
 [UninstallDelete]
