@@ -42,8 +42,11 @@ DefaultDirName={code:GetBaseDir}\Composer
 DisableDirPage=yes
 AppendDefaultDirName=no
 DirExistsWarning=no
-AlwaysShowDirOnReadyPage=yes
 UsePreviousAppDir=no
+
+; group stuff for Start Menu
+DefaultGroupName=Composer
+DisableProgramGroupPage=yes
 
 ; uninstall
 Uninstallable=yes
@@ -60,6 +63,11 @@ WizardImageFile=wiz.bmp
 WizardSmallImageFile=wizsmall.bmp
 
 
+[Dirs]
+; we need to make all-users directory writeable so composer.phar can update
+Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
+
+
 [Files]
 Source: "setup.php"; Flags: dontcopy
 Source: "setup.class.php"; Flags: dontcopy
@@ -70,9 +78,9 @@ Source: "{tmp}\{#CmdShell}"; DestDir: "{app}\bin"; Flags: external ignoreversion
 Source: "{tmp}\composer.phar"; DestDir: "{app}\bin"; Flags: external ignoreversion
 
 
-[Dirs]
-; we need to make all-users directory writeable so composer.phar can update
-Name: {app}; Permissions: users-modify; Check: IsAdminLoggedOn;
+[Icons]
+Name: "{group}\Documentation"; Filename: "http://{#AppUrl}"
+Name: "{group}\Uninstall Composer"; Filename: "{uninstallexe}";
 
 
 [Run]
@@ -80,9 +88,8 @@ Filename: "http://{#AppUrl}"; Description: "View online documentation"; Flags: p
 
 
 [InstallDelete]
-; only for upgrade
-Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: IsUpgrade;
-Type: filesandordirs; Name: "{commonprograms}\Composer"; Check: IsUpgrade;
+; only for user upgrade
+Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: UserUpgrade;
 
 
 [Messages]
@@ -169,8 +176,9 @@ type
   TFlagsRec = record
     PathChanged   : Boolean;
     ProgressPage  : Boolean;
+    LastUserPhp   : String;
     Completed     : Boolean;
-    Upgrade       : Boolean;
+    UserUpgrade   : Boolean;
   end;
 
 type
@@ -242,7 +250,7 @@ const
 
 {Installer related functions}
 function GetBaseDir(Param: String): String; forward;
-function IsUpgrade: Boolean; forward;
+function UserUpgrade: Boolean; forward;
 
 {Common functions}
 procedure AddLine(var Existing: String; const Value: String); forward;
@@ -264,7 +272,7 @@ function UnixifyShellFile(var Error: String): Boolean; forward;
 function GetPathHash(const SystemPath, UserPath: String): String; forward;
 function PathChanged(const Hash: String; SystemOnly: Boolean): Boolean; forward;
 function SearchPathBin(Hive: Integer): String; forward;
-procedure SetPathInfo(Full: Boolean); forward;
+function SetPathInfo(Full: Boolean): Boolean; forward;
 procedure SetPathRec(var Rec: TPathRec); forward;
 procedure SetPathStatus(Rec: TPathRec; var Status: Integer); forward;
 
@@ -307,11 +315,11 @@ function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardP
 procedure SettingsPageShow; forward;
 procedure SettingsPageUpdate; forward;
 
-{Test page functions}
-procedure TestButtonClick(Sender: TObject); forward;
-procedure TestClearButtonClick(Sender: TObject); forward;
-procedure TestCreateButtons(ParentForm: TSetupForm; CancelButton: TNewButton); forward;
-procedure TestUpdateCaption(); forward;
+{Test functions}
+procedure TestCreateSelect; forward;
+procedure TestOnChange(Sender: TObject); forward;
+procedure TestOnDblClick(Sender: TObject); forward;
+procedure TestUpdateCaption; forward;
 
 
 #include "paths.iss"
@@ -325,7 +333,7 @@ begin
   Flags.PathChanged := False;
   Flags.ProgressPage := False;
   Flags.Completed := False;
-  Flags.Upgrade := False;
+  Flags.UserUpgrade := False;
 
   CmdExe := ExpandConstant('{cmd}');
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
@@ -384,7 +392,7 @@ begin
   'To use Composer for the first time, you may have to open a NEW command window.');
 
   if Test = TEST_FLAG then
-    TestCreateButtons(WizardForm, WizardForm.CancelButton);
+    TestCreateSelect();
 
 end;
 
@@ -526,8 +534,7 @@ var
 
 begin
 
-  S := MemoDirInfo;
-  S := S + NewLine + NewLine + 'PHP version ' + PhpRec.Version;
+  S := 'PHP version ' + PhpRec.Version;
   S := S + NewLine + Space + PhpRec.Exe;
   Result := S + PathChangesToString();
 
@@ -601,10 +608,10 @@ begin
 
 end;
 
-function IsUpgrade: Boolean;
+function UserUpgrade: Boolean;
 begin
   {Check function for InstallDelete section}
-  Result := Flags.Upgrade;
+  Result := Flags.UserUpgrade;
 end;
 
 
@@ -810,11 +817,11 @@ begin
 
   Result := False;
 
-  {Set upgrade from previous install}
-  Flags.Upgrade := GetPreviousData('Version', '') = '';
-
   if IsAdminLoggedOn then
-    Exit;
+    Exit
+  else
+    {Set User upgrade from previous install}
+    Flags.UserUpgrade := GetPreviousData('Version', '') = '';
 
   {Check for an existing All Users installation}
   Path := ExpandConstant('{commonappdata}\Composer\bin\unins000.exe');
@@ -933,13 +940,15 @@ begin
 end;
 
 
-procedure SetPathInfo(Full: Boolean);
+function SetPathInfo(Full: Boolean): Boolean;
 var
   IsUser: Boolean;
   RawSystem: String;
   RawUser: String;
 
 begin
+
+  Result := False;
 
   IsUser := not IsAdminLoggedOn;
 
@@ -948,7 +957,13 @@ begin
   if PathChanged(Info.PathList.Hash, not IsUser) then
   begin
 
+    {We return True if the path has changed}
+    Result := True;
+
     Debug('Getting path info from registry');
+
+    {Clear any previous list entries}
+    SetArrayLength(Info.PathList.Items, 0);
 
     {Always get System path}
     RawSystem := GetSafePathList(HKEY_LOCAL_MACHINE, Info.PathList);
@@ -997,7 +1012,7 @@ begin
     Info.Bin.System := SearchPathBin(HKEY_LOCAL_MACHINE);
 
     {Only check User if we have no System entry, or we have an old user install to upgrade}
-    if IsUser and ((Info.Bin.System = '') or Flags.Upgrade) then
+    if IsUser and ((Info.Bin.System = '') or Flags.UserUpgrade) then
       Info.Bin.User := SearchPathBin(HKEY_CURRENT_USER);
 
     SetPathRec(Info.Bin);
@@ -1115,7 +1130,7 @@ begin
       Exit;
 
     {See if we are a User upgrading}
-    if not IsAdminLoggedOn and Flags.Upgrade then
+    if Flags.UserUpgrade then
     begin
 
       RoamingBin := ExpandConstant('{userappdata}\Composer\bin');
@@ -1961,7 +1976,9 @@ begin
     Settings.Edit.Text := Filename;
 
     if SettingsCheckInPath() then
-      SettingsPageUpdate();
+      SettingsPageUpdate()
+    else
+      Flags.LastUserPhp := Filename;
 
   end;
 
@@ -1972,7 +1989,7 @@ procedure SettingsCheckBoxClick(Sender: TObject);
 begin
 
   if Settings.CheckBox.Checked then
-    Settings.Edit.Text := '';
+    Settings.Edit.Text := Flags.LastUserPhp;
 
   SettingsPageUpdate();
 
@@ -2000,71 +2017,55 @@ end;
 
 function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
 var
-  Text: TNewStaticText;
   Top: Integer;
-  Edit: TNewEdit;
-  Button: TNewButton;
-  CheckBox: TNewCheckbox;
-  Info: TNewStaticText;
 
 begin
 
   Result := CreateCustomPage(wpWelcome, Caption, Description);
 
-  Text := TNewStaticText.Create(Result);
-  Text.Name := 'Text';
-  Text.AutoSize := True;
-  Text.Caption := '';
-  Text.Parent := Result.Surface;
+  Settings.Text := TNewStaticText.Create(Result);
+  Settings.Text.AutoSize := True;
+  Settings.Text.Caption := '';
+  Settings.Text.Parent := Result.Surface;
 
-  Top := Text.Top + Text.Height;
+  Top := Settings.Text.Top + Settings.Text.Height;
 
-  Edit := TNewEdit.Create(Result);
-  Edit.Name := 'Edit';
-  Edit.Top := Top + ScaleY(10);
-  Edit.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
-  Edit.ReadOnly := True;
-  Edit.Text := '';
-  Edit.Parent := Result.Surface;
+  Settings.Edit := TNewEdit.Create(Result);
+  Settings.Edit.Top := Top + ScaleY(10);
+  Settings.Edit.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
+  Settings.Edit.ReadOnly := True;
+  Settings.Edit.Text := '';
+  Settings.Edit.Parent := Result.Surface;
 
-  Button := TNewButton.Create(Result);
-  Button.Name := 'Button';
-  Button.Top := Edit.Top - ScaleY(1);
-  Button.Left := Result.SurfaceWidth - ScaleX(75);
-  Button.Width := ScaleX(75);
-  Button.Height := ScaleY(23);
-  Button.Caption := 'Browse...';
-  Button.Enabled := False;
-  Button.OnClick := @SettingsButtonClick;
-  Button.Parent := Result.Surface;
+  Settings.Button := TNewButton.Create(Result);
+  Settings.Button.Top := Settings.Edit.Top - ScaleY(1);
+  Settings.Button.Left := Result.SurfaceWidth - ScaleX(75);
+  Settings.Button.Width := ScaleX(75);
+  Settings.Button.Height := ScaleY(23);
+  Settings.Button.Caption := '&Browse...';
+  Settings.Button.Enabled := False;
+  Settings.Button.OnClick := @SettingsButtonClick;
+  Settings.Button.Parent := Result.Surface;
 
-  Top := Button.Top + Button.Height;
+  Top := Settings.Button.Top + Settings.Button.Height;
 
-  CheckBox := TNewCheckbox.Create(Result);
-  CheckBox.Name := 'CheckBox';
-  CheckBox.Top := Top + ScaleY(10);
-  CheckBox.Width := Result.SurfaceWidth;
-  CheckBox.Caption := 'Select a different php.exe from the one in your path.';
-  CheckBox.Enabled := False;
-  CheckBox.OnClick := @SettingsCheckBoxClick;
-  CheckBox.Parent := Result.Surface;
+  Settings.CheckBox := TNewCheckbox.Create(Result);
+  Settings.CheckBox.Top := Top + ScaleY(10);
+  Settings.CheckBox.Width := Result.SurfaceWidth;
+  Settings.CheckBox.Caption := 'Choose a different php.exe from the one in your path.';
+  Settings.CheckBox.Enabled := False;
+  Settings.CheckBox.OnClick := @SettingsCheckBoxClick;
+  Settings.CheckBox.Parent := Result.Surface;
 
-  Top := CheckBox.Top + CheckBox.Height;
+  Top := Settings.CheckBox.Top + Settings.CheckBox.Height;
 
-  Info := TNewStaticText.Create(Result);
-  Info.Name := 'Info';
-  Info.Top := Top + ScaleY(6);
-  Info.Width := Result.SurfaceWidth;
-  Info.WordWrap := True;
-  Info.AutoSize := True;
-  Info.Caption := '';
-  Info.Parent := Result.Surface;
-
-  Settings.Text := Text;
-  Settings.Edit := Edit;
-  Settings.Button := Button;
-  Settings.CheckBox := CheckBox;
-  Settings.Info := Info;
+  Settings.Info := TNewStaticText.Create(Result);
+  Settings.Info.Top := Top + ScaleY(6);
+  Settings.Info.Width := Result.SurfaceWidth;
+  Settings.Info.WordWrap := True;
+  Settings.Info.AutoSize := True;
+  Settings.Info.Caption := '';
+  Settings.Info.Parent := Result.Surface;
 
 end;
 
@@ -2072,12 +2073,12 @@ end;
 procedure SettingsPageShow;
 begin
 
-  SetPathInfo(False);
+  if SetPathInfo(False) then
+    Flags.LastUserPhp := '';
 
   if Info.StatusPhp = PATH_NONE then
   begin
     Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
-    Settings.Edit.Text := '';
     Settings.Edit.ReadOnly := False;
     Settings.Button.Enabled := True;
     Settings.CheckBox.Visible := False;
@@ -2087,6 +2088,7 @@ begin
   begin
 
     Settings.Edit.ReadOnly := True;
+    Settings.CheckBox.Visible := True;
 
     if Info.StatusPhp = PATH_OK then
     begin
@@ -2123,8 +2125,8 @@ begin
   begin
     {Unchecked, so we need to add path php.exe to Edit.Text}
     Settings.Text.Caption := 'We found php.exe in your path. Click Next to use it.';
-    Settings.Edit.Text := Info.Php.Cmd;
     Settings.Button.Enabled := False;
+    Settings.Edit.Text := Info.Php.Cmd;
 
     if Settings.CheckBox.Enabled then
       Settings.Info.Caption := ''
@@ -2136,124 +2138,52 @@ begin
 end;
 
 
-{*************** Test page functions ***************}
+{*************** Test functions ***************}
 
-procedure TestButtonClick(Sender: TObject);
+procedure TestCreateSelect;
 var
-  Form: TSetupForm;
-  Edit: TNewEdit;
-  Btn: TNewButton;
+  ComboBox: TNewComboBox;
+  I: Integer;
 
 begin
 
-  Form := CreateCustomForm();
+  ComboBox := TNewComboBox.Create(WizardForm);
+  ComboBox.Left := ScaleX(10);
+  ComboBox.Top := WizardForm.CancelButton.Top;
+  ComboBox.Width := ScaleX(75);
+  ComboBox.OnChange := @TestOnChange;
+  ComboBox.Parent := WizardForm;
+  ComboBox.Style := csDropDownList;
 
-  try
+  ComboBox.DropDownCount := 5;
+  ComboBox.Items.Add('Test');
+  ComboBox.ItemIndex := 0;
 
-    Form.ClientWidth := ScaleX(256);
-    Form.ClientHeight := ScaleY(128);
-    Form.Caption := 'Enter Test Identifier';
-    Form.CenterInsideControl(WizardForm, False);
+  for I := 1 to 6 do
+    ComboBox.Items.Add('p' + IntToStr(I));
 
-    Edit := TNewEdit.Create(Form);
-    Edit.Top := ScaleY(10);
-    Edit.Left := ScaleX(10);
-    Edit.Width := Form.ClientWidth - ScaleX(2 * 10);
-    Edit.Height := ScaleY(23);
-
-    if Test <> TEST_FLAG then
-      Edit.Text := Test;
-
-    Edit.Parent := Form;
-
-    Btn := TNewButton.Create(Form);
-    Btn.Parent := Form;
-    Btn.Width := ScaleX(75);
-    Btn.Height := ScaleY(23);
-    Btn.Left := Form.ClientWidth - ScaleX(75 + 6 + 75 + 10);
-    Btn.Top := Form.ClientHeight - ScaleY(23 + 10);
-    Btn.Caption := 'OK';
-    Btn.ModalResult := mrOk;
-    Btn.Default := True;
-
-    Btn := TNewButton.Create(Form);
-    Btn.Parent := Form;
-    Btn.Width := ScaleX(75);
-    Btn.Height := ScaleY(23);
-    Btn.Left := Form.ClientWidth - ScaleX(75 + 10);
-    Btn.Top := Form.ClientHeight - ScaleY(23 + 10);
-    Btn.Caption := 'Cancel';
-    Btn.ModalResult := mrCancel;
-    Btn.Cancel := True;
-
-    Form.ActiveControl := Edit;
-
-    if Form.ShowModal() = mrOk then
-    begin
-
-      if Edit.Text <> '' then
-        Test := Edit.Text
-      else
-        Test := TEST_FLAG;
-
-      TestUpdateCaption();
-
-    end;
-
-  finally
-    Form.Free();
-  end;
+  for I := 1 to 8 do
+    ComboBox.Items.Add('d' + IntToStr(I));
 
 end;
 
 
-procedure TestClearButtonClick(Sender: TObject);
-begin
-  Test := TEST_FLAG;
-  TestUpdateCaption();
-end;
-
-
-procedure TestCreateButtons(ParentForm: TSetupForm; CancelButton: TNewButton);
+procedure TestOnChange(Sender: TObject);
 var
-  BtnTest: TNewButton;
-  BtnClear: TNewButton;
-
-begin
-
-  BtnTest := TNewButton.Create(ParentForm);
-  BtnTest.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
-  BtnTest.Top := CancelButton.Top;
-  BtnTest.Width := CancelButton.Width;
-  BtnTest.Height := CancelButton.Height;
-  BtnTest.Caption := '&Enter Test';
-  BtnTest.OnClick := @TestButtonClick;
-  BtnTest.Parent := ParentForm;
-
-  BtnClear := TNewButton.Create(ParentForm);
-  BtnClear.Name := 'BtnClear';
-  BtnClear.Left := ParentForm.ClientWidth - CancelButton.Left - CancelButton.Width;
-  BtnClear.Left := BtnTest.Left + BtnTest.Width + ScaleX(10);
-  BtnClear.Top := CancelButton.Top;
-  BtnClear.Width := CancelButton.Width;
-  BtnClear.Height := CancelButton.Height;
-  BtnClear.Caption := '&Clear Test';
-  BtnClear.OnClick := @TestClearButtonClick;
-  BtnClear.Parent := ParentForm;
-  BtnClear.Enabled := False;
-
-end;
-
-
-procedure TestUpdateCaption();
-var
+  ComboBox: TNewComboBox;
   Id: String;
   Caption: String;
   Index: Integer;
   Value: String;
-  ClearBtn: TNewButton;
 
 begin
+
+  ComboBox := Sender as TNewComboBox;
+
+  if ComboBox.ItemIndex = 0 then
+    Test := TEST_FLAG
+  else
+    Test := ComboBox.Items[ComboBox.ItemIndex];
 
   Id := ' /test: ';
   Caption := WizardForm.Caption;
@@ -2267,7 +2197,5 @@ begin
     Caption := Copy(WizardForm.Caption, 1, Index - 1);
 
   WizardForm.Caption := Caption + Value;
-  ClearBtn := TNewButton(WizardForm.FindComponent('BtnClear'));
-  ClearBtn.Enabled := Value <> '';
 
 end;

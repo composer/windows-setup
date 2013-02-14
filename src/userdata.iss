@@ -10,7 +10,7 @@ type
     Cache     : String;
     Other     : Boolean;
     Delete    : Boolean;
-end;
+  end;
 
 type
   TUserDataList = array of TUserDataRec;
@@ -19,10 +19,18 @@ type
   TUserProfileRec = record
     User      : String;
     Profile   : String;
-end;
+  end;
 
 type
   TUserProfileList = array of TUserProfileRec;
+
+type
+  TDataForm = record
+    Main: TSetupForm;
+    Text: TNewStaticText;
+    ListBox: TNewCheckListBox;
+    Info: TNewStaticText;
+  end;
 
 function DeleteUserData(HParent: HWND; DirList: String): Boolean;
   external 'DeleteUserData@{app}\bin\{#DllData} stdcall uninstallonly';
@@ -40,7 +48,8 @@ function UserDefinedCache(Rec: TUserDataRec): Boolean; forward;
 function UserCheckConfig(const Key, Json: String; var Location: String): Boolean; forward;
 procedure UserDeleteData(List: TUserDataList; const DllData: String); forward;
 function UserDataSelect(var List: TUserDataList): Boolean; forward;
-function UserDataCreateForm(): TSetupForm; forward;
+procedure UserDataCreateForm(var Form: TDataForm); forward;
+procedure UserDataScaleForm(var Form: TDataForm); forward;
 
 
 procedure UserDataDelete;
@@ -519,18 +528,19 @@ end;
 
 function UserDataSelect(var List: TUserDataList): Boolean;
 var
-  Form: TSetupForm;
-  ListBox: TNewCheckListBox;
-  Note: TNewStaticText;
+  Form: TDataForm;
   S: String;
   I: Integer;
   Sub: String;
   Enabled: Boolean;
+  Available: Integer;
   UserDefined: Boolean;
   UserChecked: Integer;
   Index: Integer;
 
 begin
+
+  Result := False;
 
   if GetArrayLength(List) = 0 then
   begin
@@ -541,12 +551,12 @@ begin
   Debug('User data found, showing Delete User Data form');
 
   {Create the form}
-  Form := UserDataCreateForm();
+  UserDataCreateForm(Form);
 
   try
 
     {Populate the listbox}
-    ListBox := TNewCheckListBox(Form.FindComponent('List'));
+    Available := 0;
     UserDefined := False;
 
     for I := 0 to GetArrayLength(List) - 1 do
@@ -556,7 +566,8 @@ begin
       begin
         Sub := 'cache/config';
         Enabled := True;
-        ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
+        Inc(Available);
+        Form.ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
       end
       else
       begin
@@ -565,38 +576,50 @@ begin
         begin
           Sub := 'cache';
           Enabled := True;
-          ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
+          Inc(Available);
+          Form.ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
         end;
 
         Sub := 'user-defined cache';
         Enabled := False;
-        ListBox.AddCheckBox('User: ' + List[I].User, Sub, 0, False, Enabled, False, True, nil);
+        Form.ListBox.AddCheckBox('User: ' + List[I].User, Sub, 0, False, Enabled, False, True, nil);
         UserDefined := True;
 
       end;
 
     end;
 
-    {Update Note text if we have user-defined caches}
+    {Update Text caption if we data to delete}
+    if Available > 0 then
+      Form.Text.Caption := Form.Text.Caption + ' Please select the user data you want to delete.';
+
+    {Update Info caption if we have user-defined caches}
     if UserDefined then
     begin
-      S := 'User-defined cache and config data must be deleted manually. ';
-      Note := TNewStaticText(Form.FindComponent('Note'));
-      Note.Caption := S + Note.Caption;
+      S := 'User-defined cache and configuration data must be deleted manually. ';
+      Form.Info.Caption := S + Form.Info.Caption;
     end;
 
+    UserDataScaleForm(Form);
+
     {Show the form}
-    Form.ShowModal();
+    Form.Main.ShowModal();
+
+    if Available = 0 then
+    begin
+      Debug('No user data to delete');
+      Exit;
+    end;
 
     UserChecked := 0;
 
     {Transfer checked items to Delete field}
-    for I := 0 to ListBox.Items.Count - 1 do
+    for I := 0 to Form.ListBox.Items.Count - 1 do
     begin
 
-      if ListBox.Checked[I] then
+      if Form.ListBox.Checked[I] then
       begin
-        Index := Integer(ListBox.ItemObject[I]);
+        Index := Integer(Form.ListBox.ItemObject[I]);
         List[Index].Delete := True;
         UserChecked := UserChecked + 1;
       end;
@@ -611,78 +634,76 @@ begin
       Debug('User chose not to delete data');
 
   finally
-    Form.Free();
+    Form.Main.Free();
   end;
 
 end;
 
 
-function UserDataCreateForm(): TSetupForm;
+procedure UserDataCreateForm(var Form: TDataForm);
 var
   Left: Integer;
-  Top: Integer;
   Width: Integer;
-  Text: TNewStaticText;
-  ListBox: TNewCheckListBox;
-  Note: TNewStaticText;
   OkButton: TButton;
-  S: String;
 
 begin
 
-  Result := CreateCustomForm();
+  Form.Main := CreateCustomForm();
 
-  Result.ClientWidth := ScaleX(380);
-  Result.ClientHeight := ScaleY(290);
-  Result.Caption := 'Delete User Data';
-  Result.CenterInsideControl(UninstallProgressForm, False);
+  Form.Main.ClientWidth := ScaleX(380);
+  Form.Main.ClientHeight := ScaleY(290);
+  Form.Main.Caption := 'Delete User Data';
+  Form.Main.CenterInsideControl(UninstallProgressForm, False);
 
-  Top := ScaleY(16);
   Left := ScaleX(20);
-  Width := Result.ClientWidth - (Left * 2);
+  Width := Form.Main.ClientWidth - (Left * 2);
 
-  Text := TNewStaticText.Create(Result);
-  Text.Parent := Result;
-  Text.Top := Top;
-  Text.Left := Left;
-  Text.Width := Width;
-  Text.AutoSize := True;
-  Text.WordWrap := True;
+  Form.Text := TNewStaticText.Create(Form.Main);
+  Form.Text.Parent := Form.Main;
+  Form.Text.Left := Left;
+  Form.Text.Width := Width;
+  Form.Text.AutoSize := True;
+  Form.Text.WordWrap := True;
+  Form.Text.Caption := 'Composer stores cache and configuration data on your computer.';
 
-  S := 'Composer stores cache and configuration data on your computer. ';
-  S := S + 'Please select the user data you want to delete.';
+  Form.ListBox := TNewCheckListBox.Create(Form.Main);
+  Form.ListBox.Parent := Form.Main;
+  Form.ListBox.Left := Left;
+  Form.ListBox.Width := Width;
+  Form.ListBox.Height := ScaleY(148);
 
-  Text.Caption := S;
+  Form.Info := TNewStaticText.Create(Form.Main);
+  Form.Info.Parent := Form.Main;
+  Form.Info.Left := Left;
+  Form.Info.Width := Width;
+  Form.Info.AutoSize := True;
+  Form.Info.WordWrap := True;
+  Form.Info.Caption := 'Caches defined at project level will not be listed.';
 
-  ListBox := TNewCheckListBox.Create(Result);
-  ListBox.Name := 'List';
-  ListBox.Parent := Result;
-  ListBox.Top := Text.Top + Text.Height + Top;
-  ListBox.Left := Left;
-  ListBox.Width := Width;
-  ListBox.Height := ScaleY(132);
-
-  Note := TNewStaticText.Create(Result);
-  Note.Name := 'Note';
-  Note.Parent := Result;
-  Note.Top := ListBox.Top + ListBox.Height + ScaleY(6);
-  Note.Left := Left;
-  Note.Width := Width;
-  Note.AutoSize := True;
-  Note.WordWrap := True;
-  Note.Caption := 'Caches defined at project level will not be listed.';
-
-
-  OkButton := TButton.Create(Result);
-  OkButton.Parent := Result;
+  OkButton := TButton.Create(Form.Main);
+  OkButton.Parent := Form.Main;
   OkButton.Width := ScaleX(75);
   OkButton.Height := ScaleY(23);
-  OkButton.Left := Result.ClientWidth - (ScaleX(75) + Left);
-  OkButton.Top := Result.ClientHeight - ScaleY(23 + 16);
-  OkButton.Caption := 'OK';
+  OkButton.Left := Form.Main.ClientWidth - (ScaleX(75) + Left);
+  OkButton.Top := Form.Main.ClientHeight - ScaleY(23 + 16);
+  OkButton.Caption := '&OK';
   OkButton.ModalResult := mrOk;
   OKButton.Default := True;
 
-  Result.ActiveControl := OkButton;
+  Form.Main.ActiveControl := OkButton;
+
+end;
+
+
+procedure UserDataScaleForm(var Form: TDataForm);
+begin
+
+  Form.Main.Update;
+
+  Form.Text.Top := ScaleY(16);
+  Form.ListBox.Top := Form.Text.Top + Form.Text.Height + ScaleY(10);
+  Form.Info.Top := Form.ListBox.Top + Form.ListBox.Height + ScaleY(6);
+
+  Form.Main.Update;
 
 end;
