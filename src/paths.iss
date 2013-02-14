@@ -7,9 +7,6 @@ to change this.}
 function ExpandEnvironmentStrings(Src: String; Dst: String; Size: DWord): DWord;
   external 'ExpandEnvironmentStringsW@kernel32.dll stdcall';
 
-function SendMessageTimeout(Hwnd, Msg, WParam: LongInt; LParam: String; Flags, Timeout: LongInt; lpdwResult: DWord): DWord;
-  external 'SendMessageTimeoutW@user32.dll stdcall';
-
 function AddToPath(Hive: Integer; Value: String): Integer; forward;
 function RemoveFromPath(Hive: Integer; Value: String): Integer; forward;
 function GetRawPath(Hive: Integer; var Value: String): Boolean; forward;
