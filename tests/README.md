@@ -1,6 +1,6 @@
 # Tests
 
-These are made up of automated Php Tests, General Tests and manual Installer Tests. To run most of the Installer Tests you must call setup with the `/TEST` command-line argument. This displays an *Enter Test* button that allows you to input the test identifier.
+These are made up of automated Php Tests, General Tests and manual Installer Tests. To run most of the Installer Tests you must call setup with the `/TEST` command-line argument. This displays a *Test* select-box that allows you to choose the test identifier.
 
 ## Php Tests
 
