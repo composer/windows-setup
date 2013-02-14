@@ -3,7 +3,6 @@
 const
   SID_START = 'S-1-5-21-';
 
-
 type
   TUserDataRec = record
     User      : String;
@@ -581,9 +580,9 @@ begin
     {Update Note text if we have user-defined caches}
     if UserDefined then
     begin
-      S := ' Configuration and cache data must be deleted manually for user-defined caches.';
+      S := 'User-defined cache and config data must be deleted manually. ';
       Note := TNewStaticText(Form.FindComponent('Note'));
-      Note.Caption := Note.Caption + S;
+      Note.Caption := S + Note.Caption;
     end;
 
     {Show the form}
