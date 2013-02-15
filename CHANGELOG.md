@@ -1,5 +1,4 @@
-## v.27
-2013-02-16 [Composer-Setup.2.7.exe](https://s3-eu-west-1.amazonaws.com/johnstevenson/composer/Composer-Setup.2.7.exe)
+## v2.7
 
 * Added option to delete user data on uninstall.
 * Moved User installation directory from roaming folder to ```%LOCALAPPDATA%\Programs\Composer\bin```. This is automatically upgraded when re-installing over an older version.
