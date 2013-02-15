@@ -10,7 +10,7 @@
 ## v2.6
 [2012-12-01](https://github.com/johnstevenson/composer-setup/tree/v2.6) | [Composer-Setup.2.6.exe](https://s3-eu-west-1.amazonaws.com/johnstevenson/composer/Composer-Setup.2.6.exe)
 
-* Added proxy support. This checks for an ```http_proxy``` environment variable and the user's registry settings at HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings. It tries all the settings it finds, before falling back to a plain request. Sets ```http_proxy``` locally for install.phar if a proxy was used. Note that authenticated proxies are only supported using an ```http_proxy``` variable.
+* Added proxy support. This checks for an ```http_proxy``` environment variable and the user's registry settings at *HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings*. It tries all the settings it finds, before falling back to a plain request. Sets ```http_proxy``` locally for install.phar if a proxy was used. Note that authenticated proxies are only supported using an ```http_proxy``` variable.
 
 * Reworked tests to incorporate proxy support.
 * Minor tweaks and doc improvements.
