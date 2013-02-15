@@ -1,9 +1,10 @@
 ## v2.7
 
-* Added option to delete user data on uninstall.
+* Added an option to delete user data on uninstall. Uses a separate dll (userdata.dll) to provide a cancellable progress form and error report. Only user data found at default locations is deleted. Config entries that point elsewhere are displayed for information but not deleted, and neither is the config.json file. Config entries at project level are not reported. For Admin uninstalls user data is shown for all users, where it can be reliably found.
 * Moved User installation directory from roaming folder to ```%LOCALAPPDATA%\Programs\Composer\bin```. This is automatically upgraded when re-installing over an older version.
 * Fixed User uninstall not updating environment.
-* Made the repo more collaborator-friendly by moving the exe and code-signing out.
+* Made the repo more collaborator-friendly by moving the exe and code-signing out, re-organizing the code and adding more in-line documentation.
+* Moved released versions to Amazon S3 after the demise of Github Downloads.
 * Many thanks to [hakre](https://github.com/hakre) for his reports and suggestions.
 
 ## v2.6
