@@ -318,8 +318,6 @@ procedure SettingsPageUpdate; forward;
 {Test functions}
 procedure TestCreateSelect; forward;
 procedure TestOnChange(Sender: TObject); forward;
-procedure TestOnDblClick(Sender: TObject); forward;
-procedure TestUpdateCaption; forward;
 
 
 #include "paths.iss"
