@@ -31,7 +31,7 @@ AppPublisher={#AppUrl}
 Compression=lzma
 SolidCompression=yes
 
-; runtime  directives
+; runtime directives
 MinVersion=5.1
 PrivilegesRequired=none
 AllowCancelDuringInstall=false
@@ -387,7 +387,10 @@ begin
   'Information',
   'Please read the following important information before continuing.',
   'Setup has changed your path variable, but not all running programs will be aware of this. ' +
-  'To use Composer for the first time, you may have to open a NEW command window.');
+  'To use Composer for the first time, you will have to do one of the following:' + LF + LF +
+    SP + '- Open a new command window.' + LF +
+    SP + '- Close all explorer windows, then open a new command window.' + LF +
+    SP + '- Logoff and Logon again, then open a new command window.');
 
   if Test = TEST_FLAG then
     TestCreateSelect();
