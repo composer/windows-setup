@@ -336,14 +336,17 @@ begin
   CmdExe := ExpandConstant('{cmd}');
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
 
-  ExtractTemporaryFile('setup.php');
-  TmpFile.Setup := TmpDir + '\setup.php';
-  ExtractTemporaryFile('setup.class.php');
-
+  {Extract our temp files to installer directory}
   ExtractTemporaryFile('composer');
+  ExtractTemporaryFile('setup.class.php');
+  ExtractTemporaryFile('setup.php');
+  
+  {Set full filenames}
   TmpFile.Composer := TmpDir + '\composer';
-
   TmpFile.Result := TmpDir + '\result.txt';
+
+  {setup.php must not have a path for cygwin php - it is called from the cwd}
+  TmpFile.Setup := 'setup.php';
 
   SetPathInfo(False);
 
