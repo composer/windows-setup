@@ -1,12 +1,17 @@
-; Running this script will compile composer-setup with the following default settings:
-; Output filename: /Output/setup.exe, exe version info: 0.0.0.0
-;
-; Use the command-line compiler to change this (see Inno Help), for example:
-; iscc /o"My\Output\Folder" /f"MyProgram" /d"SetupVersion=n.n" "path\to\composer.iss"
+#define SetupVersion "2.7"
 
-#ifndef SetupVersion
-  ; do not change this
-  #define SetupVersion
+; Uncomment this line for a release version
+;#define Release
+
+#ifdef Release
+
+  #define OutputDir "release"
+  #define OutputBaseFilename "Composer-Setup." + SetupVersion
+
+  #if FileExists(OutputDir + "\" + OutputBaseFilename + ".exe")
+    #error This version has already been released.
+  #endif
+
 #endif
 
 #define CmdPhp "php.exe"
@@ -61,6 +66,14 @@ VersionInfoProductName={#AppDescription}
 ; cosmetic
 WizardImageFile=wiz.bmp
 WizardSmallImageFile=wizsmall.bmp
+
+; release output
+#ifdef Release
+  OutputDir={#OutputDir}
+  OutputBaseFilename={#OutputBaseFilename}
+  SignTool=mssigntool
+  SignedUninstaller=no
+#endif
 
 
 [Dirs]
