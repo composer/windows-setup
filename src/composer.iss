@@ -2,7 +2,7 @@
 ; defining SetupVersion. For example:
 ;
 ;     #define SetupVersion "2.7"
-; 
+;
 ; Composer-Setup will be complied with the following settings:
 ;   output filename: /Output/setup.exe
 ;   exe version info: as defined in SetupVersion
@@ -210,8 +210,9 @@ type
 
 type
   TVersionInfo = record
-    Installed   : TVersionRec;
-    Current     : TVersionRec;
+    Existing    : TVersionRec;
+    Setup       : TVersionRec;
+    Installed   : Boolean;
     Upgrades    : Integer;
   end;
 
@@ -297,7 +298,7 @@ const
 
 {Start functions}
 function StartCheck: Boolean; forward;
-procedure StartSetUpgrades; forward;
+procedure StartGetVersionInfo; forward;
 
 {Common functions}
 procedure AddLine(var Existing: String; const Value: String); forward;
@@ -311,7 +312,9 @@ function GetStatusText(Status: Integer): String; forward;
 function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
 function ResultIdLine(const Line: String; var S: String): Boolean; forward;
 function StrToVer(const Value: String): TVersionRec; forward;
-function VersionCompare(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean; forward;
+function VersionCompare(V1, V2: TVersionRec): Integer; forward;
+function VersionCompareEx(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean; forward;
+function VersionSetUpgrade(Upgrade: Integer; Below: String): Boolean; forward;
 
 {Misc functions}
 function GetBaseDir(Param: String): String; forward;
@@ -379,9 +382,7 @@ function InitializeSetup(): Boolean;
 begin
 
   {Initialize version info}
-  Version.Installed := StrToVer(GetPreviousData('Version', ''));
-  Version.Current := StrToVer('{#SetupVersion}');
-  Version.Upgrades := UPGRADE_NONE;
+  StartGetVersionInfo();
 
   {Check if an existing install is ok}
   if not StartCheck() then
@@ -408,9 +409,6 @@ begin
   TmpFile.Setup := 'setup.php';
 
   SetPathInfo(False);
-
-  {Initialize any updates}
-  StartSetUpgrades();
 
   if Pos('/TEST', GetCmdTail) <> 0 then
     Test := TEST_FLAG;
@@ -669,6 +667,18 @@ begin
 
   Result := True;
 
+  {Check if we are installing a lower version}
+  if VersionCompareEx(Version.Setup, '<', Version.Existing) then
+  begin
+    AddLine(S, 'This installer is older than the one that was used for the current installation.');
+    AddLine(S, '');
+    AddLine(S, 'To avoid any conflicts, uninstall Composer from the Control Panel first.');
+
+    MsgBox(S, mbCriticalError, mb_Ok);
+    Result := False;
+    Exit;
+  end;
+
   {Check for an existing All Users installation if we are a user}
   if not IsAdminLoggedOn then
   begin
@@ -688,37 +698,42 @@ begin
 
   end;
 
-  {Check if we are installing a lower version}
-  if VersionCompare(Version.Current, '<', Version.Installed) then
-  begin
-    AddLine(S, 'This installer is older than the one that was used for the current installation.');
-    AddLine(S, '');
-    AddLine(S, 'To avoid any conflicts, uninstall Composer from the Control Panel first.');
-
-    MsgBox(S, mbCriticalError, mb_Ok);
-    Result := False;
-    Exit;
-  end;
-
 end;
 
 
-procedure StartSetUpgrades;
+procedure StartGetVersionInfo;
+var
+  Path: String;
+
 begin
 
-  {UPDATE_USER_DIR}
-  if not IsAdminLoggedOn then
+  Version.Existing := StrToVer(GetPreviousData('Version', ''));
+  Version.Setup := StrToVer('{#SetupVersion}');
+
+  {We started storing version info with v2.7}
+  Version.Installed := VersionCompareEx(Version.Existing, '>=', StrToVer('2.7'));
+
+  if not Version.Installed then
   begin
 
-    if VersionCompare(Version.Installed, '<', StrToVer('2.7')) and
-      DirExists(ExpandConstant('{userappdata}\Composer\bin')) then
-      Version.Upgrades := Version.Upgrades or UPGRADE_USER_DIR;
+    if IsAdminLoggedOn then
+      Path := ExpandConstant('{commonappdata}')
+    else
+      {The user data was upgraded with v2.7 so we only have to check old location}
+      Path := ExpandConstant('{userappdata}');
+
+    Version.Installed := FileExists(Path + '\Composer\bin\unins000.exe');
 
   end;
 
+  Version.Upgrades := UPGRADE_NONE;
+
+  {UPDATE_USER_DIR}
+  if not IsAdminLoggedOn then
+    VersionSetUpgrade(UPGRADE_USER_DIR, '2.7');
+
   {UPDATE_START_MENU}
-  if VersionCompare(Version.Installed, '<', StrToVer('2.8')) then
-    Version.Upgrades := Version.Upgrades or UPGRADE_START_MENU;
+  VersionSetUpgrade(UPGRADE_START_MENU, '2.8');
 
 end;
 
@@ -918,6 +933,8 @@ function StrToVer(const Value: String): TVersionRec;
 var
   Len: Integer;
   Index: Integer;
+  Major: Integer;
+  Minor: Integer;
 
 begin
 
@@ -929,34 +946,50 @@ begin
 
   if (Len > 2) and (Index > 1) and (Index < Len) then
   begin
-    Result.Major := StrToIntDef(Copy(Value, 1, Index - 1), 0);
-    Result.Minor := StrToIntDef(Copy(Value, Index + 1, MaxInt), 0);
+
+    Major := StrToIntDef(Copy(Value, 1, Index - 1), 0);
+    Minor := StrToIntDef(Copy(Value, Index + 1, MaxInt), 0);
+
+    if (Major > -1) and (Minor > -1) then
+    begin
+      Result.Major := Major;
+      Result.Minor := Minor;
+    end;
+
   end;
 
 end;
 
 
-function VersionCompare(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean;
+function VersionCompare(V1, V2: TVersionRec): Integer;
+begin
+
+  if V1.Major < V2.Major then
+    Result := -1
+  else if V1.Major > V2.Major then
+    Result := 1
+  else
+  begin
+
+    if V1.Minor < V2.Minor then
+      Result := -1
+    else if V1.Minor > V2.Minor then
+      Result := 1
+    else
+      Result := 0;
+
+  end;
+
+end;
+
+
+function VersionCompareEx(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean;
 var
   Diff: Integer;
 
 begin
 
-  if V1.Major < V2.Major then
-    Diff := -1
-  else if V1.Major > V2.Major then
-    Diff := 1
-  else
-  begin
-
-    if V1.Minor < V2.Minor then
-      Diff := -1
-    else if V1.Minor > V2.Minor then
-      Diff := 1
-    else
-      Diff := 0;
-
-  end;
+  Diff := VersionCompare(V1, V2);
 
   if Op = '<' then
     Result := Diff < 0
@@ -972,6 +1005,21 @@ begin
     RaiseException('Unknown Op in VersionCompare');
 
 end;
+
+
+function VersionSetUpgrade(Upgrade: Integer; Below: String): Boolean;
+begin
+
+  Result := False;
+
+  if Version.Installed then
+    Result := VersionCompareEx(Version.Existing, '<', StrToVer(Below));
+
+  if Result then
+    Version.Upgrades := Version.Upgrades or Upgrade;
+
+end;
+
 
 {*************** Misc functions ***************}
 
