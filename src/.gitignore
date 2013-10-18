@@ -1,5 +1,6 @@
 output/
 release*
+develop*
 *.exe
 *.phar
 *.tmp

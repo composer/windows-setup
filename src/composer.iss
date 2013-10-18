@@ -1,7 +1,29 @@
-#define SetupVersion "2.8"
+; To run this script you must create a file named "develop.iss" in this directory
+; defining SetupVersion. For example:
+;
+;     #define SetupVersion "2.7"
+; 
+; Composer-Setup will be complied with the following settings:
+;   output filename: /Output/setup.exe
+;   exe version info: as defined in SetupVersion
+;
+; To compile a release version, you must create a file named "release.iss"
+; in this directory and run it. It must contain:
+;
+;     #define SetupVersion "2.7" // set the version
+;
+;     #define Release
+;     #define SignTool "mysigntool"  // the name of IDE sign tool
+;     #include "composer.iss"
+;
+; Or you can use the the command-line compiler (see Inno Setup Help). For example:
+; iscc /d"SetupVersion=2.7" /d"Release" /d"SignTool=mysigntool" /Smysigntool="..." "path\to\composer.iss"
 
-; Uncomment this line for a release version
-;#define Release
+
+#ifndef SetupVersion
+  ; you must create a develop.iss - see above
+  #include "develop.iss"
+#endif
 
 #ifdef Release
 
@@ -9,7 +31,7 @@
   #define OutputBaseFilename "Composer-Setup." + SetupVersion
 
   #if FileExists(OutputDir + "\" + OutputBaseFilename + ".exe")
-    #error This version has already been released.
+    #error This version has already been released
   #endif
 
 #endif
@@ -71,8 +93,7 @@ WizardSmallImageFile=wizsmall.bmp
 #ifdef Release
   OutputDir={#OutputDir}
   OutputBaseFilename={#OutputBaseFilename}
-  SignTool=mssigntool
-  SignedUninstaller=no
+  SignTool={#SignTool}
 #endif
 
 
@@ -276,7 +297,7 @@ const
 
 {Start functions}
 function StartCheck: Boolean; forward;
-procedure StartSetUpdates; forward;
+procedure StartSetUpgrades; forward;
 
 {Common functions}
 procedure AddLine(var Existing: String; const Value: String); forward;
@@ -389,7 +410,7 @@ begin
   SetPathInfo(False);
 
   {Initialize any updates}
-  StartSetUpdates();
+  StartSetUpgrades();
 
   if Pos('/TEST', GetCmdTail) <> 0 then
     Test := TEST_FLAG;
@@ -682,15 +703,15 @@ begin
 end;
 
 
-procedure StartSetUpdates;
+procedure StartSetUpgrades;
 begin
 
   {UPDATE_USER_DIR}
   if not IsAdminLoggedOn then
   begin
 
-    {Update user dir if previous version data is empty}
-    if VersionCompare(Version.Installed, '<', StrToVer('2.7')) then
+    if VersionCompare(Version.Installed, '<', StrToVer('2.7')) and
+      DirExists(ExpandConstant('{userappdata}\Composer\bin')) then
       Version.Upgrades := Version.Upgrades or UPGRADE_USER_DIR;
 
   end;
