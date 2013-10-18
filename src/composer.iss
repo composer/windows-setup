@@ -1,4 +1,4 @@
-#define SetupVersion "2.7"
+#define SetupVersion "2.8"
 
 ; Uncomment this line for a release version
 ;#define Release
@@ -91,18 +91,14 @@ Source: "{tmp}\{#CmdShell}"; DestDir: "{app}\bin"; Flags: external ignoreversion
 Source: "{tmp}\composer.phar"; DestDir: "{app}\bin"; Flags: external ignoreversion
 
 
-[Icons]
-Name: "{group}\Documentation"; Filename: "http://{#AppUrl}"
-Name: "{group}\Uninstall Composer"; Filename: "{uninstallexe}";
-
-
 [Run]
 Filename: "http://{#AppUrl}"; Description: "View online documentation"; Flags: postinstall shellexec unchecked;
 
 
 [InstallDelete]
-; only for user upgrade
-Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: UserUpgrade;
+; only for upgrades
+Type: filesandordirs; Name: "{userappdata}\Composer\bin"; Check: UpgradingUserDir;
+Type: filesandordirs; Name: {group}; Check: UpgradingStartMenu;
 
 
 [Messages]
@@ -186,12 +182,24 @@ type
   TPathChangeList = Array of TPathChangeRec;
 
 type
+  TVersionRec = record
+    Major   : Integer;
+    Minor   : Integer;
+  end;
+
+type
+  TVersionInfo = record
+    Installed   : TVersionRec;
+    Current     : TVersionRec;
+    Upgrades    : Integer;
+  end;
+
+type
   TFlagsRec = record
     PathChanged   : Boolean;
     ProgressPage  : Boolean;
     LastUserPhp   : String;
     Completed     : Boolean;
-    UserUpgrade   : Boolean;
   end;
 
 type
@@ -218,6 +226,7 @@ var
   TmpDir: String;               {the temp directory that setup/uninstall uses}
   PhpRec: TPhpRec;              {contains selected php.exe data and any error}
   Info: TPathInfo;              {contains latest path info}
+  Version: TVersionInfo;        {contains version data}
   CmdExe: String;               {full pathname to system cmd}
   PathError: String;            {used to show ErrorMsg page}
   PathChanges: TPathChangeList; {list of path changes to make, or made}
@@ -229,10 +238,9 @@ var
 
 
 const
-  CSIDL_PROFILE = $0028;
   SEP_PATH = ';';
   LF = #13#10;
-  SP = #32#32#32#32#32#32;
+  TAB = #32#32#32#32#32#32;
   TEST_FLAG = '?';
 
   PATH_NONE = 0;
@@ -260,10 +268,15 @@ const
   NEXT_RETRY = 1;
   NEXT_OK = 2;
 
+  {Bit flags for upgrading installation}
+  UPGRADE_NONE = 0;
+  UPGRADE_USER_DIR = 1;
+  UPGRADE_START_MENU = 2;
 
-{Installer related functions}
-function GetBaseDir(Param: String): String; forward;
-function UserUpgrade: Boolean; forward;
+
+{Start functions}
+function StartCheck: Boolean; forward;
+procedure StartSetUpdates; forward;
 
 {Common functions}
 procedure AddLine(var Existing: String; const Value: String); forward;
@@ -276,10 +289,14 @@ function GetCommonCmdError(StatusCode, ExitCode: Integer): String; forward;
 function GetStatusText(Status: Integer): String; forward;
 function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
 function ResultIdLine(const Line: String; var S: String): Boolean; forward;
+function StrToVer(const Value: String): TVersionRec; forward;
+function VersionCompare(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean; forward;
 
 {Misc functions}
-function CheckAlreadyInstalled: Boolean; forward;
+function GetBaseDir(Param: String): String; forward;
 function UnixifyShellFile(var Error: String): Boolean; forward;
+function UpgradingStartMenu: Boolean; forward;
+function UpgradingUserDir: Boolean; forward;
 
 {Path retrieve functions}
 function GetPathHash(const SystemPath, UserPath: String): String; forward;
@@ -340,11 +357,19 @@ procedure TestOnChange(Sender: TObject); forward;
 function InitializeSetup(): Boolean;
 begin
 
+  {Initialize version info}
+  Version.Installed := StrToVer(GetPreviousData('Version', ''));
+  Version.Current := StrToVer('{#SetupVersion}');
+  Version.Upgrades := UPGRADE_NONE;
+
+  {Check if an existing install is ok}
+  if not StartCheck() then
+    Exit;
+
   {Initialize our flags}
   Flags.PathChanged := False;
   Flags.ProgressPage := False;
   Flags.Completed := False;
-  Flags.UserUpgrade := False;
 
   CmdExe := ExpandConstant('{cmd}');
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
@@ -353,7 +378,7 @@ begin
   ExtractTemporaryFile('composer');
   ExtractTemporaryFile('setup.class.php');
   ExtractTemporaryFile('setup.php');
-  
+
   {Set full filenames}
   TmpFile.Composer := TmpDir + '\composer';
   TmpFile.Result := TmpDir + '\result.txt';
@@ -363,8 +388,8 @@ begin
 
   SetPathInfo(False);
 
-  if CheckAlreadyInstalled() then
-    Exit;
+  {Initialize any updates}
+  StartSetUpdates();
 
   if Pos('/TEST', GetCmdTail) <> 0 then
     Test := TEST_FLAG;
@@ -404,9 +429,9 @@ begin
   'Please read the following important information before continuing.',
   'Setup has changed your path variable, but not all running programs will be aware of this. ' +
   'To use Composer for the first time, you will have to do one of the following:' + LF + LF +
-    SP + '- Open a new command window.' + LF +
-    SP + '- Close all explorer windows, then open a new command window.' + LF +
-    SP + '- Logoff and Logon again, then open a new command window.');
+    TAB + '- Open a new command window.' + LF +
+    TAB + '- Close all explorer windows, then open a new command window.' + LF +
+    TAB + '- Logoff and Logon again, then open a new command window.');
 
   if Test = TEST_FLAG then
     TestCreateSelect();
@@ -612,23 +637,68 @@ begin
 end;
 
 
-{*************** Installer related functions ***************}
+{*************** Start functions ***************}
 
-function GetBaseDir(Param: String): String;
+function StartCheck: Boolean;
+var
+  Path: String;
+  S: String;
+
 begin
 
-  {Code-constant function for DefaultDirName}
-  if IsAdminLoggedOn then
-    Result := ExpandConstant('{commonappdata}')
-  else
-    Result := ExpandConstant('{userpf}');
+  Result := True;
+
+  {Check for an existing All Users installation if we are a user}
+  if not IsAdminLoggedOn then
+  begin
+
+    Path := ExpandConstant('{commonappdata}\Composer\bin\unins000.exe');
+
+    if FileExists(Path) then
+    begin
+      AddLine(S, 'Composer is already installed on this computer for All Users.');
+      AddLine(S, '');
+      AddLine(S, 'If you wish to continue, uninstall Composer from the Control Panel first.');
+
+      MsgBox(S, mbCriticalError, mb_Ok);
+      Result := False;
+      Exit;
+    end;
+
+  end;
+
+  {Check if we are installing a lower version}
+  if VersionCompare(Version.Current, '<', Version.Installed) then
+  begin
+    AddLine(S, 'This installer is older than the one that was used for the current installation.');
+    AddLine(S, '');
+    AddLine(S, 'To avoid any conflicts, uninstall Composer from the Control Panel first.');
+
+    MsgBox(S, mbCriticalError, mb_Ok);
+    Result := False;
+    Exit;
+  end;
 
 end;
 
-function UserUpgrade: Boolean;
+
+procedure StartSetUpdates;
 begin
-  {Check function for InstallDelete section}
-  Result := Flags.UserUpgrade;
+
+  {UPDATE_USER_DIR}
+  if not IsAdminLoggedOn then
+  begin
+
+    {Update user dir if previous version data is empty}
+    if VersionCompare(Version.Installed, '<', StrToVer('2.7')) then
+      Version.Upgrades := Version.Upgrades or UPGRADE_USER_DIR;
+
+  end;
+
+  {UPDATE_START_MENU}
+  if VersionCompare(Version.Installed, '<', StrToVer('2.8')) then
+    Version.Upgrades := Version.Upgrades or UPGRADE_START_MENU;
+
 end;
 
 
@@ -823,35 +893,75 @@ begin
 end;
 
 
-{*************** Misc functions ***************}
-
-function CheckAlreadyInstalled: Boolean;
+function StrToVer(const Value: String): TVersionRec;
 var
-  Path: String;
-  S: String;
+  Len: Integer;
+  Index: Integer;
 
 begin
 
-  Result := False;
+  Result.Major := 0;
+  Result.Minor := 0;
 
-  if IsAdminLoggedOn then
-    Exit
-  else
-    {Set User upgrade from previous install}
-    Flags.UserUpgrade := GetPreviousData('Version', '') = '';
+  Len := Length(Value);
+  Index := Pos('.', Value);
 
-  {Check for an existing All Users installation}
-  Path := ExpandConstant('{commonappdata}\Composer\bin\unins000.exe');
-
-  if FileExists(Path) then
+  if (Len > 2) and (Index > 1) and (Index < Len) then
   begin
-    S := 'Composer is already installed on this computer for All Users.' + LF + LF;
-    S := S + 'Please uninstall it if you wish to continue.';
-
-    MsgBox(S, mbCriticalError, mb_Ok);
-    Result := True;
-    Exit;
+    Result.Major := StrToIntDef(Copy(Value, 1, Index - 1), 0);
+    Result.Minor := StrToIntDef(Copy(Value, Index + 1, MaxInt), 0);
   end;
+
+end;
+
+
+function VersionCompare(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean;
+var
+  Diff: Integer;
+
+begin
+
+  if V1.Major < V2.Major then
+    Diff := -1
+  else if V1.Major > V2.Major then
+    Diff := 1
+  else
+  begin
+
+    if V1.Minor < V2.Minor then
+      Diff := -1
+    else if V1.Minor > V2.Minor then
+      Diff := 1
+    else
+      Diff := 0;
+
+  end;
+
+  if Op = '<' then
+    Result := Diff < 0
+  else if Op = '<=' then
+    Result := Diff <= 0
+  else if Op = '=' then
+    Result := Diff = 0
+  else if Op = '>' then
+    Result := Diff > 0
+  else if Op = '>=' then
+    Result := Diff >= 0
+  else
+    RaiseException('Unknown Op in VersionCompare');
+
+end;
+
+{*************** Misc functions ***************}
+
+function GetBaseDir(Param: String): String;
+begin
+
+  {Code-constant function for DefaultDirName}
+  if IsAdminLoggedOn then
+    Result := ExpandConstant('{commonappdata}')
+  else
+    Result := ExpandConstant('{userpf}');
 
 end;
 
@@ -888,6 +998,20 @@ begin
 
   Result := True;
 
+end;
+
+
+function UpgradingStartMenu: Boolean;
+begin
+  {Check function for InstallDelete section}
+  Result := Version.Upgrades and UPGRADE_START_MENU <> 0;
+end;
+
+
+function UpgradingUserDir: Boolean;
+begin
+  {Check function for InstallDelete section}
+  Result := Version.Upgrades and UPGRADE_USER_DIR <> 0;
 end;
 
 
@@ -1029,7 +1153,7 @@ begin
     Info.Bin.System := SearchPathBin(HKEY_LOCAL_MACHINE);
 
     {Only check User if we have no System entry, or we have an old user install to upgrade}
-    if IsUser and ((Info.Bin.System = '') or Flags.UserUpgrade) then
+    if IsUser and ((Info.Bin.System = '') or UpgradingUserDir()) then
       Info.Bin.User := SearchPathBin(HKEY_CURRENT_USER);
 
     SetPathRec(Info.Bin);
@@ -1121,7 +1245,6 @@ function CheckPathBin: String;
 var
   BinPath: String;
   RoamingBin: String;
-  S: String;
 
 begin
 
@@ -1147,7 +1270,7 @@ begin
       Exit;
 
     {See if we are a User upgrading}
-    if Flags.UserUpgrade then
+    if UpgradingUserDir() then
     begin
 
       RoamingBin := ExpandConstant('{userappdata}\Composer\bin');
@@ -1165,12 +1288,10 @@ begin
   end;
 
   {If we have got here, then we have an error}
-  S := 'Composer is already installed in the following directory:' + LF;
-  S := S + Info.Bin.Path + LF;
-  S := S + LF;
-  S := S + 'You must remove it first, if you want to continue this installation.' + LF;
-
-  Result := S;
+  AddLine(Result, 'Composer is already installed in the following directory:');
+  AddLine(Result, Info.Bin.Path);
+  AddLine(Result, '');
+  AddLine(Result, 'You must remove it first, if you want to continue this installation.');
 
 end;
 
@@ -1179,7 +1300,6 @@ function CheckPathExt: String;
 var
   Value: String;
   PathExt: String;
-  S: String;
 
 begin
 
@@ -1202,15 +1322,11 @@ begin
 
   PathExt := Uppercase(PathExt  + ';');
 
-  S := '';
-
   if Pos('.BAT;', PathExt) = 0 then
   begin
-    S := 'Your PathExt Environment variable is missing a required value:' + LF;
-    S := S + SP + '.BAT' + LF;
+    AddLine(Result, 'Your PathExt Environment variable is missing a required value:');
+    AddLine(Result, TAB + '.BAT');
   end;
-
-  Result := S;
 
 end;
 
@@ -1406,7 +1522,7 @@ begin
       Action := 'Remove from ';
 
     Result := Result + LF + LF + Action + PathChanges[I].Caption + Env;
-    Result := Result + LF + SP + PathChanges[I].Path;
+    Result := Result + LF + TAB + PathChanges[I].Path;
 
   end;
 
