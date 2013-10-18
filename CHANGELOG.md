@@ -1,3 +1,11 @@
+## v2.8
+2013-10-19
+
+* Added support for cygwin php.
+* Removed Start menu entry (automatically upgraded when re-installing over an older version)
+* Moved released versions back to Github now they have introduced a Releases feature.
+* Minor code tweaks.
+
 ## v2.7
 2012-02-20
 
@@ -12,7 +20,6 @@
 2012-12-01
 
 * Added proxy support. This checks for an ```http_proxy``` environment variable and the user's registry settings at *HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings*. It tries all the settings it finds, before falling back to a plain request. Sets ```http_proxy``` locally for install.phar if a proxy was used. Note that authenticated proxies are only supported using an ```http_proxy``` variable.
-
 * Reworked tests to incorporate proxy support.
 * Minor tweaks and doc improvements.
 

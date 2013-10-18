@@ -1,6 +1,6 @@
 # Composer-Setup
 
-A Windows installer for the [Composer][composer] PHP Dependency Manager. [**Download it here**][download].
+The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Download it here**][download].
 
 ## Contents
 * [About](#About)
@@ -15,9 +15,9 @@ A Windows installer for the [Composer][composer] PHP Dependency Manager. [**Down
 
 [Composer][composer] is a wonderful tool but it can sometimes be tricky to install on Windows. This installer attempts to ease the pain by:
 
-* helping you set up PHP so it can be used from the command line
+* helping you set up PHP so that it can be used from the command line
 * installing Composer so that you can use it from any location by typing: `composer`
-* setting it up so you can also use it from Git Bash and Cygwin
+* enabling its use from Command Prompt, Git Bash and Cygwin (including cygwin php) 
 
 [Download][download] and run it, and in the majority of cases this is all you need to do. The install process is described in more detail below, while the [Wiki][manual] describes how to do it manually.
 
@@ -54,7 +54,7 @@ Composer-Setup will modify your System Path environment variable for Admin insta
 <a name="Compiling"></a>
 ## Compiling
 
-To compile the `src/composer.iss` script you will need to install the unicode version of [Inno Setup Compiler][compiler]. Using the QuickStart Pack is the easiest way to do this. Note that *Inno Setup Preprocessor* is the only extra that is required.
+To compile the `src/composer.iss` script you will need to install the unicode version of [Inno Setup Compiler][compiler]. Make sure you include *Inno Setup Preprocessor* when you run the installer.
 
 
 <a name="License"></a>
@@ -64,7 +64,7 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
 
 
   [composer]:   http://getcomposer.org
-  [download]:   https://github.com/johnstevenson/composer-setup/releases/download/v2.7/Composer-Setup.2.7.exe
+  [download]:   https://github.com/johnstevenson/composer-setup/releases/download/v2.8/Composer-Setup.2.8.exe
   [inno]:       http://www.jrsoftware.org/isinfo.php
   [packagist]:  https://packagist.org/
   [manual]:     https://github.com/johnstevenson/composer-setup/wiki/Manual-installation
