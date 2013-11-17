@@ -5,7 +5,10 @@ important path functions separate from it. There should be no need
 to change this.}
 
 function ExpandEnvironmentStrings(Src: String; Dst: String; Size: DWord): DWord;
-  external 'ExpandEnvironmentStringsW@kernel32.dll stdcall';
+  external 'ExpandEnvironmentStringsW@kernel32.dll stdcall delayload';
+
+function SendMessageTimeout(Hwnd, Msg, WParam: LongInt; LParam: String; Flags, Timeout: LongInt; lpdwResult: DWord): DWord;
+  external 'SendMessageTimeoutW@user32.dll stdcall delayload';
 
 function AddToPath(Hive: Integer; Value: String): Integer; forward;
 function RemoveFromPath(Hive: Integer; Value: String): Integer; forward;
@@ -19,6 +22,7 @@ function GetSafePath(PathList: TPathList; Index: Integer): String; forward;
 function DirectoryInPath(var Directory: String; PathList: TPathList; Hive: Integer): Boolean; forward;
 function SearchPath(PathList: TPathList; Hive: Integer; const Cmd: String): String; forward;
 function SearchPathEx(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String; forward;
+procedure NotifyPathChange; forward;
 function NeedsTrailingSeparator: Boolean; forward;
 
 const
@@ -447,6 +451,18 @@ begin
     end;
 
   end;
+
+end;
+
+
+procedure NotifyPathChange;
+var
+  Res: DWORD;
+
+begin
+
+  {WM_SETTINGCHANGE = $1A; SMTO_ABORTIFHUNG = $2;}
+  SendMessageTimeout(HWND_BROADCAST, $1A, 0, 'Environment', $2, 2000, Res);
 
 end;
 

@@ -33,7 +33,7 @@ type
   end;
 
 function DeleteUserData(HParent: HWND; DirList: String): Boolean;
-  external 'DeleteUserData@{app}\bin\{#DllData} stdcall uninstallonly';
+  external 'DeleteUserData@{app}\{#DllData} stdcall uninstallonly';
 
 procedure UserDataDelete; forward;
 function UserDataGet: TUserDataList; forward;
@@ -64,7 +64,7 @@ begin
     otherwise the dll and app dir will not be deleted
   }
 
-  DllData := ExpandConstant('{app}\bin\{#DllData}');
+  DllData := ExpandConstant('{app}\{#DllData}');
 
   try
 

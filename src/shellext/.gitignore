@@ -1,0 +1,13 @@
+Debug
+src
+!Release
+*.exp
+*.ilk
+*.lib
+*.pdb
+*.aps
+*.ncb
+*.sln
+*.suo
+*.user
+*.sdf
