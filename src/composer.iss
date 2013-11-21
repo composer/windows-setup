@@ -64,20 +64,10 @@ WizardSmallImageFile=wizsmall.bmp
 
 ; release stuff
 #ifdef Release
-
-  ; release guard
-  #define OutputDir "release"
-  #define OutputBaseFilename AppInstallName + "." + SetupVersion
-
-  #if FileExists(OutputDir + "\" + OutputBaseFilename + ".exe")
-    #error This version has already been released
-  #endif
-
-  ; release directives
-  OutputDir={#OutputDir}
-  OutputBaseFilename={#OutputBaseFilename}
-  SignTool={#SignTool}
-
+  #include "build.iss";
+OutputDir={#OutputDir}
+OutputBaseFilename={#OutputBaseFilename}
+SignTool={#SignTool}
 #endif
 
 

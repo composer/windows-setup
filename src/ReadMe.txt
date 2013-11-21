@@ -11,10 +11,8 @@ Composer-Setup will be compiled with the following settings:
 To compile a release version, you must create a file named "release.iss" in
 the same directory and run it. It must contain:
 
-    #define SetupVersion "3.0" // set the version
     #define Release
+    #define SetupVersion "3.0" // set the version
     #define SignTool "mysigntool"  // the name of IDE sign tool
+    #define SignCmd "path-to-sign.exe params"  // the command line to call the sign tool. The filename will be appended
     #include "composer.iss"
-
-Or you can use the the command-line compiler (see Inno Setup Help). For example:
-    iscc /d"SetupVersion=3.0" /d"Release" /d"SignTool=mysigntool" /Smysigntool="..." "path\to\composer.iss"
