@@ -499,7 +499,23 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
 
-  if CurPageID = Pages.Settings.ID then
+  if CurPageID = wpWelcome then
+  begin
+
+    {Skip welcome page if modifying}
+    if InstallRec.Modifying then
+      WizardForm.NextButton.OnClick(nil);
+
+  end
+  else if CurPageID = Pages.Options.ID then
+  begin
+
+    {Hide Back button on page if modifying - see above}
+    if InstallRec.Modifying then
+      WizardForm.BackButton.Visible := False;
+
+  end
+  else if CurPageID = Pages.Settings.ID then
   begin
 
     {We must use Flags.ProgressPage since the progress page has no PageID}
