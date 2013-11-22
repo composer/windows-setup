@@ -8,12 +8,12 @@
 #endsub
 
 ; release defines
-#define OutputDir "release"
-#define OutputBaseFilename AppInstallName + "." + SetupVersion
+#define private OutputDir "release"
+#define private OutputBaseFilename AppInstallName + "." + SetupVersion
 
 ; release guard
 #if FileExists(OutputDir + "\" + OutputBaseFilename + ".exe")
-  #error This version has already been released
+  #pragma error "Version" + SetupVersion + " has already been released"
 #endif
 
 ; code sign dlls
@@ -25,3 +25,9 @@
 
 #define protected Module "shellext\x64\Release\" + ShellExt64
 #expr Sign
+
+
+[Setup]
+OutputDir={#OutputDir}
+OutputBaseFilename={#OutputBaseFilename}
+SignTool={#SignTool}

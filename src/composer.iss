@@ -14,6 +14,8 @@
 #define ShellExt32 "shellext32.dll"
 #define ShellExt64 "shellext64.dll"
 
+#define PrevDataApp "AppDir"
+#define PrevDataBin "BinDir"
 #define PrevDataShell "ShellExt"
 #define PrevDataVersion "Version"
 #define ShellDisplayName "Shell Menus"
@@ -49,14 +51,14 @@ UsePreviousAppDir=no
 ; no Start Menu
 DisableProgramGroupPage=yes
 
+; exe version info
+VersionInfoVersion={#SetupVersion}
+VersionInfoProductName={#AppDescription}
+
 ; uninstall
 Uninstallable=yes
 UninstallDisplayName={#AppDescription}
 UninstallDisplayIcon={app}\unins.ico
-
-; exe version info
-VersionInfoVersion={#SetupVersion}
-VersionInfoProductName={#AppDescription}
 
 ; cosmetic
 WizardImageFile=wiz.bmp
@@ -65,15 +67,12 @@ WizardSmallImageFile=wizsmall.bmp
 ; release stuff
 #ifdef Release
   #include "build.iss";
-OutputDir={#OutputDir}
-OutputBaseFilename={#OutputBaseFilename}
-SignTool={#SignTool}
 #endif
 
 
 [Dirs]
 ; we need to make all-users directory writeable so composer.phar can update
-Name: {code:GetDataDir}; Permissions: users-modify; Check: PmCheckPermisions;
+Name: {code:GetBinDir}; Permissions: users-modify; Check: PmCheckPermisions;
 
 
 [Files]
@@ -83,12 +82,12 @@ Source: "userdata.dll"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckCo
 Source: "unins.ico"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckComposer;
 Source: "shellext\Win32\Release\{#ShellExt32}"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckShell(32);
 Source: "shellext\x64\Release\{#ShellExt64}"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckShell(64);
+Source: "{srcexe}"; DestDir: "{app}"; DestName: "{code:ExtractFileName|{srcexe}}"; Flags: external ignoreversion; Check: PmCheckModify;
 
 Source: "shims\{#CmdShell}"; Flags: dontcopy
-Source: "shims\{#CmdBat}"; DestDir: {code:GetDataDir}; Flags: ignoreversion; Check: PmCheckComposer;
-Source: "{tmp}\{#CmdShell}"; DestDir: {code:GetDataDir}; Flags: external ignoreversion; Check: PmCheckComposer;
-Source: "{tmp}\composer.phar"; DestDir: {code:GetDataDir}; Flags: external ignoreversion; Check: PmCheckComposer;
-Source: "{srcexe}"; DestDir: "{app}"; DestName: "{code:ExtractFileName|{srcexe}}"; Flags: external ignoreversion; Check: PmCheckModify;
+Source: "shims\{#CmdBat}"; DestDir: {code:GetBinDir}; Flags: ignoreversion; Check: PmCheckComposer;
+Source: "{tmp}\{#CmdShell}"; DestDir: {code:GetBinDir}; Flags: external ignoreversion; Check: PmCheckComposer;
+Source: "{tmp}\composer.phar"; DestDir: {code:GetBinDir}; Flags: external ignoreversion; Check: PmCheckComposer;
 
 
 [InstallDelete]
@@ -97,7 +96,7 @@ Type: files; Name: "{app}\{#ShellExt64}"; Check: PmCheckShellDelete(64);
 
 
 [UninstallDelete]
-Type: filesandordirs; Name: {code:GetDataDir};
+Type: filesandordirs; Name: {code:GetBinDir};
 
 
 [Registry]
@@ -342,7 +341,7 @@ function VersionSetUpgrade(Upgrade: Integer; Below: String): Boolean; forward;
 {Misc functions}
 function CheckShellFile(Arch: Integer): Boolean; forward;
 function GetAppDir(Param: String): String; forward;
-function GetDataDir(Param: String): String; forward;
+function GetBinDir(Param: String): String; forward;
 function PmCheckComposer: Boolean; forward;
 function PmCheckModify: Boolean; forward;
 function PmCheckPermisions: Boolean; forward;
@@ -388,6 +387,7 @@ procedure SetDownloadStatus(StatusCode, ExitCode: Integer); forward;
 procedure ShellCheckFree; forward;
 function ShellGetFilename: String; forward;
 procedure ShellRegister; forward;
+function ShellStatusToString: String; forward;
 procedure ShellUnregister; forward;
 
 {Custom page functions}
@@ -665,7 +665,6 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 var
   S: String;
-  Action: String;
 
 begin
 
@@ -678,23 +677,10 @@ begin
     S := S + PathChangesToString();
   end;
 
-  if ShellRec.Status <> SHELL_NONE then
-  begin
-    if S <> '' then
-      S := S + NewLine + NewLine;
+  if S <> '' then
+    S := S + NewLine + NewLine;
 
-    if ShellRec.Status = SHELL_INSTALL then
-    begin
-      if InstallRec.Modifying and ShellRec.Installed then
-        Action := 'Reinstall'
-      else
-        Action := 'Install';
-    end
-    else
-      Action := 'Remove';
-
-    S := S + Format('{#ShellDisplayName}: %s%s%s', [NewLine, Space, Action]);
-  end;
+  S := S + Format('{#ShellDisplayName}: %s%s%s', [NewLine, Space, ShellStatusToString()]);
 
   if S = '' then
     S := 'Nothing to install';
@@ -763,6 +749,8 @@ end;
 
 procedure RegisterPreviousData(PreviousDataKey: Integer);
 begin
+  SetPreviousData(PreviousDataKey, '{#PrevDataApp}', GetAppDir(''));
+  SetPreviousData(PreviousDataKey, '{#PrevDataBin}', GetBinDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataVersion}', '{#SetupVersion}');
   SetPreviousData(PreviousDataKey, '{#PrevDataShell}', IntToStr(Ord(ShellRec.Status = SHELL_INSTALL)));
 end;
@@ -812,7 +800,7 @@ begin
     ShellCheckFree();
 
     {Remove composer from path}
-    AddPathChange(GetDataDir(''), MOD_PATH_REMOVE);
+    AddPathChange(GetBinDir(''), MOD_PATH_REMOVE);
 
     if PathChangesMake(Error) = PATH_MOD_FAILED then
     begin
@@ -1305,7 +1293,7 @@ begin
 end;
 
 
-function GetDataDir(Param: String): String;
+function GetBinDir(Param: String): String;
 begin
 
   {Code-constant function for data directory}
@@ -1629,7 +1617,7 @@ begin
 
   Debug('Checking for composer bin path');
 
-  BinPath := GetDataDir('');
+  BinPath := GetBinDir('');
 
   if Info.StatusBin = PATH_NONE then
   begin
@@ -2352,6 +2340,38 @@ begin
 end;
 
 
+function ShellStatusToString: String;
+begin
+
+  case ShellRec.Status of
+
+    SHELL_INSTALL:
+    begin
+
+      if InstallRec.Modifying and ShellRec.Installed then
+        Result := 'Reinstall'
+      else
+        Result := 'Install';
+
+    end;
+
+    SHELL_UNINSTALL:
+    begin
+
+      if not InstallRec.Modifying and ShellRec.Installed then
+        Result := 'Do not install'
+      else
+        Result := 'Remove';
+
+    end;
+
+  else
+    Result := 'Do not install';
+  end;
+
+end;
+
+
 procedure ShellUnregister;
 var
   Dll: String;
@@ -2725,6 +2745,9 @@ begin
 
   InstallRec.Composer := Options.CbComposer.Checked;
 
+  if InstallRec.Modifying then
+    Debug(Format('User selected to reinstall Composer: %d', [Ord(InstallRec.Composer)]));
+
   if ShellRec.Installed then
   begin
 
@@ -2743,6 +2766,8 @@ begin
       ShellRec.Status := SHELL_NONE;
 
   end;
+
+  Debug(Format('User selected Shell Menus: %s', [ShellStatusToString()]));
 
 end;
 

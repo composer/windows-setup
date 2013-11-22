@@ -2,8 +2,8 @@
 
 const
   {Return codes}
-  ERROR_SUCCESS        = 0;
-  ERROR_MORE_DATA      = 234;
+  ERROR_SUCCESS = 0;
+  ERROR_MORE_DATA = 234;
 
   {RestartManager}
   CCH_RM_SESSION_KEY = 32;
@@ -206,7 +206,8 @@ begin
     Count := 0;
     SetArrayLength(RsRec.Apps, 0);
 
-    {We need to start a new session each time}
+    {We need to start a new session each time as the Restart Manager is flaky with
+    Explorer windows, especially if Programs and Features is open}
     if RsRec.Started then
       RmEndSession(RsRec.Session);
 
@@ -288,6 +289,7 @@ begin
 
       if Result and (Running > 0) then
       begin
+        Debug(Format('Processes (%d) are locking required files', [Running]));
         Form.ListBox.Items.Clear();
 
         for I := 0 to Running - 1 do
