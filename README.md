@@ -28,7 +28,7 @@ Composer-Setup is written with [Inno Setup][inno], which is a powerful free inst
 <a name="Details"></a>
 ## Details
 
-You are first asked if you want to install the optional Shell Menus feature, which allows you to run Composer commands by right-clicking folder items in Windows Explorer/File Manager. You can add or remove this feature at any time - see [Changing](#Changing). Note that the Shell Menus are not available on Windows versions below Vista. 
+You are first asked if you want to install the optional Shell Menus feature, which allows you to run Composer commands by right-clicking folder items in Windows Explorer/File Manager. You can add or remove this feature at any time - see [Changing](#Changing). Note that the Shell Menus are not available pre Windows Vista. 
 
 Next you are asked for the location of your `php.exe`, which is the PHP command line interpreter. If this value is in your path then it will be displayed, otherwise you are going to have to hunt around. Depending on your setup it could be:
 
@@ -56,7 +56,7 @@ After you have reviewed and accepted your settings, the installer will download 
 <a name="Changing"></a>
 ## Changing
 
-You can change/modify your installation at any time from the Control Panel. Go to Programs and Features, select Composer, then click Change. This allows you to re-run ComposerSetup (perhaps to alter your php location) and to either add or remove the Shell Menus feature.
+You can change/modify your installation at any time from the Control Panel. Go to Programs and Features, select Composer, then click Change. This allows you to re-run setup (perhaps to alter your PHP location) and to either add or remove the Shell Menus feature.
 
 <a name="Uninstalling"></a>
 ## Uninstalling
@@ -66,7 +66,7 @@ The uninstall program is available from the Control Panel. Go to Programs and Fe
 <a name="Path"></a>
 ## Path
 
-Composer-Setup will modify your System Path environment variable for Admin installs, or your User Path environment variable for User installs. The installer will add your `php.exe` to the path if required and will also add the path to the installation directory. The uninstaller will only remove the installation directory.
+The installer will modify your System Path environment variable for Admin installs, or your User Path environment variable for User installs. The installer will add `php.exe` to the path if required and will also add the path to the installation bin directory. The uninstaller will only remove the path to the bin directory, leaving the PHP path intact.
 
 <a name="Compiling"></a>
 ## Compiling

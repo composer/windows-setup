@@ -1,14 +1,15 @@
 ## v3.0
 2013-11-22
 
-* Major version pushed to v3, reflecting changes below and the requirement to uninstall an existing installation.
+* Major version pushed to v3, reflecting changes below and the requirement to uninstall any existing installation.
 * Added optional Shell Menus context-menu handler, to allow Composer usage from Windows Explorer/File Manager. Not available on pre-Vista.
 * Added dialog requiring user to shutdown programs that are locking context-menu dll.
 * Added Change feature to installer, to allow Composer reinstall and to add/remove context-menus.
 * Changed installation directories to split files into application (shell, installer, uninstaller etc) and bin (composer.phar, shims) categories. For admin installs these are `<ProgramFiles>\ComposerSetup` and `%ProgramData%\ComposerSetup\bin`. For user installs these are `%LOCALAPPDATA%\ComposerSetup` and `%LOCALAPPDATA%\ComposerSetup\bin`. The base folder name has been changed to ComposerSetup to avoid any conflicts in the Program Files directory. 
-* Previous-data added: shell menus installed (key : ShellExt)
-* Previous-data added: application directory (key : AppDir)
-* Previous-data added: bin directory (key : BinDir)
+* Previous-data added: shell menus installed (key : ShellExt).
+* Previous-data added: application directory (key : AppDir).
+* Previous-data added: bin directory (key : BinDir).
+* Code signing added to all dlls for release versions.
 * Thanks to [cmenning](https://github.com/cmenning) for suggesting the context-menu handler.
 
 ## v2.8

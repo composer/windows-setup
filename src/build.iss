@@ -9,7 +9,7 @@
 
 ; release defines
 #define private OutputDir "release"
-#define private OutputBaseFilename AppInstallName + "." + SetupVersion
+#define private OutputBaseFilename "Composer-Setup." + SetupVersion
 
 ; release guard
 #if FileExists(OutputDir + "\" + OutputBaseFilename + ".exe")
