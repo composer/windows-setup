@@ -86,3 +86,7 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
   [packagist]:  https://packagist.org/
   [manual]:     https://github.com/johnstevenson/composer-setup/wiki/Manual-installation
   [compiler]:   http://www.jrsoftware.org/isdl.php
+
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/johnstevenson/composer-setup/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+
