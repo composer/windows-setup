@@ -1,6 +1,5 @@
-Debug
-src
-!Release
+Win32
+x64
 *.exp
 *.ilk
 *.lib

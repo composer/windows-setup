@@ -13,17 +13,20 @@
 
 ; release guard
 #if FileExists(OutputDir + "\" + OutputBaseFilename + ".exe")
-  #pragma error "Version" + SetupVersion + " has already been released"
+  #pragma error "Version " + SetupVersion + " has already been released"
 #endif
 
 ; code sign dlls
 #define protected Module "userdata.dll"
 #expr Sign
 
-#define protected Module "shellext\Win32\Release\" + ShellExt32
+#define protected Module SettingsExe
 #expr Sign
 
-#define protected Module "shellext\x64\Release\" + ShellExt64
+#define protected Module ShellExt32
+#expr Sign
+
+#define protected Module ShellExt64
 #expr Sign
 
 

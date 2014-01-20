@@ -1,0 +1,47 @@
+#!/bin/sh
+
+# Params:
+#   $1      working directory (the selected folder)
+#   $2...   composer params
+
+dir=$(echo "$1" | sed 's/ /\ /g')
+cmd="$2"
+shift
+
+sys='unknown'
+unames=$(uname -s | tr '[:upper:]' '[:lower:]');
+if [[ "$unames" == *cygwin* ]]; then
+    sys='cygwin';
+    dir=$(cygpath -u "${dir}");
+elif [[ "$unames" == *mingw* ]]; then
+    if [ -e $(dirname $BASH)"/git.exe" ]; then
+        sys='git';
+    else
+        sys='msys';
+    fi
+fi
+
+cd "${dir}"
+if [ $? -eq 0 ]; then
+    if [ "$cmd" != '--open--' ]; then
+        echo; echo Command: composer $*; echo;
+        composer $*;
+    fi
+fi
+
+if [ "$cmd" == '--open--' ]; then
+    result='y';
+else
+    echo;
+    read -p "Continue [y] ? " -r -t60 result;
+    result=$(echo $result | tr '[:upper:]' '[:lower:]');
+fi
+
+if [ "$result" == 'y' ] ; then
+    if [ "$sys" == 'git' ]; then
+        export NOLOGO=1;
+        $BASH --login -i;
+    else
+        $BASH;
+    fi
+fi

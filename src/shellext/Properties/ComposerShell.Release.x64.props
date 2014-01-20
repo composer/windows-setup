@@ -3,7 +3,7 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <OutDir>$(Platform)\$(Configuration)\</OutDir>
+    <OutDir>..\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\src\</IntDir>
     <TargetName>shellext$(PlatformArchitecture)</TargetName>
     <LinkIncremental>false</LinkIncremental>
@@ -20,11 +20,14 @@
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <ModuleDefinitionFile>GlobalExportFunctions.def</ModuleDefinitionFile>
     </Link>
+    <PostBuildEvent>
+      <Command>DEL "$(OutDir)$(TargetName).exp" "$(OutDir)$(TargetName).lib"</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup />
 </Project>

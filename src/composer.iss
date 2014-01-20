@@ -11,16 +11,22 @@
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
 #define DllData "userdata.dll"
+#define SettingsExe "settings.exe"
 #define ShellExt32 "shellext32.dll"
 #define ShellExt64 "shellext64.dll"
+#define ShellShimBat "composer-shell.bat"
+#define ShellShimPs "composer-shell.ps1"
+#define ShellShimSh "composer-shell"
 
 #define PrevDataApp "AppDir"
 #define PrevDataBin "BinDir"
-#define PrevDataShell "ShellExt"
 #define PrevDataVersion "Version"
 #define ShellDisplayName "Shell Menus"
 #define CS_SETUP_GUID "3ECDC245-751A-4962-B580-B8A250EDD1CF"
 #define GUID_LEN Len(CS_SETUP_GUID)
+
+;DO NOT CHANGE
+#define COMPOSER_CLSID "{9DF9AD0B-5D99-485a-840E-858003F87478}"
 
 
 [Setup]
@@ -39,7 +45,7 @@ MinVersion=5.1
 PrivilegesRequired=none
 AllowCancelDuringInstall=false
 CloseApplications=no
-AppModifyPath="{app}\{code:ExtractFileName|{srcexe}}" /modify=1
+AppModifyPath={code:GetSettingsExe}
 
 ; directory stuff
 DefaultDirName={code:GetAppDir}
@@ -58,7 +64,7 @@ VersionInfoProductName={#AppDescription}
 ; uninstall
 Uninstallable=yes
 UninstallDisplayName={#AppDescription}
-UninstallDisplayIcon={app}\unins.ico
+UninstallDisplayIcon={app}\{#SettingsExe},0
 
 ; cosmetic
 WizardImageFile=wiz.bmp
@@ -76,35 +82,43 @@ Name: {code:GetBinDir}; Permissions: users-modify; Check: PmCheckPermisions;
 
 
 [Files]
-Source: "setup.php"; Flags: dontcopy
-Source: "setup.class.php"; Flags: dontcopy
-Source: "userdata.dll"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckComposer;
-Source: "unins.ico"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckComposer;
-Source: "shellext\Win32\Release\{#ShellExt32}"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckShell(32);
-Source: "shellext\x64\Release\{#ShellExt64}"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckShell(64);
-Source: "{srcexe}"; DestDir: "{app}"; DestName: "{code:ExtractFileName|{srcexe}}"; Flags: external ignoreversion; Check: PmCheckModify;
+; files to extract only
+Source: setup.php; Flags: dontcopy
+Source: setup.class.php; Flags: dontcopy
+Source: shims\{#CmdShell}; Flags: dontcopy;
+Source: shims\{#ShellShimSh}; Flags: dontcopy;
 
-Source: "shims\{#CmdShell}"; Flags: dontcopy
-Source: "shims\{#CmdBat}"; DestDir: {code:GetBinDir}; Flags: ignoreversion; Check: PmCheckComposer;
-Source: "{tmp}\{#CmdShell}"; DestDir: {code:GetBinDir}; Flags: external ignoreversion; Check: PmCheckComposer;
-Source: "{tmp}\composer.phar"; DestDir: {code:GetBinDir}; Flags: external ignoreversion; Check: PmCheckComposer;
+; app files
+Source: "{#DllData}"; DestDir: "{app}"; Flags: ignoreversion;
+Source: "{#SettingsExe}"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckShell(0);
+Source: "settings.html"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckShell(0);
+Source: "{#ShellExt32}"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckShell(32);
+Source: "{#ShellExt64}"; DestDir: "{app}"; Flags: ignoreversion; Check: PmCheckShell(64);
+
+; shim files
+Source: "shims\{#CmdBat}"; DestDir: {code:GetBinDir}; Flags: ignoreversion;
+Source: "{tmp}\{#CmdShell}"; DestDir: {code:GetBinDir}; Flags: external ignoreversion;
+Source: "shims\{#ShellShimBat}"; DestDir: {code:GetBinDir}; Flags: ignoreversion; Check: PmCheckShell(0);
+Source: "shims\{#ShellShimPs}"; DestDir: {code:GetBinDir}; Flags: ignoreversion; Check: PmCheckShell(0);
+Source: "{tmp}\{#ShellShimSh}"; DestDir: {code:GetBinDir}; Flags: external ignoreversion; Check: PmCheckShell(0);
+
+; downloaded composer.phar
+Source: "{tmp}\composer.phar"; DestDir: {code:GetBinDir}; Flags: external ignoreversion;
 
 
 [InstallDelete]
-Type: files; Name: "{app}\{#ShellExt32}"; Check: PmCheckShellDelete(32);
-Type: files; Name: "{app}\{#ShellExt64}"; Check: PmCheckShellDelete(64);
+; remove stuff introduced in 3.0 and removed in 3.1
+Type: files; Name: "{app}\*setup*.exe";
+Type: files; Name: "{app}\unins.ico";
 
 
 [UninstallDelete]
 Type: filesandordirs; Name: {code:GetBinDir};
 
 
-[Registry]
-Root: HKCU; Subkey: "Software\{#AppInstallName}"; Flags: dontcreatekey uninsdeletekey;
-
-
 [Run]
 Filename: "http://{#AppUrl}"; Description: "View online documentation"; Flags: postinstall shellexec unchecked;
+
 
 [Messages]
 SetupWindowTitle=%1 Setup
@@ -161,6 +175,7 @@ type
   TTmpFile = record
     Setup     : String;
     Composer  : String;
+    Shell     : String;
     Result    : String;
   end;
 
@@ -220,16 +235,11 @@ type
   end;
 
 type
-  TInstallRec = record
-    Modifying       : Boolean;
-    Composer        : Boolean;
-  end;
-
-type
   TShellRec = record
+    Dll         : String;
     Compatible  : Boolean;
     Installed   : Boolean;
-    Status      : Integer;
+    Register    : Boolean;
   end;
 
 type
@@ -265,8 +275,7 @@ var
   PhpRec: TPhpRec;              {contains selected php.exe data and any error}
   Info: TPathInfo;              {contains latest path info}
   Version: TVersionInfo;        {contains version data}
-  InstallRec: TInstallRec;      {contains data about what to install}
-  ShellRec: TShellrec;          {contains shell status and if installed}
+  ShellRec: TShellRec;          {contains shell status and if installed}
   CmdExe: String;               {full pathname to system cmd}
   PathError: String;            {used to show ErrorMsg page}
   PathChanges: TPathChangeList; {list of path changes to make, or made}
@@ -320,34 +329,33 @@ const
 function StartCheck: Boolean; forward;
 procedure StartCommon; forward;
 procedure StartGetVersionInfo; forward;
-procedure StartGetStatus; forward;
 
 {Common functions}
+procedure AddParam(const Value: String; var Params: String); forward;
 procedure AddLine(var Existing: String; const Value: String); forward;
 procedure AddSwitch(var Switches: String; const Name, Value: String); forward;
 procedure Debug(const Message: String); forward;
 function DebugPhp(const Line: String): Boolean; forward;
 function ExecCmd(const PhpExe, Switches: String; Show: Integer; var ExitCode: Integer): Boolean; forward;
 procedure GetCmdResults(Results: TArrayOfString; var Output: String); forward;
+function GetRegHive: Integer; forward;
 function GetCommonCmdError(StatusCode, ExitCode: Integer): String; forward;
 function GetStatusText(Status: Integer): String; forward;
 function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
 function ResultIdLine(const Line: String; var S: String): Boolean; forward;
-function StrToVer(const Value: String): TVersionRec; forward;
+function StrToVer(Value: String): TVersionRec; forward;
 function VersionCompare(V1, V2: TVersionRec): Integer; forward;
 function VersionCompareEx(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean; forward;
 function VersionSetUpgrade(Upgrade: Integer; Below: String): Boolean; forward;
 
 {Misc functions}
-function CheckShellFile(Arch: Integer): Boolean; forward;
+procedure FilesCheckFree; forward;
 function GetAppDir(Param: String): String; forward;
 function GetBinDir(Param: String): String; forward;
-function PmCheckComposer: Boolean; forward;
-function PmCheckModify: Boolean; forward;
+function GetSettingsExe(Param: String): String; forward;
 function PmCheckPermisions: Boolean; forward;
 function PmCheckShell(Arch: Integer): Boolean; forward;
-function PmCheckShellDelete(Arch: Integer): Boolean; forward;
-function UnixifyShellFile(var Error: String): Boolean; forward;
+function UnixifyShellFile(const Filename: String; var Error: String): Boolean; forward;
 
 {Path retrieve functions}
 function GetPathHash(const SystemPath, UserPath: String): String; forward;
@@ -384,9 +392,10 @@ procedure SetDownloadCmdError(ExitCode: Integer); forward;
 procedure SetDownloadStatus(StatusCode, ExitCode: Integer); forward;
 
 {Shell functions}
-procedure ShellCheckFree; forward;
-function ShellGetFilename: String; forward;
+function ShellCheckRec(Rec: TShellRec): Boolean; forward;
+function ShellGetRec: TShellRec; forward;
 procedure ShellRegister; forward;
+procedure ShellRegWork(Install: Boolean); forward;
 function ShellStatusToString: String; forward;
 procedure ShellUnregister; forward;
 
@@ -410,6 +419,8 @@ procedure SettingsPageUpdate; forward;
 procedure TestCreateSelect; forward;
 procedure TestOnChange(Sender: TObject); forward;
 
+function BroadcastSystemMessage(Flags: LongInt; Recipient: DWord; uiMessage, WParam, LParam: LongInt): LongInt;
+  external 'BroadcastSystemMessageW@user32.dll stdcall delayload';
 
 #include "paths.iss"
 #include "shutdown.iss"
@@ -424,12 +435,6 @@ begin
   {Initialize common values}
   StartCommon();
 
-  {Initialize version info}
-  StartGetVersionInfo();
-
-  {Initialize InstallRec and ShellRec}
-  StartGetStatus();
-
   {Check if an existing install is ok}
   if not StartCheck() then
     Exit;
@@ -439,11 +444,13 @@ begin
 
   {Extract our temp files to installer directory}
   ExtractTemporaryFile('composer');
+  ExtractTemporaryFile('composer-shell');
   ExtractTemporaryFile('setup.class.php');
   ExtractTemporaryFile('setup.php');
 
   {Set full filenames}
   TmpFile.Composer := TmpDir + '\composer';
+  TmpFile.Shell := TmpDir + '\composer-shell';
   TmpFile.Result := TmpDir + '\result.txt';
 
   {setup.php must not have a path for cygwin php - it is called from the cwd}
@@ -499,23 +506,7 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
 
-  if CurPageID = wpWelcome then
-  begin
-
-    {Skip welcome page if modifying}
-    if InstallRec.Modifying then
-      WizardForm.NextButton.OnClick(nil);
-
-  end
-  else if CurPageID = Pages.Options.ID then
-  begin
-
-    {Hide Back button on page if modifying - see above}
-    if InstallRec.Modifying then
-      WizardForm.BackButton.Visible := False;
-
-  end
-  else if CurPageID = Pages.Settings.ID then
+  if CurPageID = Pages.Settings.ID then
   begin
 
     {We must use Flags.ProgressPage since the progress page has no PageID}
@@ -569,8 +560,6 @@ begin
 
   if PageID = Pages.Options.ID then
     Result := not ShellRec.Compatible
-  else if PageID = Pages.Settings.ID then
-    Result := not InstallRec.Composer
   else if PageID = Pages.ErrorMsg.ID then
     Result := (PhpRec.Error = '') and (PathError = '')
   else if PageID = Pages.DownloadMsg.ID then
@@ -612,9 +601,8 @@ begin
   else if CurPageID = wpReady then
   begin
 
-    {Start the download, if applicable}
-    if InstallRec.Composer then
-      Result := ProgressDownloadShow(CurPageID);
+    {Start the download}
+    Result := ProgressDownloadShow(CurPageID);
 
   end
   else if CurPageID = Pages.DownloadMsg.ID then
@@ -653,7 +641,6 @@ begin
 
   case CurPageID of
     wpWelcome: Confirm := False;
-    Pages.Options.ID: Confirm := not InstallRec.Modifying;
     Pages.ErrorMsg.ID: Confirm := False;
     Pages.DownloadMsg.ID: Confirm := False;
   end;
@@ -668,22 +655,15 @@ var
 
 begin
 
-  S := '';
+  S := 'PHP version ' + PhpRec.Version;
+  S := S + NewLine + Space + PhpRec.Exe;
+  S := S + PathChangesToString();
 
-  if InstallRec.Composer then
+  if ShellRec.Compatible then
   begin
-    S := 'PHP version ' + PhpRec.Version;
-    S := S + NewLine + Space + PhpRec.Exe;
-    S := S + PathChangesToString();
-  end;
-
-  if S <> '' then
     S := S + NewLine + NewLine;
-
-  S := S + Format('{#ShellDisplayName}: %s%s%s', [NewLine, Space, ShellStatusToString()]);
-
-  if S = '' then
-    S := 'Nothing to install';
+    S := S + Format('{#ShellDisplayName}: %s%s%s', [NewLine, Space, ShellStatusToString()]);
+  end;
 
   Result := S;
 
@@ -695,15 +675,12 @@ begin
 
   Result := '';
 
-  if not InstallRec.Composer then
-  begin
-    Debug('Skipping PrepareToInstall tasks');
-    Exit;
-  end;
-
   Debug('Running PrepareToInstall tasks');
 
-  if not UnixifyShellFile(Result) then
+  if not UnixifyShellFile(TmpFile.Composer, Result) then
+    Exit;
+
+  if not UnixifyShellFile(TmpFile.Shell, Result) then
     Exit;
 
   {Any failures will be reverted in DeinitializeSetup}
@@ -718,13 +695,8 @@ begin
   if CurStep = ssInstall then
   begin
 
-    {ShellCheckFree must be called first, since the user can abort from here}
-    if (ShellRec.Status <> SHELL_NONE) then
-      ShellCheckFree();
-
-    {If required, we must call ShellUnregister before the dll is deleted}
-    if (ShellRec.Status = SHELL_UNINSTALL) then
-      ShellUnregister();
+    {FilesCheckFree must be called first, since the user can abort from here}
+    FilesCheckFree();
 
     {It is arbitrary where we NotifyPathChange. If there are hung programs
     then the progress bar will not start immediately. If we call it in
@@ -738,9 +710,10 @@ begin
 
     Flags.Completed := True;
 
-    {We can only register the shell after the dll has been installed}
-    if (ShellRec.Status = SHELL_INSTALL) then
-      ShellRegister();
+    if ShellRec.Register then
+      ShellRegister()
+    else
+      ShellUnregister();
 
   end;
 
@@ -752,7 +725,6 @@ begin
   SetPreviousData(PreviousDataKey, '{#PrevDataApp}', GetAppDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataBin}', GetBinDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataVersion}', '{#SetupVersion}');
-  SetPreviousData(PreviousDataKey, '{#PrevDataShell}', IntToStr(Ord(ShellRec.Status = SHELL_INSTALL)));
 end;
 
 
@@ -761,13 +733,6 @@ begin
 
   {Initialize common values}
   StartCommon();
-
-  {Initialize ShellRec}
-  ShellRec.Installed := FileExists(ShellGetFilename());
-  if ShellRec.Installed then
-    ShellRec.Status := SHELL_UNINSTALL
-  else
-    ShellRec.Status := SHELL_NONE;
 
   Result := True;
 
@@ -796,8 +761,8 @@ begin
   if CurUninstallStep = usUninstall then
   begin
 
-    {ShellCheckFree must be called first, since the user can abort from here}
-    ShellCheckFree();
+    {FilesCheckFree must be called first, since the user can abort from here}
+    FilesCheckFree();
 
     {Remove composer from path}
     AddPathChange(GetBinDir(''), MOD_PATH_REMOVE);
@@ -842,10 +807,6 @@ var
 begin
 
   Result := True;
-
-  {Return True if we are modifying}
-  if InstallRec.Modifying then
-    Exit;
 
   {Check if we are installing over a version lower then 3.0}
   if Version.Installed and VersionCompareEx(Version.Existing, '<', StrToVer('3.0')) then
@@ -896,7 +857,6 @@ begin
 
 end;
 
-
 procedure StartCommon;
 begin
 
@@ -908,32 +868,17 @@ begin
   BaseDir.OldAdmin := ExpandConstant('{commonappdata}\Composer\bin');
   BaseDir.OldUser := ExpandConstant('{userappdata}\Composer\bin');
 
+  {Get version info. Must come after we have initialized BaseDir
+  and before we initialize the ShellRec}
+  StartGetVersionInfo();
+
+  {Initialize shell info. Needs version info}
+  ShellRec := ShellGetRec();
+
   {Initialize our flags}
   Flags.PathChanged := False;
   Flags.ProgressPage := False;
   Flags.Completed := False;
-
-end;
-
-
-procedure StartGetStatus;
-begin
-
-  {Initialize install and shell info}
-  InstallRec.Modifying := ExpandConstant('{param:modify|0}') = '1';
-  InstallRec.Composer := not InstallRec.Modifying;
-
-  ShellRec.Installed := False;
-  ShellRec.Status := SHELL_NONE;
-
-  {The shell extension and RestartManager will only work on Vista+}
-  ShellRec.Compatible := Version.Windows.Major >= 6;
-
-  if ShellRec.Compatible then
-    ShellRec.Installed := GetPreviousData('{#PrevDataShell}', '0') = '1';
-
-  if ShellRec.Installed and not InstallRec.Modifying then
-    ShellRec.Status := SHELL_INSTALL;
 
 end;
 
@@ -971,6 +916,20 @@ end;
 
 
 {*************** Common functions ***************}
+
+procedure AddParam(const Value: String; var Params: String);
+begin
+
+  if (Params <> '') then
+    Params := Params + #32;
+
+  if Pos(#32, Value) > 1 then
+    Value := #34 + Value + #34;
+
+  Params := Params + Value;
+
+end;
+
 
 procedure AddLine(var Existing: String; const Value: String);
 begin
@@ -1085,6 +1044,17 @@ begin
 end;
 
 
+function GetRegHive: Integer;
+begin
+
+  if IsAdminLoggedOn then
+    Result := HKEY_LOCAL_MACHINE
+  else
+    Result := HKEY_CURRENT_USER;
+
+end;
+
+
 function GetCommonCmdError(StatusCode, ExitCode: Integer): String;
 var
   Error: String;
@@ -1161,9 +1131,8 @@ begin
 end;
 
 
-function StrToVer(const Value: String): TVersionRec;
+function StrToVer(Value: String): TVersionRec;
 var
-  Len: Integer;
   Index: Integer;
   Major: Integer;
   Minor: Integer;
@@ -1173,20 +1142,20 @@ begin
   Result.Major := 0;
   Result.Minor := 0;
 
-  Len := Length(Value);
   Index := Pos('.', Value);
 
-  if (Len > 2) and (Index > 1) and (Index < Len) then
+  if Index > 0 then
   begin
 
     Major := StrToIntDef(Copy(Value, 1, Index - 1), 0);
-    Minor := StrToIntDef(Copy(Value, Index + 1, MaxInt), 0);
+    Minor := StrToIntDef(Copy(Value, Index + 1, MaxInt), -1);
 
-    if (Major > -1) and (Minor > -1) then
-    begin
-      Result.Major := Major;
-      Result.Minor := Minor;
-    end;
+    {We only started versioning in the 2 releases}
+    if (Major < 1) or (Minor < 0) then
+      Exit;
+
+    Result.Major := Major;
+    Result.Minor := Minor;
 
   end;
 
@@ -1255,25 +1224,22 @@ end;
 
 {*************** Misc functions ***************}
 
+procedure FilesCheckFree;
+var
+  Modules: TArrayOfString;
 
-function CheckShellFile(Arch: Integer): Boolean;
 begin
-
-  {Files check function called by PmCheckShell...}
-  Result := False;
 
   if ShellRec.Compatible then
   begin
-
-    if Arch = 32 then
-      Result := not IsWin64
-    else if Arch = 64 then
-      Result := IsWin64;
-
+    {Ensures no files to be modified are in use, but only if OS is compatible}
+    SetArrayLength(Modules, 2);
+    Modules[0] := ShellRec.Dll;
+    Modules[1] := GetSettingsExe('');
+    DoShutdown(Modules);
   end;
 
 end;
-
 
 function GetAppDir(Param: String): String;
 begin
@@ -1311,42 +1277,48 @@ begin
 end;
 
 
-function PmCheckComposer: Boolean;
+function GetSettingsExe(Param: String): String;
 begin
-  {Files check function}
-  Result := InstallRec.Composer;
-end;
 
+  {Code-constant function for AppModifyPath,
+  also used in checking locked programs}
+  if ShellRec.Compatible then
+    Result := GetAppDir('') + '\{#SettingsExe}'
+  else
+    Result := '';
 
-function PmCheckModify: Boolean;
-begin
-  {Files check function}
-  Result := not InstallRec.Modifying;
 end;
 
 
 function PmCheckPermisions: Boolean;
 begin
   {Dirs check function}
-  Result := InstallRec.Composer and isAdminLoggedOn;
+  Result := isAdminLoggedOn;
 end;
 
 
 function PmCheckShell(Arch: Integer): Boolean;
 begin
+
   {Files check function}
-  Result := CheckShellFile(Arch) and (ShellRec.Status = SHELL_INSTALL);
+  Result := False;
+
+  if ShellRec.Compatible then
+  begin
+
+    if Arch = 32 then
+      Result := not IsWin64
+    else if Arch = 64 then
+      Result := IsWin64
+    else if Arch = 0 then
+      Result := True;
+
+  end;
+
 end;
 
 
-function PmCheckShellDelete(Arch: Integer): Boolean;
-begin
-  {InstallDelete check function}
-  Result := CheckShellFile(Arch) and (ShellRec.Status = SHELL_UNINSTALL);
-end;
-
-
-function UnixifyShellFile(var Error: String): Boolean;
+function UnixifyShellFile(const Filename: String; var Error: String): Boolean;
 var
   Lines: TArrayOfString;
   S: AnsiString;
@@ -1357,11 +1329,11 @@ begin
   Result := False;
   S := '';
 
-  Debug('Writing Unix line-endings to ' + TmpFile.Composer);
+  Debug('Writing Unix line-endings to ' + Filename);
 
-  if not LoadStringsFromFile(TmpFile.Composer, Lines) then
+  if not LoadStringsFromFile(Filename, Lines) then
   begin
-    Error := 'Unable to open ' + TmpFile.Composer;
+    Error := 'Unable to open ' + Filename;
     Debug(Error);
     Exit;
   end;
@@ -1369,9 +1341,9 @@ begin
   for I := 0 to GetArrayLength(Lines) - 1 do
     S := S + Lines[I] + #10;
 
-  if not SaveStringToFile(TmpFile.Composer, S, False) then
+  if not SaveStringToFile(Filename, S, False) then
   begin
-    Error := 'Unable to write to ' + TmpFile.Composer;
+    Error := 'Unable to write to ' + Filename;
     Debug(Error);
     Exit;
   end;
@@ -1735,11 +1707,7 @@ var
 begin
 
   Rec.Path := Path;
-
-  if IsAdminLoggedOn then
-    Rec.Hive := HKEY_LOCAL_MACHINE
-  else
-    Rec.Hive := HKEY_CURRENT_USER;
+  Rec.Hive := GetRegHive;
 
   Rec.Action := Action;
   Rec.Silent := False;
@@ -2279,24 +2247,38 @@ end;
 
 {*************** Shell functions ***************}
 
-procedure ShellCheckFree;
-var
-  Modules: TArrayOfString;
-
+function ShellCheckRec(Rec: TShellRec): Boolean;
 begin
 
-  SetArrayLength(Modules, 1);
-  Modules[0] := ShellGetFilename();
-  DoShutdown(Modules);
+  Result := False;
+
+  if not Rec.Compatible then
+    Exit;
+
+  if not FileExists(Rec.Dll) then
+  begin
+    Debug(Format('Shell dll missing %s', [Rec.Dll]));
+    Exit;
+  end;
+
+  Result := True;
 
 end;
 
 
-function ShellGetFilename: String;
+function ShellGetRec: TShellRec;
 var
   Dll: String;
+  Hive: Integer;
+  Key: String;
 
 begin
+
+  {Initialize shell info}
+  Result.Dll := '';
+  Result.Compatible := False;
+  Result.Installed := False;
+  Result.Register := False;
 
   {Get the dll name}
   if not isWin64 then
@@ -2304,38 +2286,105 @@ begin
   else
     Dll := '{#ShellExt64}';
 
-  Result := ExpandConstant('{app}') + '\' + Dll;
+  Result.Dll := GetAppDir('') + '\' + Dll;
+
+  {The shell extension and RestartManager will only work on Vista+}
+  Result.Compatible := Version.Windows.Major >= 6;
+
+  {See if we are installed}
+  if Result.Compatible and FileExists(Result.Dll) then
+  begin
+
+    Hive := GetRegHive();
+    Key := Format('Software\Classes\CLSID\%s\InprocServer32', ['{#COMPOSER_CLSID}']);
+    Dll := '';
+
+    if RegQueryStringValue(Hive, Key, '', Dll) then
+      Result.Installed := CompareText(Result.Dll, Dll) = 0;
+
+  end;
 
 end;
 
 
 procedure ShellRegister;
+begin
+  ShellRegWork(True);
+end;
+
+
+procedure ShellRegWork(Install: Boolean);
 var
-  Dll: String;
-  I: Integer;
+  OldState: Boolean;
+  SysDir: String;
+  Filename: String;
+  Params: String;
+  Action: String;
+  Res: Boolean;
+  ExitCode: Integer;
 
 begin
 
-  Dll := ShellGetFilename();
-
-  if not FileExists(Dll) then
-  begin
-    Debug(Format('Shell dll missing %s', [Dll]));
+  {Check we are compatible and file exists}
+  if not ShellCheckRec(ShellRec) then
     Exit;
-  end;
-
-  for I := 1 to 3 do
+    
+  {Get the system32 directory}
+  if not IsWin64 then
+    SysDir := ExpandConstant('{sys}')
+  else
   begin
+    {We must disable fs redirection to get 64-bit directory}
+    OldState := EnableFsRedirection(False);
 
     try
-      RegisterServer(Is64BitInstallMode, Dll, True);
-      Debug(Format('Registered %s', [Dll]));
-      Exit;
-    except
-      Debug(Format('Failed to register %s', [Dll]));
+      SysDir := ExpandConstant('{sys}');
+    finally
+      EnableFsRedirection(OldState);
     end;
 
   end;
+
+  Filename := SysDir  + '\regsvr32.exe';
+
+  {We must be silent and include /n switch}
+  Params := '/s /n';
+
+  if not Install then
+    AddParam('/u', Params);
+
+  if not IsAdminLoggedOn then
+    AddParam('/i:user', Params)
+  else
+    AddParam('/i:admin', Params);
+
+  AddParam(ExtractFileName(ShellRec.Dll), Params);
+
+  ExitCode := 0;
+
+  Res := Exec(Filename, Params, ExtractFileDir(ShellRec.Dll),
+    SW_HIDE, ewWaitUntilTerminated, ExitCode);
+
+  if Res and (ExitCode = 0) then
+  begin
+
+    if Install then
+      Action := 'Registered'
+    else
+      Action := 'Unregistered';
+
+  end
+  else
+  begin
+
+    if Install then
+      Action := 'Failed to register'
+    else
+      Action := 'Failed to unregister';
+
+  end;
+
+  Debug(Format('%s %s', [Action, ShellRec.Dll]));
 
 end;
 
@@ -2343,66 +2392,24 @@ end;
 function ShellStatusToString: String;
 begin
 
-  case ShellRec.Status of
-
-    SHELL_INSTALL:
-    begin
-
-      if InstallRec.Modifying and ShellRec.Installed then
-        Result := 'Reinstall'
-      else
-        Result := 'Install';
-
-    end;
-
-    SHELL_UNINSTALL:
-    begin
-
-      if not InstallRec.Modifying and ShellRec.Installed then
-        Result := 'Do not install'
-      else
-        Result := 'Remove';
-
-    end;
-
+  if ShellRec.Register then
+    Result := 'Install'
   else
-    Result := 'Do not install';
+  begin
+
+    if not ShellRec.Installed then
+      Result := 'Do not install'
+    else
+      Result := 'Remove';
+
   end;
 
 end;
 
 
 procedure ShellUnregister;
-var
-  Dll: String;
-  I: Integer;
-
 begin
-
-  Dll := ShellGetFilename();
-
-  if not FileExists(Dll) then
-  begin
-
-    if (ShellRec.Status = SHELL_UNINSTALL) then
-      Debug(Format('Shell dll missing %s', [Dll]));
-
-    Exit;
-  end;
-
-  for I := 1 to 3 do
-  begin
-
-    if UnregisterServer(Is64BitInstallMode, Dll, True) then
-    begin
-      Debug(Format('Unregistered %s', [Dll]));
-      Exit;
-    end
-    else
-      Debug(Format('Failed to unregister %s', [Dll]));
-
-  end;
-
+  ShellRegWork(False);
 end;
 
 
@@ -2456,7 +2463,7 @@ begin
   WizardForm.AdjustLabelHeight(Text);
   PosTop := Text.Top + Text.Height;
 
-  if ShellRec.Status = SHELL_INSTALL then
+  if ShellRec.Register then
   begin
 
     Heading2 := TNewStaticText.Create(Pages.ChangedPath);
@@ -2595,17 +2602,8 @@ var
 
 begin
 
-  if not InstallRec.Modifying then
-  begin
-    Caption := 'Select Components';
-    Description := 'Which components should be installed?';
-  end
-  else
-  begin
-    Caption := 'Select Changes';
-    Description := 'Which components should be changed?';
-  end;
-
+  Caption := 'Select Components';
+  Description := 'Which components should be installed?';
   Result := CreateCustomPage(Id, Caption, Description);
 
   if Version.Windows.Major >= 8 then
@@ -2638,20 +2636,9 @@ begin
   begin
     Top := PosTop + ScaleY(4);
     Width := Result.SurfaceWidth - ScaleX(20);
-
-    if not InstallRec.Modifying then
-    begin
-      Caption := ' Installed by default';
-      Checked := True;
-      Enabled := False;
-    end
-    else
-    begin
-      Caption := ' Reinstall Composer';
-      Checked := False;
-      Enabled := True;
-    end;
-
+    Caption := ' Installed by default';
+    Checked := True;
+    Enabled := False;
     Parent := Result.Surface;
     PosTop := Top + Height;
   end;
@@ -2673,10 +2660,6 @@ begin
     Left := LblShell.Left + LblShell.Width + ScaleX(4);
     AutoSize := True;
     Caption := '- optional';
-
-    if InstallRec.Modifying and ShellRec.Installed then
-      Caption := Caption + ' (installed)';
-
     Parent := Result.Surface;
     PosTop := Top + Height;
   end;
@@ -2706,36 +2689,20 @@ begin
     Parent := Result.Surface;
     AddRadioButton('', '', 0, False, True, nil);
     AddRadioButton('', '', 0, False, True, nil);
-
-    if InstallRec.Modifying and ShellRec.Installed then
-    begin
-      ItemCaption[0] := Format(' Keep %s', ['{#ShellDisplayName}']);
-      ItemCaption[1] := Format(' Remove %s', ['{#ShellDisplayName}']);
-      Checked[0] := True;
-    end
-    else
-    begin
-      ItemCaption[0] := Format(' Install %s', ['{#ShellDisplayName}']);
-      ItemCaption[1] := Format(' Do not install %s', ['{#ShellDisplayName}']);
-      Checked[0] := ShellRec.Installed;
-      Checked[1] := not ShellRec.Installed;
-    end;
-
+    ItemCaption[0] := Format(' Install %s', ['{#ShellDisplayName}']);
+    ItemCaption[1] := Format(' Do not install %s', ['{#ShellDisplayName}']);
+    Checked[0] := ShellRec.Installed;
+    Checked[1] := not ShellRec.Installed;
   end;
 
-  if not InstallRec.Modifying then
-  begin
-
-    TxtInfo := TNewStaticText.Create(Result);
-    TxtInfo.Width := Result.SurfaceWidth;
-    TxtInfo.WordWrap := True;
-    TxtInfo.AutoSize := True;
-    TxtInfo.Caption := 'You can change your settings later from Control Panel, Programs and Features.';
-    TxtInfo.Parent := Result.Surface;
-    WizardForm.AdjustLabelHeight(TxtInfo);
-    TxtInfo.Top := Result.Surface.Height - TxtInfo.Height - ScaleY(8);
-
-  end;
+  TxtInfo := TNewStaticText.Create(Result);
+  TxtInfo.Width := Result.SurfaceWidth;
+  TxtInfo.WordWrap := True;
+  TxtInfo.AutoSize := True;
+  TxtInfo.Caption := 'You can change your settings later from Control Panel, Programs and Features.';
+  TxtInfo.Parent := Result.Surface;
+  WizardForm.AdjustLabelHeight(TxtInfo);
+  TxtInfo.Top := Result.Surface.Height - TxtInfo.Height - ScaleY(8);
 
 end;
 
@@ -2743,30 +2710,7 @@ end;
 procedure OptionsPageValues;
 begin
 
-  InstallRec.Composer := Options.CbComposer.Checked;
-
-  if InstallRec.Modifying then
-    Debug(Format('User selected to reinstall Composer: %d', [Ord(InstallRec.Composer)]));
-
-  if ShellRec.Installed then
-  begin
-
-    if Options.ClbShell.Checked[0] then
-      ShellRec.Status := SHELL_INSTALL
-    else
-      ShellRec.Status := SHELL_UNINSTALL;
-
-  end
-  else
-  begin
-
-    if Options.ClbShell.Checked[0] then
-      ShellRec.Status := SHELL_INSTALL
-    else
-      ShellRec.Status := SHELL_NONE;
-
-  end;
-
+  ShellRec.Register := Options.ClbShell.Checked[0];
   Debug(Format('User selected Shell Menus: %s', [ShellStatusToString()]));
 
 end;
