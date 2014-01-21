@@ -18,10 +18,10 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 
 * helping you set up PHP so that it can be used from the command line
 * installing Composer so that you can use it from any location by typing: `composer`
-* enabling its use from Command Prompt, Git Bash and Cygwin (including cygwin php)
+* enabling its use from Command Prompt, Git Bash, Msys and Cygwin (including cygwin php)
 * offering the option to run Composer from Explorer/File Manager windows 
 
-[Download][download] and run it, and in the majority of cases this is all you need to do. The install process is described in more detail below, while the [Wiki][manual] describes how to do it manually.
+[Download][download] and run the latest release and in the majority of cases this is all you need to do. The install process is described in more detail below, while the [Wiki][manual] describes how to do it manually.
 
 Composer-Setup is written with [Inno Setup][inno], which is a powerful free installer for Windows programs.
 
@@ -80,9 +80,9 @@ To compile the `src/composer.iss` script you will need to install the unicode ve
 Composer-Setup is licensed under the MIT License - see the `LICENSE` file for details
 
 
-  [composer]:   http://getcomposer.org
-  [download]:   https://github.com/johnstevenson/composer-setup/releases/download/v2.8/Composer-Setup.2.8.exe
+  [composer]:   http://getcomposer.org/
+  [download]:   https://github.com/johnstevenson/composer-setup/releases/
   [inno]:       http://www.jrsoftware.org/isinfo.php
   [packagist]:  https://packagist.org/
-  [manual]:     https://github.com/johnstevenson/composer-setup/wiki/Manual-installation
+  [manual]:     https://github.com/johnstevenson/composer-setup/wiki/Manual-installation/
   [compiler]:   http://www.jrsoftware.org/isdl.php
