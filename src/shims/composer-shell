@@ -39,7 +39,7 @@ fi
 
 if [ "$result" == 'y' ] ; then
     if [ "$sys" == 'git' ]; then
-        export NOLOGO=1;
+        export SKIP_MOTD=1;
         $BASH --login -i;
     else
         $BASH;
