@@ -25,7 +25,7 @@
 #define CS_SETUP_GUID "3ECDC245-751A-4962-B580-B8A250EDD1CF"
 #define GUID_LEN Len(CS_SETUP_GUID)
 
-;DO NOT CHANGE
+;DO NOT CHANGE - Used in shell extension
 #define COMPOSER_CLSID "{9DF9AD0B-5D99-485a-840E-858003F87478}"
 
 
@@ -236,10 +236,12 @@ type
 
 type
   TShellRec = record
-    Dll         : String;
-    Compatible  : Boolean;
-    Installed   : Boolean;
-    Register    : Boolean;
+    Dll           : String;
+    Compatible    : Boolean;
+    Installed     : Boolean;
+    Register      : Boolean;
+    NewExplorer   : Boolean;
+    ExplorerName  : String;
   end;
 
 type
@@ -318,12 +320,12 @@ const
   NEXT_RETRY = 1;
   NEXT_OK = 2;
 
-  SHELL_NONE = 0;
-  SHELL_INSTALL = 1;
-  SHELL_UNINSTALL = 2;
-
   {Bit flags for upgrading installation}
   UPGRADE_NONE = 0;
+
+  KEY_READ = $000F0019;
+  WOW64_64KEY = $0100;
+  RRF_RT_REG_SZ = $0002;
 
 {Start functions}
 function StartCheck: Boolean; forward;
@@ -393,10 +395,11 @@ procedure SetDownloadStatus(StatusCode, ExitCode: Integer); forward;
 
 {Shell functions}
 function ShellCheckRec(Rec: TShellRec): Boolean; forward;
+function ShellGetInstalled(const Dll: String): Boolean; forward;
 function ShellGetRec: TShellRec; forward;
 procedure ShellRegister; forward;
 procedure ShellRegWork(Install: Boolean); forward;
-function ShellStatusToString: String; forward;
+function ShellStatusToString(Rec: TShellRec): String; forward;
 procedure ShellUnregister; forward;
 
 {Custom page functions}
@@ -419,8 +422,17 @@ procedure SettingsPageUpdate; forward;
 procedure TestCreateSelect; forward;
 procedure TestOnChange(Sender: TObject); forward;
 
-function BroadcastSystemMessage(Flags: LongInt; Recipient: DWord; uiMessage, WParam, LParam: LongInt): LongInt;
+function BroadcastSystemMessage(Flags: LongInt; Recipient: DWORD; uiMessage, WParam, LParam: LongInt): LongInt;
   external 'BroadcastSystemMessageW@user32.dll stdcall delayload';
+
+function RegCloseKey(hKey: DWORD): LongInt;
+  external 'RegCloseKey@advapi32.dll stdcall delayload';
+
+function RegGetValue(hKey: DWORD; lpSubKey, lpValueName: String; dwFlags: DWORD; var pdwType: DWORD; pvData: String; var pcbData: DWORD): LongInt;
+  external 'RegGetValueW@advapi32.dll stdcall delayload';
+
+function RegOpenKeyEx(hKey: DWORD; lpSubKey: String; ulOptions, samDesired: DWORD; var phkResult: DWORD): LongInt;
+  external 'RegOpenKeyExW@advapi32.dll stdcall delayload';
 
 #include "paths.iss"
 #include "shutdown.iss"
@@ -662,7 +674,7 @@ begin
   if ShellRec.Compatible then
   begin
     S := S + NewLine + NewLine;
-    S := S + Format('{#ShellDisplayName}: %s%s%s', [NewLine, Space, ShellStatusToString()]);
+    S := S + Format('{#ShellDisplayName}: %s%s%s', [NewLine, Space, ShellStatusToString(ShellRec)]);
   end;
 
   Result := S;
@@ -2266,11 +2278,54 @@ begin
 end;
 
 
+function ShellGetInstalled(const Dll: String): Boolean;
+var
+  Key: DWORD;
+  Hive: Integer;
+  Subkey: String;
+  RegDll: String;
+  DwType: DWORD;
+  Bytes: DWORD;
+
+begin
+
+  Result := False;
+
+  Hive := GetRegHive();
+  Subkey := Format('Software\Classes\CLSID\%s\InprocServer32', ['{#COMPOSER_CLSID}']);
+  RegDll := '';
+  Bytes := 0;
+
+  {We must look in the 64-bit registry}
+  if RegOpenKeyEx(Hive, Subkey, 0, KEY_READ or WOW64_64KEY, Key) <> 0 then
+    Exit;
+
+  try
+
+    if RegGetValue(Key, '', '', RRF_RT_REG_SZ, DwType, RegDll, Bytes) <> 0 then
+      Exit;
+
+    RegDll := StringOfChar(#0, Bytes div 2);
+
+    if RegGetValue(Key, '', '', RRF_RT_REG_SZ, DwType, RegDll, Bytes) <> 0 then
+      Exit;
+
+    {Returned byte count includes null terminator}
+    SetLength(RegDll, (Bytes div 2) - 1);
+
+  finally
+    RegCloseKey(Key);
+  end;
+
+  Result := CompareText(Dll, RegDll) = 0;
+
+end;
+
+
 function ShellGetRec: TShellRec;
 var
   Dll: String;
-  Hive: Integer;
-  Key: String;
+  WinVer: TVersionRec;
 
 begin
 
@@ -2293,16 +2348,17 @@ begin
 
   {See if we are installed}
   if Result.Compatible and FileExists(Result.Dll) then
-  begin
+    Result.Installed := ShellGetInstalled(Result.Dll);
 
-    Hive := GetRegHive();
-    Key := Format('Software\Classes\CLSID\%s\InprocServer32', ['{#COMPOSER_CLSID}']);
-    Dll := '';
+  {Get explorer name, changed in Windows 8 - 6.2}
+  WinVer.Major := Version.Windows.Major;
+  WinVer.Minor := Version.Windows.Minor;
+  Result.NewExplorer := VersionCompareEx(WinVer, '>=', StrToVer('6.2'));
 
-    if RegQueryStringValue(Hive, Key, '', Dll) then
-      Result.Installed := CompareText(Result.Dll, Dll) = 0;
-
-  end;
+  if Result.NewExplorer then
+    Result.ExplorerName := 'File Explorer'
+  else
+    Result.ExplorerName := 'Windows Explorer';
 
 end;
 
@@ -2315,8 +2371,6 @@ end;
 
 procedure ShellRegWork(Install: Boolean);
 var
-  OldState: Boolean;
-  SysDir: String;
   Filename: String;
   Params: String;
   Action: String;
@@ -2328,24 +2382,9 @@ begin
   {Check we are compatible and file exists}
   if not ShellCheckRec(ShellRec) then
     Exit;
-    
-  {Get the system32 directory}
-  if not IsWin64 then
-    SysDir := ExpandConstant('{sys}')
-  else
-  begin
-    {We must disable fs redirection to get 64-bit directory}
-    OldState := EnableFsRedirection(False);
 
-    try
-      SysDir := ExpandConstant('{sys}');
-    finally
-      EnableFsRedirection(OldState);
-    end;
-
-  end;
-
-  Filename := SysDir  + '\regsvr32.exe';
+  {Get the path to regsvr32}
+  Filename := AddBackslash(ExpandConstant('{sys}')) + 'regsvr32.exe';
 
   {We must be silent and include /n switch}
   Params := '/s /n';
@@ -2389,15 +2428,15 @@ begin
 end;
 
 
-function ShellStatusToString: String;
+function ShellStatusToString(Rec: TShellRec): String;
 begin
 
-  if ShellRec.Register then
+  if Rec.Register then
     Result := 'Install'
   else
   begin
 
-    if not ShellRec.Installed then
+    if not Rec.Installed then
       Result := 'Do not install'
     else
       Result := 'Remove';
@@ -2427,10 +2466,10 @@ var
 
 begin
 
-  if Version.Windows.Major >= 8 then
-    Explorer := 'File Manager windows'
+  if ShellRec.NewExplorer then
+    Explorer := ShellRec.ExplorerName +  ' windows'
   else
-    Explorer := 'Windows Explorer instances';
+    Explorer := ShellRec.ExplorerName + ' instances';
 
   Heading := TNewStaticText.Create(Pages.ChangedPath);
   with Heading do
@@ -2605,11 +2644,7 @@ begin
   Caption := 'Select Components';
   Description := 'Which components should be installed?';
   Result := CreateCustomPage(Id, Caption, Description);
-
-  if Version.Windows.Major >= 8 then
-    Explorer := 'the File Manager'
-  else
-    Explorer := 'Windows Explorer';
+  Explorer := ShellRec.ExplorerName;
 
   LblComposer := TNewStaticText.Create(Result);
   with LblComposer do
@@ -2711,7 +2746,7 @@ procedure OptionsPageValues;
 begin
 
   ShellRec.Register := Options.ClbShell.Checked[0];
-  Debug(Format('User selected Shell Menus: %s', [ShellStatusToString()]));
+  Debug(Format('User selected Shell Menus: %s', [ShellStatusToString(ShellRec)]));
 
 end;
 

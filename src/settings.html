@@ -328,7 +328,7 @@ Starts in the selected directory.
 <td>Open</td><td><code>[d]</code></td>
 </tr>
 <tr>
-<td>Run</td><td><code>-Command {s} \"{d}\" {a}</code></td>
+<td>Run</td><td><code>-executionpolicy bypass -Command {s} \"{d}\" {a}</code></td>
 </tr>
 
 </table>
@@ -337,11 +337,18 @@ Starts in the selected directory.
 <a name="gitbash"></a>
 <h2>Git Bash Notes</h2>
 <p>
-If you see the <em>Welcome to Git</em> message when you choose to continue working in the selected directory, you can suppress this message by either upgrading to a version of Git for Windows greater than 1.8.5.2 or changing a line in the <code>&lt;path&gt;\Git\etc\profile</code> script as shown below:
+You can suppress the additional <em>Welcome to Git</em> message by either upgrading Git for Windows to a version later than <code>1.8.5.2</code> or changing a line in the <code>profile</code> file as illustrated below. Note that if this file is in a protected location, you will need to be running as an admin to make this change.
 </p>
 
 <table>
 <col width="160" />
+
+<tr>
+<td>File</td>
+<td>
+<code>&lt;path&gt;\Git\etc\profile</code>
+</td>
+</tr>
 
 <tr>
 <td>Find line</td>

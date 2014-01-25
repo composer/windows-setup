@@ -264,7 +264,7 @@ begin
 
   Rec.Base.CmdPattern := 'WindowsPowerShell\*\powershell.exe';
   Rec.Base.ParamsOpen := '[d]';
-  Rec.Base.ParamsRun := '-Command {s} \"{d}\" {a}';
+  Rec.Base.ParamsRun := '-executionpolicy bypass -Command {s} \"{d}\" {a}';
 
   if NameInPath('WindowsPowerShell\*', Paths) then
   begin
@@ -483,8 +483,10 @@ end;
 procedure TShells.InitDrives;
 var
   BufSize: DWORD;
-  Drives: string;
-  PDrives: PChar;
+  Res: DWORD;
+  DriveList: string;
+  I: Integer;
+  Drive: string;
   Index: Integer;
   AllowDrives: set of 0..6;
 
@@ -492,30 +494,39 @@ begin
 
   AllowDrives := [DRIVE_REMOVABLE, DRIVE_FIXED, DRIVE_RAMDISK];
 
-  BufSize := GetLogicalDriveStrings(0, PChar(Drives));
+  BufSize := GetLogicalDriveStrings(0, PChar(DriveList));
 
-  if BufSize <> 0 then
+  if BufSize = 0 then
+    Exit;
+
+  SetLength(DriveList, BufSize + 1);
+  Res := GetLogicalDriveStrings(BufSize, PChar(DriveList));
+
+  if (Res = 0) or (Res > BufSize) then
+    Exit;
+
+  SetLength(DriveList, Res);
+  Drive := '';
+  Index := 0;
+
+  for I := 1 to Res do
   begin
-    SetLength(Drives, BufSize);
-    GetLogicalDriveStrings(BufSize, PChar(Drives));
 
-    PDrives := PChar(Drives);
-    Index := 0;
+    if DriveList[I] <> #0 then
+      Drive := Drive + DriveList[I]
+    else
+    begin
 
-    while PDrives^ <> #0 do
-	  begin
+      if GetDriveType(PChar(Drive)) in AllowDrives then
+        ListAdd(Drive, FDrives, Index);
 
-      if GetDriveType(PDrives) in AllowDrives then
-      begin
-        ListAdd(PDrives, FDrives, Index);
-	      Inc(PDrives, SizeOf(PDrives));
-      end;
+      Drive := '';
 
-	  end;
-
-    ListSize(Index, FDrives);
+    end;
 
   end;
+
+  ListSize(Index, FDrives);
 
 end;
 
@@ -549,17 +560,17 @@ begin
 
   Index := 0;
 
-  while S <> ''  do
+  while S <> '' do
   begin
 
     IPos := Pos(#59, S);
 
-    if IPos > 0 then
-    begin
-       Path := StripBackslash(Copy(S, 1, IPos - 1));
-       ListAdd(Path, FPaths, Index);
-       S := Copy(S, IPos + 1, MaxInt);
-    end;
+    if IPos = 0 then
+      Break;
+
+    Path := StripBackslash(Copy(S, 1, IPos - 1));
+    ListAdd(Path, FPaths, Index);
+    S := Copy(S, IPos + 1, MaxInt);
 
   end;
 
@@ -888,7 +899,9 @@ begin
 
     { Check for drive path (C:\) }
     if Length(Result) > 3 then
-      SetLength(Result, Length(Result) - 1);
+      SetLength(Result, Length(Result) - 1)
+    else
+      Break;
 
   end;
 

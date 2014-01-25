@@ -12,6 +12,7 @@ uses
   ShellTypes in 'ShellTypes.pas';
 
 {$R *.res}
+{$R resource\manifest32.res}
 
 begin
 

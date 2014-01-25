@@ -158,7 +158,7 @@ object MainForm: TMainForm
             Top = 27
             Width = 360
             Height = 17
-            Caption = 'Select this option to display the menu as a single entry'
+            Caption = 'Select this option to show the menu items from a single entry'
             TabOrder = 0
             OnClick = cbCollapseClick
           end
@@ -180,6 +180,10 @@ object MainForm: TMainForm
       Caption = 'Console'
       ImageIndex = 1
       OnShow = tsConsoleShow
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       object pnConsoles: TPanel
         Left = 10
         Top = 15

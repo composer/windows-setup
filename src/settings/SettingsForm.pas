@@ -436,7 +436,7 @@ begin
   if not GetSelectedRec(Rec) then
     Exit;
 
-  CmdRec.Cmd := Rec.Input.Cmd;
+  CmdRec.Cmd := Main.GetNativeCmd(Rec.Input.Cmd);
 
   if InputType = ShellOpen then
   begin
@@ -579,19 +579,23 @@ end;
 
 procedure TMainForm.InitMenus;
 var
+  NewExplorer: Boolean;
   Collapse: DWORD;
-  Status: TAdminStatus;
-  Users: string;
-  RootKey: HKey;
-  SubKey: string;
   Dll: string;
-  Key: HKey;
+  AdminInstall: Boolean;
+  Users: string;
 
 begin
 
-  if Main.WinMajorVersion >= 8 then
-    lbMenus.Caption := StringReplace(lbMenus.Caption, 'Windows Explorer',
-      'the File Manager', []);
+  if Main.WinMajor > 6 then
+    NewExplorer := True
+  else if Main.WinMajor = 6 then
+    NewExplorer := Main.WinMinor >= 2
+  else
+    NewExplorer := False;
+
+  if NewExplorer then
+    lbMenus.Caption := StringReplace(lbMenus.Caption, 'Windows', 'File', []);
 
   FMenusCaptionInactive := lbStatus.Caption;
 
@@ -613,43 +617,25 @@ begin
     Exit;
   end;
 
-  if not Main.CheckDllPath(FMenusDllDir, Status) then
+  if not Main.CheckDllPath(FMenusDllDir, AdminInstall) then
   begin
     FMenusError := True;
     Exit;
   end;
 
-  if Status = admNone then
+  if AdminInstall then
   begin
-    RootKey := HKEY_CURRENT_USER;
-    Users := 'this user';
-    btnStatus.ElevationRequired := False;
+    Users := 'All Users';
+    btnStatus.ElevationRequired := Main.AdminStatus <> admFull;
   end
   else
   begin
-    RootKey := HKEY_LOCAL_MACHINE;
-    Users := 'All Users';
-    btnStatus.ElevationRequired := Main.AdminStatus <> admFull;
+    Users := 'this user';
+    btnStatus.ElevationRequired := False;
   end;
 
   FMenusCaptionActive := 'Shell Menus are installed for ' + Users;
-
-  SubKey := Format('Software\Classes\CLSID\%s\InprocServer32', [COMPOSER_CLSID]);
-  Dll := '';
-
-  if RegOpenKeyEx(RootKey, PChar(SubKey), 0,
-    KEY_READ, Key) = ERROR_SUCCESS then
-  begin
-
-    try
-      Dll := Registry.ReadString(Key, '');
-    finally
-      RegCloseKey(Key);
-    end;
-
-  end;
-
-  FMenusUsing := Dll <> '';
+  FMenusUsing := Main.CheckRegistered(Dll, AdminInstall);
 
 end;
 

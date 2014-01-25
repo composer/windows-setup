@@ -3,7 +3,7 @@ unit ShellRegistry;
 interface
 
 uses
-  Windows, ShellTypes;
+  Windows, SysUtils, ShellTypes;
 
 type TShellRegistry = class
   private
@@ -14,6 +14,7 @@ type TShellRegistry = class
     function DeleteShellValues: Boolean;
     function GetMenuCollapse(var Value: DWORD): Boolean;
     function GetProgramFiles64: string;
+    function GetRegisteredDll(RootKey: Cardinal): string;
     function GetShellValues(var InputRec: TInputRec): Boolean;
     function ReadString(Key: HKEY; const Name: string): string;
     function SetMenuCollapse(Value: DWORD): Boolean;
@@ -49,7 +50,7 @@ function TShellRegistry.CreateKey(var Key: HKEY): Boolean;
 begin
 
   Result := RegCreateKeyEx(HKEY_CURRENT_USER, REG_SUBKEY, 0, nil, 0,
-    KEY_WRITE, nil, Key, nil) = ERROR_SUCCESS;
+    KEY_WRITE or WOW64_64KEY, nil, Key, nil) = ERROR_SUCCESS;
 
 end;
 
@@ -127,6 +128,30 @@ begin
 
 end;
 
+function TShellRegistry.GetRegisteredDll(RootKey: Cardinal): string;
+var
+  SubKey: string;
+
+begin
+
+  Result := '';
+
+  SubKey := Format('Software\Classes\CLSID\%s\InprocServer32', [COMPOSER_CLSID]);
+
+  if RegOpenKeyEx(RootKey, PChar(SubKey), 0,
+    KEY_READ or WOW64_64KEY, FKey) = ERROR_SUCCESS then
+  begin
+
+    try
+      Result := Registry.ReadString(FKey, '');
+    finally
+      RegCloseKey(FKey);
+    end;
+
+  end;
+
+end;
+
 function TShellRegistry.GetShellValues(var InputRec: TInputRec): Boolean;
 begin
 
@@ -152,7 +177,7 @@ function TShellRegistry.OpenKey(Access: Cardinal; var Key: HKEY): Boolean;
 begin
 
   Result := RegOpenKeyEx(HKEY_CURRENT_USER, REG_SUBKEY, 0,
-    Access, Key) = ERROR_SUCCESS;
+    Access or WOW64_64KEY, Key) = ERROR_SUCCESS;
 
 end;
 

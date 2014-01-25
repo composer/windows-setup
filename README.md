@@ -18,7 +18,7 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 * helping you set up PHP so that it can be used from the command line
 * installing Composer so that you can use it from any location by typing: `composer`
 * enabling its use from Command Prompt, Git Bash, Msys and Cygwin (including cygwin php)
-* enabling its use from Explorer/File Manager windows using a console of your choice 
+* enabling its use from File Explorer windows using a console of your choice 
 
 [Download][download] and run the latest release and in the majority of cases this is all you need to do. The install process is described in more detail below, while the [Wiki][manual] describes how to do it manually.
 
@@ -53,7 +53,7 @@ After you have reviewed and accepted your settings, the installer will download 
 <a name="ShellMenus"></a>
 ## Shell Menus
 
-The Shell Menus feature allows you to run Composer commands by right-clicking folder items in Explorer/File Manager windows. You can add or remove this feature at any time from the Control Panel - go to Programs and Features, select Composer, then click Change. Note that the Shell Menus are not available pre Windows Vista.
+The Shell Menus feature allows you to run Composer commands by right-clicking folder items in File Explorer windows. You can add or remove this feature at any time from the Control Panel - go to Programs and Features, select Composer, then click Change. Note that the Shell Menus are not available pre Windows Vista.
 
 By default the Shell Menus use the Command Prompt, but you can also use other console programs. Cygwin, Git Bash, Msys and PowerShell are supported out of the box (if they are installed) and there is a mechanism to use popular alternatives like ConEmu, Console2 or Take Command. Click `Settings` from the Composer Options submenu to make any changes.  
 

@@ -23,10 +23,11 @@ type
 type TShellMain = class(TAppStart)
   private
     FFolders: TFolderList;
-    FIs32On64: Boolean;
     FIsWin64: Boolean;
+    FIsWow64: Boolean;
     FRegSvr: string;
     FWinMajor: Cardinal;
+    FWinMinor: Cardinal;
     function GetCollapseValue(Compact: Boolean): Cardinal;
     function RegisterMenuElevate(const Path: string; Reg: Boolean): Boolean;
     function RegisterMenuWork(const Path: string; Reg: Boolean;
@@ -37,13 +38,16 @@ type TShellMain = class(TAppStart)
   public
     constructor Create;
     destructor Destroy; override;
-    function CheckDllPath(const Path: string; var AdminStatus: TAdminStatus): Boolean;
+    function CheckDllPath(Path: string; var AdminInstall: Boolean): Boolean;
+    function CheckRegistered(const Dll: string; AdminInstall: Boolean): Boolean;
     function GetDllName: string;
     function GetFolder(const Id: string): string;
+    function GetNativeCmd(const Cmd: string): string;
     function GetProgramsFolder(StrictOs: Boolean): string;
     function RegisterMenu(const Path: string; Reg: Boolean): Boolean;
     function SetMenuCollapse(Collapse: Boolean): Boolean;
-    property WinMajorVersion: Cardinal read FWinMajor;
+    property WinMajor: Cardinal read FWinMajor;
+    property WinMinor: Cardinal read FWinMinor;
 end;
 
 procedure GetNativeSystemInfo(var lpSystemInfo: TSystemInfo); stdcall;
@@ -60,6 +64,7 @@ const
   KF_ProgramFiles =	'{905e63b6-c1bf-494e-b29c-65b732d3d21a}';
   KF_ProgramFilesX64 = '{6D809377-6AF0-444b-8957-A3773F02200E}';
   KF_System = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}';
+  KF_Windows = '{F38BF404-1D43-42F2-9305-67DE0B28FC23}';
 
 var
   Main: TShellMain;
@@ -69,36 +74,62 @@ implementation
 
 { TMain }
 
-function TShellMain.CheckDllPath(const Path: string;
-  var AdminStatus: TAdminStatus): Boolean;
+function TShellMain.CheckDllPath(Path: string; var AdminInstall: Boolean): Boolean;
 var
-  Progs: string;
-  AppData: string;
+  Test: string;
 
 begin
 
   {Check dll path is from correct location}
   Result := False;
+  Path := LowerCase(Path);
 
-  Progs := LowerCase(GetProgramsFolder(False));
-  AppData := LowerCase(GetFolder(KF_LocalAppData));
+  {Get Programs Folder}
+  Test := LowerCase(GetProgramsFolder(False));
 
-  if Pos(Progs, LowerCase(Path)) = 1 then
+  if Pos(Test, Path) = 1 then
   begin
-    AdminStatus := admFull;
+    AdminInstall := True;
     Result := True;
   end
-  else if Pos(AppData, LowerCase(Path)) = 1 then
+  else
   begin
-    AdminStatus := admNone;
-    Result := True;
+
+    {Get LocalAppData Folder}
+    Test := LowerCase(GetFolder(KF_LocalAppData));
+
+    if Pos(Test, Path) = 1 then
+    begin
+      AdminInstall := False;
+      Result := True;
+    end;
+
   end;
+
+end;
+
+function TShellMain.CheckRegistered(const Dll: string;
+  AdminInstall: Boolean): Boolean;
+var
+  RootKey: HKey;
+  RegDll: string;
+
+begin
+
+  if AdminInstall then
+    RootKey := HKEY_LOCAL_MACHINE
+  else
+    RootKey := HKEY_CURRENT_USER;
+
+  RegDll := Registry.GetRegisteredDll(RootKey);
+  Result := CompareText(Dll, RegDll) = 0;
 
 end;
 
 constructor TShellMain.Create;
 var
   Si: TSystemInfo;
+  Ver: TOSVersionInfo;
 
 begin
 
@@ -107,17 +138,26 @@ begin
   OnPreRun := PreRun;
   OnElevatedAction := ElevatedAction;
 
+  {System info}
   GetNativeSystemInfo(Si);
   FIsWin64 := Si.wProcessorArchitecture <> 0;
 
 {$IFNDEF WIN64}
-  FIs32On64 := Si.wProcessorArchitecture <> 0;
+  FIsWow64 := Si.wProcessorArchitecture <> 0;
 {$ELSE}
-  FIs32On64 := False;
+  FIsWow64 := False;
 {$ENDIF}
 
-  Registry := TShellRegistry.Create;
+  {Version Info}
+  Ver.dwOSVersionInfoSize := SizeOf(Ver);
 
+  if GetVersionEx(Ver) then
+  begin
+    FWinMajor := Ver.dwMajorVersion;
+    FWinMinor := Ver.dwMinorVersion;
+  end;
+
+  Registry := TShellRegistry.Create;
   FRegSvr := GetFolder(KF_System) + '\regsvr32.exe';
 
 end;
@@ -199,7 +239,7 @@ begin
   if not Succeeded(CLSIDFromString(PChar(Id), Guid)) then
     Exit;
 
-  if (Id = KF_ProgramFilesX64) and FIs32On64 then
+  if (Id = KF_ProgramFilesX64) and FIsWow64 then
     Result := Registry.GetProgramFiles64
   else if SHGetKnownFolderPath(Guid, 0, 0, Buf) = S_OK then
   begin
@@ -222,13 +262,37 @@ begin
 
 end;
 
+function TShellMain.GetNativeCmd(const Cmd: string): string;
+var
+  Sys: string;
+  Native: string;
+
+begin
+
+  {Returns Cmd, with System32 replaced with Sysnative if required,
+  so we ensure consoles run in 64 bit}
+  Result := Cmd;
+
+  if not FIsWow64 then
+    Exit;
+
+  Sys := GetFolder(KF_System);
+
+  if Pos(LowerCase(Sys), LowerCase(Cmd)) = 1 then
+  begin
+    Native := GetFolder(KF_Windows) + '\Sysnative';
+    Result := Native + Copy(Cmd, Length(Sys) + 1, MaxInt);
+  end;
+
+end;
+
 function TShellMain.GetProgramsFolder(StrictOs: Boolean): string;
 var
   Id: string;
 
 begin
 
-  if StrictOs and FIs32On64 then
+  if StrictOs and FIsWow64 then
     Id := KF_ProgramFilesX64
   else
     Id := KF_ProgramFiles;
@@ -238,33 +302,29 @@ begin
 end;
 
 function TShellMain.PreRun: Boolean;
-var
-  Info: TOSVersionInfo;
-
 begin
 
-  Result := False;
-
   {Safeguard - ensure we are on Vista+}
-  Info.dwOSVersionInfoSize := SizeOf(Info);
-  if GetVersionEx(Info) then
-  begin
-    FWinMajor := Info.dwMajorVersion;
-    Result := FWinMajor >= 6;
-  end;
+  Result := FWinMajor >= 6;
 
 end;
 
 function TShellMain.RegisterMenu(const Path: string; Reg: Boolean): Boolean;
 var
   StatusRequired: TAdminStatus;
+  AdminInstall: Boolean;
 
 begin
 
   Result := False;
 
-  if not CheckDllPath(Path, StatusRequired) then
+  if not CheckDllPath(Path, AdminInstall) then
     Exit;
+
+  if AdminInstall then
+    StatusRequired := admFull
+  else
+    StatusRequired := admNone;
 
   if AdminStatus >= StatusRequired then
     Result := RegisterMenuWork(Path, Reg, StatusRequired)
