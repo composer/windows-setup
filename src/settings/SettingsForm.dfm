@@ -45,6 +45,10 @@ object MainForm: TMainForm
     object tsMenus: TTabSheet
       Caption = 'Shell Menus'
       OnShow = tsMenusShow
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       object pnMenus: TPanel
         Left = 10
         Top = 15
@@ -178,6 +182,10 @@ object MainForm: TMainForm
     object tsConsole: TTabSheet
       Caption = 'Console'
       OnShow = tsConsoleShow
+      ExplicitLeft = 0
+      ExplicitTop = 0
+      ExplicitWidth = 0
+      ExplicitHeight = 0
       object pnConsoles: TPanel
         Left = 10
         Top = 15
