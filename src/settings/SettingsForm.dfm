@@ -60,8 +60,7 @@ object MainForm: TMainForm
           AutoSize = False
           Caption = 
             'Run Composer from Windows Explorer by right-clicking folder item' +
-            's, using either the Command Prompt or a console of your choice. ' +
-            ' '
+            's, using either the Command Prompt or a console of your choice.'
           WordWrap = True
         end
         object gbDefault: TGroupBox
@@ -178,12 +177,7 @@ object MainForm: TMainForm
     end
     object tsConsole: TTabSheet
       Caption = 'Console'
-      ImageIndex = 1
       OnShow = tsConsoleShow
-      ExplicitLeft = 0
-      ExplicitTop = 0
-      ExplicitWidth = 0
-      ExplicitHeight = 0
       object pnConsoles: TPanel
         Left = 10
         Top = 15

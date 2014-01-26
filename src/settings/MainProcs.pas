@@ -186,7 +186,8 @@ begin
 
     {Returned byte count includes null terminator}
     ChLenNull := MapRec.Bytes div SizeOf(Char);
-    Inc(PByte(PMap), SizeOf(MapRec));
+
+    Inc(PByte(PMap), SizeOf(MapRec));
     SetString(Dll, PChar(PMap), ChLenNull - 1);
 
     Result := RegisterMenuWork(Dll, MapRec.Reg, admFull);
@@ -377,7 +378,8 @@ function TShellMain.RegisterMenuWork(const Path: string; Reg: Boolean;
   Level: TAdminStatus): Boolean;
 var
   Params: string;
-  ExCode: Cardinal;
+
+  ExCode: Cardinal;
 
 begin
 
