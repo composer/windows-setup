@@ -1,13 +1,12 @@
 # Composer-Setup
 
-The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Download it here**][download].
+The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Download**][download] the latest release.
 
 ## Contents
 * [About](#About)
 * [Details](#Details)
-* [Changing](#Changing)
+* [Shell Menus](#ShellMenus)
 * [Uninstalling](#Uninstalling)
-* [Path](#Path)
 * [Compiling](#Compiling)
 * [License](#License)
 
@@ -19,7 +18,7 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 * helping you set up PHP so that it can be used from the command line
 * installing Composer so that you can use it from any location by typing: `composer`
 * enabling its use from Command Prompt, Git Bash, Msys and Cygwin (including cygwin php)
-* offering the option to run Composer from Explorer/File Manager windows 
+* enabling its use from File Explorer windows using a console of your choice 
 
 [Download][download] and run the latest release and in the majority of cases this is all you need to do. The install process is described in more detail below, while the [Wiki][manual] describes how to do it manually.
 
@@ -28,9 +27,7 @@ Composer-Setup is written with [Inno Setup][inno], which is a powerful free inst
 <a name="Details"></a>
 ## Details
 
-You are first asked if you want to install the optional Shell Menus feature, which allows you to run Composer commands by right-clicking folder items in Windows Explorer/File Manager. You can add or remove this feature at any time - see [Changing](#Changing). Note that the Shell Menus are not available pre Windows Vista. 
-
-Next you are asked for the location of your `php.exe`, which is the PHP command line interpreter. If this value is in your path then it will be displayed, otherwise you are going to have to hunt around. Depending on your setup it could be:
+You are first asked if you want to install the optional [Shell Menus](#ShellMenus), which are only available on Windows Vista plus. Next you are asked for the location of your `php.exe`, which is the PHP command line interpreter. If this value is in your path then it will be displayed, otherwise you are going to have to hunt around. Depending on your setup it could be:
 
 * In your root directory, usually `C:\`, maybe under `php` or `xampp` or `WampServer` or `EasyPhp`
 * In your `C:\Program Files` directory, perhaps under one of the above
@@ -53,10 +50,12 @@ The installation directories depends on whether you are an Administrator or not 
 
 After you have reviewed and accepted your settings, the installer will download Composer and set everything up. Full usage documentation can be found at [http://getcomposer.org][composer] and a repository of packages can be browsed at [Packagist][packagist].
 
-<a name="Changing"></a>
-## Changing
+<a name="ShellMenus"></a>
+## Shell Menus
 
-You can change/modify your installation at any time from the Control Panel. Go to Programs and Features, select Composer, then click Change. This allows you to re-run setup (perhaps to alter your PHP location) and to either add or remove the Shell Menus feature.
+The Shell Menus feature allows you to run Composer commands by right-clicking folder items in File Explorer windows. You can add or remove this feature at any time from the Control Panel - go to Programs and Features, select Composer, then click Change. Note that the Shell Menus are not available pre Windows Vista.
+
+By default the Shell Menus use the Command Prompt, but you can also use other console programs. Cygwin, Git Bash, Msys and PowerShell are supported out of the box (if they are installed) and there is a mechanism to use popular alternatives like ConEmu, Console2 or Take Command. Click `Settings` from the Composer Options submenu to make any changes.  
 
 <a name="Uninstalling"></a>
 ## Uninstalling
