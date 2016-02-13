@@ -566,7 +566,7 @@ begin
       begin
         Sub := 'cache/config';
         Enabled := True;
-        Inc(Available);
+        Available := Available + 1;
         Form.ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
       end
       else
@@ -576,7 +576,7 @@ begin
         begin
           Sub := 'cache';
           Enabled := True;
-          Inc(Available);
+          Available := Available + 1;
           Form.ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
         end;
 

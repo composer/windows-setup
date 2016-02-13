@@ -241,7 +241,7 @@ begin
       Value := '';
     end;
 
-    Inc(Next);
+    Next := Next + 1;
 
   until Length(Value) = 0;
 
@@ -350,7 +350,7 @@ begin
       begin
         SafeList.Items[Next].Hive := Hive;
         SafeList.Items[Next].Path := SafePath;
-        Inc(Next);
+        Next := Next + 1;
       end;
 
     end;

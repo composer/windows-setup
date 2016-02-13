@@ -255,7 +255,7 @@ begin
 
         if AppList[I].AppStatus = RmStatusRunning then
         begin
-          Inc(Count);
+          Count := Count + 1;
           SetArrayLength(RsRec.Apps, Count);
           RsRec.Apps[I] := RsToString(AppList[I].strAppName);
         end
