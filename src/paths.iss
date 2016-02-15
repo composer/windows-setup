@@ -17,8 +17,9 @@ function SplitPath(Value: String): TArrayOfString; forward;
 function GetPathKeyForHive(Hive: Integer): String; forward;
 function GetHiveName(Hive: Integer): String; forward;
 function NormalizePath(const Value: String): String; forward;
-function GetSafePathList(Hive: Integer; var SafeList: TPathList): String; forward;
-function GetSafePath(PathList: TPathList; Index: Integer): String; forward;
+function GetSafePathList(Hive: Integer): TPathList; forward;
+function GetSafePath(var PathList: TPathList; Index: Integer): String; forward;
+procedure SetPathList(Hive: Integer; const Path: String; var SafeList: TPathList); forward;
 function DirectoryInPath(var Directory: String; PathList: TPathList; Hive: Integer): Boolean; forward;
 function SearchPath(PathList: TPathList; Hive: Integer; const Cmd: String): String; forward;
 function SearchPathEx(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String; forward;
@@ -30,8 +31,7 @@ const
   PATH_MOD_NONE = 1;
   PATH_MOD_FAILED = 2;
 
-  DEBUG_PATH_START = 'Path start: ';
-  DEBUG_PATH_AFTER = 'Path after: ';
+  PATH_FAIL_MSG = 'Failed, path could not be updated';
 
 
 function AddToPath(Hive: Integer; Value: String): Integer;
@@ -54,7 +54,7 @@ begin
   end;
 
   {Get a list of normalized path entries}
-  GetSafePathList(Hive, SafeList);
+  SafeList := GetSafePathList(Hive);
 
   {See if our directory is already in the path}
   if DirectoryInPath(SafeDirectory, SafeList, Hive) then
@@ -68,9 +68,8 @@ begin
   Path := '';
   RegQueryStringValue(Hive, Key, 'PATH', Path);
 
-  Debug(Format('Adding %s to %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
-  Debug(DEBUG_PATH_START + Path);
-
+  Debug(Format('Adding %s to path [%s\%s]', [SafeDirectory, GetHiveName(Hive), Key]));
+  
   {Add trailing separator to path if required}
   if (Path <> '') and (Path[Length(Path)] <> ';') then
     Path := Path + ';';
@@ -83,14 +82,11 @@ begin
     Path := Path + ';';
 
   if RegWriteExpandStringValue(Hive, Key, 'PATH', Path) then
-  begin
-    Result := PATH_MOD_CHANGED;
-    Debug(DEBUG_PATH_AFTER + Path);
-  end
+    Result := PATH_MOD_CHANGED
   else
   begin
     Result := PATH_MOD_FAILED;
-    Debug('Failed, path was not updated');
+    Debug(PATH_FAIL_MSG);    
   end;
 
 end;
@@ -137,9 +133,8 @@ begin
     Exit;
   end;
 
-  Debug(Format('Removing %s from %s\%s', [SafeDirectory, GetHiveName(Hive), Key]));
-  Debug(DEBUG_PATH_START + CurrentPath);
-
+  Debug(Format('Removing %s from path [%s\%s]', [SafeDirectory, GetHiveName(Hive), Key]));
+  
   {Split current path into a list of raw entries}
   RawList := SplitPath(CurrentPath);
   NewPath := '';
@@ -183,14 +178,11 @@ begin
     Res := RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
 
   if Res then
-  begin
-    Result := PATH_MOD_CHANGED;
-    Debug(DEBUG_PATH_AFTER + NewPath);
-  end
+    Result := PATH_MOD_CHANGED
   else
   begin
     Result := PATH_MOD_FAILED;
-    Debug('Failed, path was not updated');
+    Debug(PATH_FAIL_MSG);
   end;
 
 end;
@@ -315,9 +307,36 @@ begin
 end;
 
 
-function GetSafePathList(Hive: Integer; var SafeList: TPathList): String;
+function GetSafePathList(Hive: Integer): TPathList;
 var
   Path: String;
+
+begin
+  
+  if not GetRawPath(Hive, Path) then
+    Exit;
+  
+  SetPathList(Hive, Path, Result);
+
+end;
+
+
+function GetSafePath(var PathList: TPathList; Index: Integer): String;
+begin
+
+  if PathList.Items[Index].Safe then
+    Result := PathList.Items[Index].Path
+  else
+  begin
+    Result := NormalizePath(PathList.Items[Index].Path);
+    PathList.Items[Index].Safe := True;
+  end;
+
+end;
+
+
+procedure SetPathList(Hive: Integer; const Path: String; var SafeList: TPathList);
+var
   RawList: TArrayOfString;
   Next: Integer;
   I: Integer;
@@ -325,14 +344,6 @@ var
 
 begin
 
-  Result := '';
-  SafeList.Safe := True;
-  Path := '';
-
-  if not GetRawPath(Hive, Path) then
-    Exit;
-
-  Result := Path;
   RawList := SplitPath(Path)
 
   Next := GetArrayLength(SafeList.Items);
@@ -350,6 +361,7 @@ begin
       begin
         SafeList.Items[Next].Hive := Hive;
         SafeList.Items[Next].Path := SafePath;
+        SafeList.Items[Next].Safe := True;
         Inc(Next);
       end;
 
@@ -358,17 +370,6 @@ begin
   end;
 
   SetArrayLength(SafeList.Items, Next);
-
-end;
-
-
-function GetSafePath(PathList: TPathList; Index: Integer): String;
-begin
-
-  if PathList.Safe then
-    Result := PathList.Items[Index].Path
-  else
-    Result := NormalizePath(PathList.Items[Index].Path);
 
 end;
 
@@ -475,10 +476,10 @@ and the last path entry becomes unresovable. We can cure the latter
 by adding a trailing separator to the path.}
 function NeedsTrailingSeparator: Boolean;
 var
+  Hive: Integer;
   SafeList: TPathList;
   Cmd: String;
   GitExe: String;
-  Hive: Integer;
   Version: String;
 
 begin
@@ -487,13 +488,13 @@ begin
   Cmd := 'git.exe';
 
   Hive := HKEY_LOCAL_MACHINE;
-  GetSafePathList(Hive, SafeList);
+  SafeList := GetSafePathList(Hive);
   GitExe := SearchPath(SafeList, Hive, Cmd);
 
   if GitExe = '' then
   begin
     Hive := HKEY_CURRENT_USER;
-    GetSafePathList(Hive, SafeList);
+    SafeList := GetSafePathList(Hive);
     GitExe := SearchPath(SafeList, Hive, Cmd);
   end;
 

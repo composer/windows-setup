@@ -1,6 +1,6 @@
 <?php
 
-# require like this for cygwin php
+// require like this for cygwin php
 require('./setup.class.php');
 
 $csStatus = 2;

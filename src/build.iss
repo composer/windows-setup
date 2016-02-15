@@ -16,17 +16,8 @@
   #pragma error "Version " + SetupVersion + " has already been released"
 #endif
 
-; code sign dlls
+; code sign userdata.dll
 #define protected Module "userdata.dll"
-#expr Sign
-
-#define protected Module SettingsExe
-#expr Sign
-
-#define protected Module ShellExt32
-#expr Sign
-
-#define protected Module ShellExt64
 #expr Sign
 
 
