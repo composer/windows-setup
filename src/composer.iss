@@ -12,6 +12,9 @@
 #define CmdShell "composer"
 #define DllData "userdata.dll"
 
+#define PhpCheck "check.php"
+#define PhpInstaller "installer.php"
+
 #define PrevDataApp "AppDir"
 #define PrevDataBin "BinDir"
 #define PrevDataVersion "Version"
@@ -73,9 +76,9 @@ Name: {code:GetBinDir}; Permissions: users-modify; Check: PmCheckPermisions;
 
 
 [Files]
-; files to extract only first
-Source: setup.php; Flags: dontcopy
-Source: setup.class.php; Flags: dontcopy
+; files to extract must be first
+Source: php\{#PhpCheck}; Flags: dontcopy;
+Source: php\{#PhpInstaller}; Flags: dontcopy;
 Source: shims\{#CmdShell}; Flags: dontcopy;
 
 ; app files
@@ -111,11 +114,17 @@ FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a comman
 [Code]
 
 type
-  TPhpRec = record
-    Exe       : String;
-    Version   : String;
-    Selected  : String;
-    Error     : String;
+  TConfigRec = record
+    PhpExe      : String;
+    PhpSecure   : Boolean;
+    PhpIni      : String;
+    PhpVersion  : String;    
+    ExitCode    : Integer;
+    LineCount   : Integer;    
+    StatusCode  : Integer;    
+    NextButton  : Integer;
+    Output      : String;
+    Error       : String;
   end;
 
 type
@@ -157,17 +166,10 @@ type
 
 type
   TTmpFile = record
-    Setup     : String;
+    Check     : String;
+    Install   : String;
     Composer  : String;
-    Result    : String;
-  end;
-
-type
-  TDownloadRec = record
-    Error   : Integer;
-    Next    : Integer;
-    Force   : Boolean;
-    Text    : String;
+    Output    : String;
   end;
 
 type
@@ -208,17 +210,23 @@ type
 
 type
   TFlagsRec = record
-    PathChanged   : Boolean;
-    ProgressPage  : Boolean;
-    Completed     : Boolean;
+    SelectedPhp   : String;   {The php exe selected by the user}
+    DisableTls    : Boolean;  {Set if the user has chosen to disable tls}
+    PathChanged   : Boolean;  {Set if we have altered the path}
+    ProgressPage  : Boolean;  {Flags that a progress page has been shown as it doesn't have a page id}
+    LastErrorPage : Integer;  {Stores the page id of the last error page shown to make ShouldSkipPage work}
+    Completed     : Boolean;  {Flags that we have succesfully completed the install or uninstall}
   end;
 
 type
   TCustomPagesRec = record
     Settings      : TWizardPage;
-    ErrorMsg      : TWizardPage;
+    ErrorPhp      : TWizardPage;
+    Security      : TWizardPage;
+    ErrorSettings : TWizardPage;
     DownloadMsg   : TWizardPage;
     ChangedPath   : TWizardPage;
+    Progress      : TOutputProgressWizardPage;
 end;
 
 type
@@ -230,20 +238,28 @@ type
     Info:     TNewStaticText;
 end;
 
+type
+  TSecurityPageRec = record
+    Text:     TNewStaticText;
+    Ini:      TNewStaticText;    
+    CheckBox: TNewCheckbox;
+    Info:     TNewStaticText;
+end;
+
 
 var
-  BaseDir: TDirectoryRec;       {contains all base program and data dirs}
-  TmpFile: TTmpFile;            {contains full pathname of temp files}
-  TmpDir: String;               {the temp directory that setup/uninstall uses}
-  PhpRec: TPhpRec;              {contains path/selected php.exe data and any error}
-  Paths: TPathInfo;             {contains latest path info}
-  CmdExe: String;               {full pathname to system cmd}
-  PathChanges: TPathChangeList; {list of path changes to make, or made}
-  DownloadRec: TDownloadRec;    {contains result of download, to show ErrorMsg and buttons}
-  Flags: TFlagsRec;             {contains global flags that won't go anywhere else}
-  Test: String;                 {flags test mode and contains any test to run}
-  Pages: TCustomPagesRec;       {group of custom pages}
-  Settings: TSettingsPageRec;   {contains Settings page controls}
+  BaseDir: TDirectoryRec;         {contains all base program and data dirs}
+  TmpFile: TTmpFile;              {contains full pathname of temp files}
+  TmpDir: String;                 {the temp directory that setup/uninstall uses}
+  ConfigRec: TConfigRec;          {contains path/selected php.exe data and any error}
+  Paths: TPathInfo;               {contains latest path info}
+  CmdExe: String;                 {full pathname to system cmd}
+  PathChanges: TPathChangeList;   {list of path changes to make, or made}
+  Flags: TFlagsRec;               {contains global flags that won't go anywhere else}
+  Test: String;                   {flags test mode and contains any test to run}
+  Pages: TCustomPagesRec;         {group of custom pages}
+  SettingsPage: TSettingsPageRec; {contains Settings page controls}
+  SecurityPage: TSecurityPageRec; {contains security page controls}
 
 
 const
@@ -251,6 +267,10 @@ const
   LF = #13#10;
   TAB = #32#32#32#32#32#32;
   TEST_FLAG = '?';
+
+  PHP_CHECK = '{#PhpCheck}';
+  PHP_INSTALLER = '{#PhpInstaller}';
+  CMD_SHELL = '{#CmdShell}';
 
   PATH_NONE = 0;
   PATH_OK = 1;
@@ -263,18 +283,15 @@ const
 
   ERR_NONE = 0;
   ERR_INSTALL = 1;
-  ERR_UNKNOWN = 10;
-  ERR_CMD = 11;
-  ERR_CMD_EX = 12;
-  ERR_CMD_PHP = 13;
-  ERR_PHP = 20;
-  ERR_STATUS = 21;
-  ERR_RESULT = 22;
-  ERR_INVALID = 23;
-  ERR_LOGIC = 24;
-  ERR_CONN = 30;
-  ERR_DOWNLOAD = 31;
-
+  ERR_CMD_EXE = 100;
+  ERR_PHP_EXE = 101;
+  ERR_PHP_OUTPUT = 200;
+  ERR_PHP_SETTINGS = 200;
+  ERR_INSTALL_OK = 300;
+  ERR_INSTALL_WARNINGS = 301;
+  ERR_INSTALL_ERRORS = 302;
+  ERR_INSTALL_OUTPUT = 303;
+      
   NEXT_NONE = 0;
   NEXT_RETRY = 1;
   NEXT_OK = 2;
@@ -288,16 +305,14 @@ function InitGetVersion: TVersionInfo; forward;
 {Common functions}
 procedure AddParam(const Value: String; var Params: String); forward;
 procedure AddLine(var Existing: String; const Value: String); forward;
-procedure AddSwitch(var Switches: String; const Name, Value: String); forward;
+function ConfigRecInit(const Exe: String): TConfigRec; forward;
+procedure ConfigRecReset(var Config: TConfigRec); forward;
 procedure Debug(const Message: String); forward;
-function DebugPhp(const Line: String): Boolean; forward;
-function ExecCmd(const PhpExe, Switches: String; Show: Integer; var ExitCode: Integer): Boolean; forward;
-procedure GetCmdResults(Results: TArrayOfString; var Output: String); forward;
+function ExecPhp(const Script, Args: String; var Config: TConfigRec): Boolean; forward;
+function GetCmdError(StatusCode: Integer; var Config: TConfigRec): String; forward;
 function GetRegHive: Integer; forward;
-function GetCommonCmdError(StatusCode, ExitCode: Integer): String; forward;
+function GetInstallerArgs(Config: TConfigRec; Check: Boolean): String; forward;
 function GetStatusText(Status: Integer): String; forward;
-function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer; forward;
-function ResultIdLine(const Line: String; var S: String): Boolean; forward;
 function StrToVer(Value: String): TVersionRec; forward;
 function VersionCompare(V1, V2: TVersionRec): Integer; forward;
 function VersionCompareEx(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean; forward;
@@ -322,7 +337,7 @@ procedure UpdatePathStatus(var Rec: TPathStatus); forward;
 function CheckAllPaths: Boolean; forward;
 function CheckPathBin(Rec: TPathStatus; var Error: String): Boolean; forward;
 function CheckPathExt(var Error: String): Boolean; forward;
-procedure CheckPathPhp(Rec: TPathStatus); forward;
+procedure CheckPathPhp(Rec: TPathStatus; Config: TConfigRec); forward;
 function GetPathExt(Hive: Integer; var Value: String): Boolean; forward;
 
 {Path modify functions}
@@ -333,24 +348,31 @@ function PathChangesToString: String; forward;
 
 {Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
-function CheckPhpExe(const Filename: String): Boolean; forward;
-procedure ResetPhpRec; forward;
-procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String); forward;
+function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
+function CheckPhpSettings(var Config: TConfigRec): Boolean; forward;
+function FormatPhpError(const Error, Filename, Extra: String): String; forward;
+function ProcessPhpOutput(var Config: TConfigRec): Boolean; forward;
+procedure SetPhpError(StatusCode: Integer; var Config: TConfigRec); forward;
 
 {Download functions}
-procedure DownloadWork; forward;
-procedure ResetDownloadRec(Full: Boolean); forward;
-procedure SetDownloadCmdError(ExitCode: Integer); forward;
-procedure SetDownloadStatus(StatusCode, ExitCode: Integer); forward;
+procedure DownloadWork(var Config: TConfigRec); forward;
+procedure DownloadSetNextButton(var Config: TConfigRec); forward;
+procedure DownloadSetText(var Config: TConfigRec); forward;
 
 {Custom page functions}
 procedure ChangedPathPageShow; forward;
 procedure DownloadMsgUpdate; forward;
-procedure ErrorMsgUpdate; forward;
+procedure ErrorPageUpdate(Page: TWizardPage); forward;
 function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
-procedure ProgressCheckShow; forward;
-function ProgressDownloadShow(CurPageID: Integer): Boolean; forward;
-function ProgressPageCreate(Caption: String): TOutputProgressWizardPage; forward;
+procedure ProgressCheckSettings(ErrorPage: TWizardPage); forward;
+procedure ProgressPageHide; forward;
+procedure ProgressPageShow(const Caption, Action, Text: String; AfterId: Integer); forward;
+function ProgressShowDownload(CurPageID: Integer): Boolean; forward;
+procedure ProgressShowPhp(CurPageID: Integer; const Filename: String); forward;
+procedure ProgressShowSettings(CurPageID: Integer; const Filename: String); forward;
+procedure SecurityCheckBoxClick(Sender: TObject); forward;
+function SecurityPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+procedure SecurityPageShow; forward;
 procedure SettingsButtonClick(Sender: TObject); forward;
 procedure SettingsCheckBoxClick(Sender: TObject); forward;
 function SettingsCheckInPath: Boolean; forward;
@@ -380,18 +402,19 @@ begin
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
 
   {Extract our temp files to installer directory}
-  ExtractTemporaryFile('composer');
-  ExtractTemporaryFile('setup.class.php');
-  ExtractTemporaryFile('setup.php');
+  ExtractTemporaryFile(PHP_CHECK);
+  ExtractTemporaryFile(PHP_INSTALLER);
+  ExtractTemporaryFile(CMD_SHELL);
 
   {Set full filenames}
-  TmpFile.Composer := TmpDir + '\composer';
-  TmpFile.Result := TmpDir + '\result.txt';
-
-  {setup.php must not have a path, otherwise it masks errors caused by
+  TmpFile.Install := TmpDir + '\' + PHP_INSTALLER;
+  TmpFile.Composer := TmpDir + '\' + CMD_SHELL;
+  TmpFile.Output := TmpDir + '\output.txt';
+  
+  {PHP_CHECK must not have a path, otherwise it masks errors caused by
   registry settings that force command.exe to open in a particular directory,
   rather than the cwd. It would also break cygwin php}
-  TmpFile.Setup := 'setup.php';
+  TmpFile.Check := PHP_CHECK;
 
   if Pos('/TEST', GetCmdTail) <> 0 then
     Test := TEST_FLAG;
@@ -416,13 +439,21 @@ begin
   Pages.Settings := SettingsPageCreate(wpWelcome,
     'Settings Check', 'We need to check your PHP and path settings.');
 
-  Pages.ErrorMsg := MessagePageCreate(Pages.Settings.ID,
+  Pages.ErrorPhp := MessagePageCreate(Pages.Settings.ID,
+    '', '', 'Please review and fix the issues listed below, then click Back and try again');
+
+  Pages.Security := SecurityPageCreate(Pages.ErrorPhp.ID,
+    'Composer Security Warning', 'Please choose one of the following options.');
+
+  Pages.ErrorSettings := MessagePageCreate(Pages.Security.ID,
     '', '', 'Please review and fix the issues listed below, then click Back and try again');
 
   Pages.DownloadMsg := MessagePageCreate(wpReady, '', '', '');
 
   Pages.ChangedPath := CreateCustomPage(wpInstalling,
     'Information', 'Please read the following information before continuing.');
+
+  Pages.Progress := CreateOutputProgressPage('', 'Please wait');
 
   if Test = TEST_FLAG then
     TestCreateSelect();
@@ -436,7 +467,7 @@ begin
   if CurPageID = Pages.Settings.ID then
   begin
 
-    {We must use Flags.ProgressPage since the progress page has no PageID}
+    {We must check Flags.ProgressPage first}
     if Flags.ProgressPage then
       Flags.ProgressPage := False
     else
@@ -446,9 +477,30 @@ begin
     end;
 
   end
-  else if CurPageID = Pages.ErrorMsg.ID then
+  else if CurPageID = Pages.ErrorPhp.ID then
   begin
 
+    WizardForm.ActiveControl := nil;
+    WizardForm.NextButton.Enabled := False;
+
+  end
+  else if CurPageID = Pages.Security.ID then
+  begin
+      
+    {We must check Flags.ProgressPage first}
+    if Flags.ProgressPage then
+      Flags.ProgressPage := False
+    else
+    begin
+      SecurityPageShow();
+      WizardForm.NextButton.Enabled := SecurityPage.CheckBox.Checked;
+      WizardForm.ActiveControl := nil;
+    end;
+  
+  end
+  else if CurPageId = Pages.ErrorSettings.ID then
+  begin
+     
     WizardForm.ActiveControl := nil;
     WizardForm.NextButton.Enabled := False;
 
@@ -464,9 +516,9 @@ begin
   begin
 
     WizardForm.ActiveControl := nil;
-    WizardForm.NextButton.Enabled := DownloadRec.Next <> NEXT_NONE;
+    WizardForm.NextButton.Enabled := ConfigRec.NextButton <> NEXT_NONE;
 
-    if DownloadRec.Next = NEXT_RETRY then
+    if ConfigRec.NextButton = NEXT_RETRY then
       WizardForm.NextButton.Caption := 'Retry';
 
   end
@@ -485,10 +537,14 @@ begin
 
   Result := False;
 
-  if PageID = Pages.ErrorMsg.ID then
-    Result := (PhpRec.Error = '') and (Paths.Error = '')
+  if PageID = Pages.ErrorPhp.ID then
+    Result := PageID <> Flags.LastErrorPage
+  else if PageID = Pages.Security.ID then
+    Result := ConfigRec.PhpSecure
+  else if PageID = Pages.ErrorSettings.ID then
+    Result := PageID <> Flags.LastErrorPage
   else if PageID = Pages.DownloadMsg.ID then
-    Result := DownloadRec.Text = ''
+    Result := ConfigRec.StatusCode = ERR_INSTALL_OK
   else if PageId = Pages.ChangedPath.ID then
     Result := not Flags.PathChanged;
 
@@ -503,49 +559,37 @@ begin
   if CurPageID = Pages.Settings.ID then
   begin
 
-    if not FileExists(Settings.Edit.Text) then
+    if not FileExists(SettingsPage.Edit.Text) then
     begin
       MsgBox('The file you specified does not exist.', mbCriticalError, MB_OK);
       Result := False;
     end
     else
     begin
-      {Important to set Flags.ProgressPage before showing the page}
-      Flags.ProgressPage := True;
-      ProgressCheckShow();
+      {Show the progress page which calls the check function}
+      ProgressShowPhp(CurPageID, SettingsPage.Edit.Text);
     end;
+
+  end
+  else if CurPageID = Pages.Security.ID then
+  begin
+    
+    {Show the progress page which calls the check functions}
+    ProgressShowSettings(CurPageID, SettingsPage.Edit.Text);
 
   end
   else if CurPageID = wpReady then
   begin
 
     {Start the download}
-    Result := ProgressDownloadShow(CurPageID);
+    Result := ProgressShowDownload(CurPageID);
 
   end
   else if CurPageID = Pages.DownloadMsg.ID then
   begin
 
     {The next button has been re-labelled Retry, so we download again}
-    Result := ProgressDownloadShow(CurPageID);
-
-  end;
-
-end;
-
-function BackButtonClick(CurPageID: Integer): Boolean;
-begin
-
-  Result := True;
-
-  if CurPageID = Pages.DownloadMsg.ID then
-  begin
-
-    {We are going back to wpReady, so we need to clear the Retry button flag
-    and any errors. However we need to keep the force flag which affects
-    if composer.phar is re-downloaded or not.}
-
-    ResetDownloadRec(False);
+    Result := ProgressShowDownload(CurPageID);
 
   end;
 
@@ -559,8 +603,9 @@ begin
 
   case CurPageID of
     wpWelcome: Confirm := False;
-    Pages.ErrorMsg.ID: Confirm := False;
-    Pages.DownloadMsg.ID: Confirm := False;
+    Pages.ErrorPhp.ID: Confirm := False;
+    Pages.ErrorSettings.ID: Confirm := False;
+    Pages.DownloadMsg.ID: Confirm := ConfigRec.StatusCode = ERR_INSTALL_WARNINGS;
   end;
 
 end;
@@ -573,8 +618,8 @@ var
 
 begin
 
-  S := 'PHP version ' + PhpRec.Version;
-  S := S + NewLine + Space + PhpRec.Exe;
+  S := 'PHP version ' + ConfigRec.PhpVersion;
+  S := S + NewLine + Space + ConfigRec.PhpExe;
   S := S + PathChangesToString();
 
   Result := S;
@@ -749,8 +794,11 @@ procedure InitCommon;
 begin
   
   {Initialize our flags - not strictly necessary}
+  Flags.SelectedPhp := '';
+  Flags.DisableTls := False;
   Flags.PathChanged := False;
   Flags.ProgressPage := False;
+  Flags.LastErrorPage := 0;
   Flags.Completed := False;
 
   {Initialize BaseDir}
@@ -832,14 +880,11 @@ end;
 
 procedure AddParam(const Value: String; var Params: String);
 begin
+  
+  if Params = '' then
+    Params := '--';
 
-  if (Params <> '') then
-    Params := Params + #32;
-
-  if Pos(#32, Value) > 1 then
-    Value := #34 + Value + #34;
-
-  Params := Params + Value;
+  Params := Params + ' --' + Value;
 
 end;
 
@@ -855,105 +900,103 @@ begin
 end;
 
 
-procedure AddSwitch(var Switches: String; const Name, Value: String);
+function ConfigRecInit(const Exe: String): TConfigRec;
 begin
+  
+  Result.PhpExe := Exe;    
+  Result.PhpSecure := False;
+  Result.PhpIni := '';
+  Result.PhpVersion := '';
+  
+  ConfigRecReset(Result); 
 
-  if Switches = '' then
-    Switches := '--';
+end;
 
-  Switches := Switches + ' --' + Name;
 
-  if Value <> '' then
-  begin
-    {We don't want to send default test ? value}
-    if (Name <> 'test') or (Test <> '?') then
-      Switches := Switches + ' "' + Value + '"';
-  end;
+procedure ConfigRecReset(var Config: TConfigRec);
+begin
+    
+  Config.ExitCode := 0;
+  Config.LineCount := 0;
+  Config.StatusCode := ERR_NONE;
+  Config.NextButton := NEXT_NONE;
+  Config.Output := '';
+  Config.Error := '';
 
 end;
 
 
 procedure Debug(const Message: String);
 begin
-  //Log('DEBUG:: ' + Message);
   Log('$ ' + Message);
 end;
 
 
-function DebugPhp(const Line: String): Boolean;
+function ExecPhp(const Script, Args: String; var Config: TConfigRec): Boolean;
 var
-  S: String;
-
-begin
-
-  Result := False;
-  S := '';
-
-  if ResultIdLine(Line, S) then
-  begin
-    Debug('PHP version: ' + S); 
-    Result := True;
-  end;
-
-end;
-
-
-function ExecCmd(const PhpExe, Switches: String; Show: Integer; var ExitCode: Integer): Boolean;
-var
-  Args: String;
   Params: String;
+  Output: TArrayOfString;
+  Lines: String;
+  I: Integer;
 
 begin
 
-  if FileExists(TmpFile.Result) then
-    DeleteFile(TmpFile.Result);
+  if FileExists(TmpFile.Output) then
+    DeleteFile(TmpFile.Output);
+   
+  if Script <> PHP_CHECK then
+    ConfigRecReset(Config);
 
-  Args := Switches;
+  Params := Format('/c "%s %s %s > %s 2>&1"', [AddQuotes(Config.PhpExe),
+    AddQuotes(Script), Args, AddQuotes(TmpFile.Output)]);
 
-  if Test <> '' then
+  Debug('Calling cmd.exe with params: ' + Params);
+  Result := Exec(CmdExe, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
+
+  if not Result then
   begin
-    AddSwitch(Args, 'test', Test);
-    Debug('Running test: ' + Test);
+    SetPhpError(ERR_CMD_EXE, Config);
+    Exit;
   end;
 
-  if Pos('/LOG', GetCmdTail) <> 0 then
-    AddSwitch(Args, 'debug', '');
+  LoadStringsFromFile(TmpFile.Output, Output);
+  Config.LineCount := GetArrayLength(Output);
 
-  {We must not quote Args since they are quoted individually}
-  Params := Format('/c "%s %s %s > %s"', [AddQuotes(PhpExe), AddQuotes(TmpFile.Setup), Args, AddQuotes(TmpFile.Result)]);
-  Debug('Calling cmd.exe with params: ' + Params);
-  Result := Exec(CmdExe, Params, TmpDir, Show, ewWaitUntilTerminated, ExitCode);
+  for I := 0 to Config.LineCount - 1 do
+    AddLine(Lines, Output[I]);
 
+  Config.Output := Trim(Lines);
+  
 end;
 
 
-procedure GetCmdResults(Results: TArrayOfString; var Output: String);
+function GetCmdError(StatusCode: Integer; var Config: TConfigRec): String;
 var
-  Count: Integer;
-  I: Integer;
-  Line: String;
+  Filename: String;
+  Prog: String;
+  Error: String;  
+  SysError: String;
 
 begin
-
-  Count := GetArrayLength(Results);
-
-  for I := 0 to Count - 1 do
+  
+  if StatusCode = ERR_CMD_EXE then
   begin
-
-    Line := Results[I];
-
-    {Filter any initial empty output}
-    if (Output = '') and (Trim(Line) = '') then
-      Continue;
-
-    {Filter any shebang}
-    if Pos('#!', TrimLeft(Line)) = 1 then
-      Continue;
-
-    if not DebugPhp(Line) then
-      AddLine(Output, Line);
-
+    Filename := CmdExe;
+    Prog := 'The command interpreter';
+  end
+  else
+  begin
+    Filename := Config.PhpExe;
+    Prog := 'The PHP exe file you specified';
   end;
+
+  Error := Format('%s did not run correctly', [Prog]);
+  SysError := SysErrorMessage(Config.ExitCode);
+  
+  if StringChangeEx(SysError, '%1', '%s', True) = 1 then
+    SysError := Format(SysError, [Filename]);  
+
+  Result := FormatPhpError(Error, Filename, SysError);
 
 end;
 
@@ -969,23 +1012,18 @@ begin
 end;
 
 
-function GetCommonCmdError(StatusCode, ExitCode: Integer): String;
-var
-  Error: String;
-  Name: String;
-
+function GetInstallerArgs(Config: TConfigRec; Check: Boolean): String;
 begin
 
-  Result := '';
-
-  Name := GetStatusText(StatusCode);
-
-  if StatusCode = ERR_CMD then
-    GetSysError(ExitCode, CmdExe, Error)
-  else
-    Error := 'A command did not run correctly';
-
-  Result := Format('Internal Error %s: ', [Name]) + Error;
+  AddParam('no-ansi', Result);
+  AddParam('quiet', Result);
+    
+  if Check then
+    AddParam('check', Result);
+  
+  {Important to check both these values}
+  if not Config.PhpSecure and Flags.DisableTls then
+    AddParam('disable-tls', Result);
 
 end;
 
@@ -997,50 +1035,16 @@ begin
 
   ERR_NONE: Result := 'ERR_NONE';
   ERR_INSTALL: Result := 'ERR_INSTALL';
-  ERR_UNKNOWN: Result := 'ERR_UNKNOWN';
-  ERR_CMD: Result := 'ERR_CMD';
-  ERR_CMD_EX: Result := 'ERR_CMD_EX';
-  ERR_CMD_PHP: Result := 'ERR_CMD_PHP';
-  ERR_PHP: Result := 'ERR_PHP';
-  ERR_STATUS: Result := 'ERR_STATUS';
-  ERR_RESULT: Result := 'ERR_RESULT';
-  ERR_INVALID: Result := 'ERR_INVALID';
-  ERR_LOGIC: Result := 'ERR_LOGIC';
-  ERR_CONN: Result := 'ERR_CONN';
-  ERR_DOWNLOAD: Result := 'ERR_DOWNLOAD';
+  ERR_CMD_EXE: Result := 'ERR_CMD_EXE';
+  ERR_PHP_EXE: Result := 'ERR_PHP_EXE';
+  ERR_PHP_OUTPUT: Result := 'ERR_PHP_OUTPUT';
+  ERR_PHP_SETTINGS: Result := 'ERR_PHP_SETTINGS';     
 
  else
     Result := 'ERR_UNKNOWN';
  end;
 
  Result := Format('[%s]', [Result]);
-
-end;
-
-
-function GetSysError(ErrorCode: Integer; const Filename: String; var Error: String): Integer;
-begin
-
-  Error := SysErrorMessage(ErrorCode);
-  Result := StringChangeEx(Error, '%1', '%s', True);
-
-  if Result = 1 then
-    Error := Format(Error, [Filename]);
-
-end;
-
-
-function ResultIdLine(const Line: String; var S: String): Boolean;
-begin
-
-  Result := False;
-  S := '';
-
-  if Pos('{#CS_SETUP_GUID}', Line) <> 0 then
-  begin
-    S := Copy(Line, {#GUID_LEN} + 1, MaxInt);
-    Result := True;
-  end;
 
 end;
 
@@ -1411,10 +1415,11 @@ begin
   Debug('Checking paths');
 
   Flags.PathChanged := False;
+  Paths.Error := '';
   SetArrayLength(PathChanges, 0);
   SetPathInfo(True);
 
-  CheckPathPhp(Paths.Php);
+  CheckPathPhp(Paths.Php, ConfigRec);
   
   if Paths.VendorBin.Status = PATH_NONE then
     PathChangeAdd(HKEY_CURRENT_USER, GetVendorBinDir(), MOD_PATH_ADD, MOD_PATH_HIDE);
@@ -1493,7 +1498,7 @@ begin
 end;
 
 
-procedure CheckPathPhp(Rec: TPathStatus);
+procedure CheckPathPhp(Rec: TPathStatus; Config: TConfigRec);
 var
   PhpPath: String;
   Hive: Integer;
@@ -1502,7 +1507,7 @@ begin
 
   Debug('Checking php path');
 
-  PhpPath := ExtractFileDir(PhpRec.Exe);
+  PhpPath := ExtractFileDir(Config.PhpExe);
   Hive := GetRegHive();
 
   if Rec.Status = PATH_NONE then
@@ -1676,397 +1681,280 @@ end;
 
 function CheckPhp(const Filename: String): Boolean;
 var
-  Switches: String;
-  Show: Integer;
-  ExitCode: Integer;
-  Results: TArrayOfString;
+  Script: String;
+  Args: String;
 
 begin
 
   Result := False;
 
-  {
-   * Possible errors:
-   * Internal error - cmd did not run [ERR_CMD]
-   * Internal error - cmd did not create output file run [ERR_CMD_EX]
-   * ExitCode: 0 - Php check passed
-   * ExitCode: 1 - Php check failed
-   * ExitCode: ? - Php program error [ERR_STATUS] (Test=p1, Test=p2)
-   * Results file, empty: [ERR_RESULT] (Test=p3)
-   * Results file, non-matching guid: [ERR_INVALID] (Test=p4)
-   * Results file, ExitCode 0, multiline [ERR_LOGIC] (test=p5)
-   * Results file, ExitCode 1, guid only [ERR_LOGIC] (test=p6)
-  }
-
-  ResetPhpRec();
-
+  ConfigRec := ConfigRecInit(Filename);  
   Debug('Checking php: ' + Filename);
-
-  if not CheckPhpExe(Filename) then
+  
+  {Make sure whatever we've been given can execute}
+  if not CheckPhpExe(ConfigRec) then
+    Exit;
+  
+  Script := PHP_CHECK;
+  Args := '{#CS_SETUP_GUID}';
+    
+  {ExecPhp should only fail calling cmd.exe} 
+  if not ExecPhp(Script, Args, ConfigRec) then
     Exit;
 
-  AddSwitch(Switches, 'php', '');
-  Show := Integer(Test <> '');
-
-  if not ExecCmd(Filename, Switches, Show, ExitCode) then
+  {ProcessPhpOutput will fail if we have unexpected output}
+  if not ProcessPhpOutput(ConfigRec) then
   begin
-    SetPhpError(ERR_CMD, ExitCode, Filename);
+    SetPhpError(ERR_PHP_OUTPUT, ConfigRec);
     Exit;
-  end;
-
-  if not LoadStringsFromFile(TmpFile.Result, Results) then
-  begin
-    SetPhpError(ERR_CMD_EX, ExitCode, Filename);
-    Exit;
-  end;
-
-  if (ExitCode <> 0) and (ExitCode <> 1) then
-  begin
-    SetPhpError(ERR_STATUS, ExitCode, Filename);
-    Exit;
-  end;
-
-  if GetArrayLength(Results) = 0 then
-  begin
-    SetPhpError(ERR_RESULT, ExitCode, Filename);
-    Exit;
-  end;
-
-  {Get php version}
-  if not ResultIdLine(Results[0], PhpRec.Version) then
-  begin
-    SetPhpError(ERR_INVALID, ExitCode, Filename);
-    Exit;
-  end;
-
-  GetCmdResults(Results, PhpRec.Error);
-
-  if (ExitCode = 0) and (PhpRec.Error <> '') then
-  begin
-    SetPhpError(ERR_LOGIC, ExitCode, Filename);
-    Exit;
-  end;
-
-  if (ExitCode = 1) and (PhpRec.Error = '') then
-  begin
-    SetPhpError(ERR_LOGIC, ExitCode, Filename);
-    Exit;
-  end;
-
-  PhpRec.Exe := Filename;
-  Result := PhpRec.Error = '';
+  end; 
+  
+  {Everthing ok}
+  Debug(Format('Php version %s, tls = %d, ini = %s', [ConfigRec.PhpVersion,
+    ConfigRec.PhpSecure, ConfigRec.PhpIni]));
+  
+  Result := True;
 
 end;
 
 
-function CheckPhpExe(const Filename: String): Boolean;
+function CheckPhpExe(var Config: TConfigRec): Boolean;
 var
-  Show: Integer;
-  ExitCode: Integer;
+  Params: String;
 
 begin
 
-  Result := False;
-
-  {
-   * Possible errors:
-   * Php.exe error - did not run [ERR_CMD_PHP]
-  }
-
-  if Test <> '' then
-    Show := SW_SHOW
-  else
-    Show := SW_HIDE;
-
-  Result := Exec(Filename, '-v', TmpDir, Show, ewWaitUntilTerminated, ExitCode);
+  {We check that we can run the supplied exe file directly. We need to do this
+  separately because our other calls use cmd to invoke php and it is more
+  difficult to get a true error message. Also when using cmd, a message box
+  can be shown for certain error conditions in the called process}
+  
+  Params := '-v';
+  Debug(Format('Calling %s with params: %s', [Config.PhpExe, Params]));
+  Result := Exec(Config.PhpExe, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
 
   if not Result then
-    SetPhpError(ERR_CMD_PHP, ExitCode, Filename);
+    SetPhpError(ERR_PHP_EXE, Config);
 
 end;
 
 
-procedure ResetPhpRec;
-begin
-
-  PhpRec.Exe := '';
-  PhpRec.Version := '';
-  PhpRec.Error := '';
-
-  ResetDownloadRec(True);
-
-end;
-
-
-procedure SetPhpError(ErrorCode, ExitCode: Integer; const Filename: String);
+function CheckPhpSettings(var Config: TConfigRec): Boolean;
 var
-  Text: String;
-  Error: String;
-  Name: String;
+  Script: String;
+  Args: String;
 
 begin
 
-  Text := '';
-  Name := GetStatusText(ErrorCode);
+  Result := False; 
+  Debug('Checking php settings: ' + Config.PhpExe);
+  
+  Script := PHP_INSTALLER;
+  Args := GetInstallerArgs(Config, True);
+    
+  {ExecPhp should only fail calling cmd.exe,
+  although it has already been checked} 
+  if not ExecPhp(Script, Args, Config) then
+    Exit;
 
-  case ErrorCode of
+  Result := Config.ExitCode = 0;
+   
+  if not Result then
+    SetPhpError(ERR_PHP_SETTINGS, Config);    
 
-    ERR_CMD_PHP:
+end;
+
+
+function FormatPhpError(const Error, Filename, Extra: String): String;
+begin
+  Result := Format('%s:%s%s%s%s', [Error, LF, Filename, LF + LF, Extra]);
+end;
+
+
+function ProcessPhpOutput(var Config: TConfigRec): Boolean;
+var
+  StartIndex: Integer;
+  Details: String;
+  List: TStringList;
+
+begin
+  
+  Result := False;
+
+  StartIndex := Pos('{#CS_SETUP_GUID}', Config.Output);
+
+  if StartIndex = 0 then
+    Exit;
+
+  {We alwats try and get the id line details}
+  Details := Trim(Copy(Config.Output, StartIndex + Length('{#CS_SETUP_GUID}'), MaxInt));
+  StringChangeEx(Details, '|', #13, True);
+
+  {Remove the guid from the output}
+  Config.Output := Trim(Copy(Config.Output, 1, StartIndex - 1));
+       
+  List := TStringList.Create;
+  
+  try
+    List.Text := Details;
+    
+    if List.Count = 3 then
     begin
-
-      if GetSysError(ExitCode, Filename, Error) = 0 then
-        Text := 'The PHP exe file you specified did not execute correctly: ' + Filename + LF
-      else
-        Text := Error;
-
+      Config.PhpSecure := Boolean(StrToIntDef(List.Strings[0], 0));
+      Config.PhpIni := List.Strings[1];
+      Config.PhpVersion := List.Strings[2];
+      Result := True;
     end;
+     
+  finally
+    List.Free;
+  end;
+    
+  if (Config.LineCount <> 1) or (Config.ExitCode <> 0) then
+    Result := False;
 
-    ERR_CMD, ERR_CMD_EX:
-      Text := GetCommonCmdError(ErrorCode, ExitCode);
+end;
 
-    ERR_STATUS, ERR_RESULT, ERR_INVALID:
+
+procedure SetPhpError(StatusCode: Integer; var Config: TConfigRec);
+var
+  Error: String;
+  Prefix: String;
+  Text: String;
+
+begin
+  
+  case StatusCode of
+    ERR_CMD_EXE, ERR_PHP_EXE: Error := GetCmdError(StatusCode, Config);
+    
+    ERR_PHP_OUTPUT:
     begin
-
-      Error := Format('The PHP exe file you specified did not execute correctly: %s%s%s', [LF, Filename, LF]);
-      Error := Error + LF + 'Running it from the command line might highlight the problem.'
-
-      if ErrorCode = ERR_STATUS then
+      
+      Error := 'The PHP exe file you specified did not run correctly';
+            
+      if Config.ExitCode <> 0 then
+        Error := Format('%s [exit code %d]', [Error, Config.ExitCode]);
+            
+      if Config.LineCount = 0 then
       begin
-
-        if ExitCode = 255 then
-          Error := Error + LF + 'Use the -v switch to show the PHP version - it must be at least 5.3.2';
-
+        {Show the command to run php to output the version}
+        Prefix := Format('No output from internal script, %s. ', [PHP_CHECK]);
+        Text := 'Running PHP from the command line might highlight the problem';
+        Text := Format('%s:%s%s -v', [Text, LF, Config.PhpExe]);
+      end
+      else
+      begin
+        {Show the output}
+        Prefix := Format('Unexpected output from internal script, %s:', [PHP_CHECK]);
+        AddLine(Prefix, '');      
+        Text := Config.Output;        
       end;
 
-      Text := Format('Internal Error %s, exit code %d', [Name, ExitCode]);
-      Text := Error + LF + Text;
-
+      Error := FormatPhpError(Error, Config.PhpExe, Prefix + Text);
+          
     end;
-
-    ERR_LOGIC:
+    
+    ERR_PHP_SETTINGS:
     begin
-      Text := Format('An internal script did not run correctly (exit code %d)', [ExitCode]);
-      Text := Format('Internal Error %s: %s', [Name, Text]);
-    end;
-
-  else
-
-    begin
-      ErrorCode := ERR_UNKNOWN;
-      Text := Format('Internal Error %s: An unspecified error occurred', [Name]);
-    end;
+      Error := Config.Output;
+    end;  
 
   end;
 
-  PhpRec.Error := Text;
-  Debug(Format('Checking php: error %s', [Name]));
+  Config.Error := Error;
+  Config.StatusCode := StatusCode;
+  Debug(Format('Error: %s%s%s', [GetStatusText(StatusCode), LF, Error]));
 
 end;
 
 
 {*************** Download functions ***************}
 
-procedure DownloadWork;
+procedure DownloadWork(var Config: TConfigRec);
 var
-  Switches: String;
-  ExitCode: Integer;
-  Results: TArrayOfString;
+  Script: String;
+  Args: String;
 
 begin
-
-  {
-   * Possible errors:
-   * Internal error - cmd did not run [ERR_CMD]
-   * Internal error - cmd did not create output file [ERR_CMD_EX]
-   * ExitCode: 0 - Installed, no warnings [ERR_NONE]
-   * ExitCode: 0 - Installed, warnings [ERR_NONE] (Test=d1)
-   * ExitCode: 1 - Not Installed, errors [ERR_INSTALL] (Test=d2)
-   * ExitCode: 2 - Php script did not run properly [ERR_PHP] (Test=d3)
-   * ExitCode: 3 - Connection error of some sort [ERR_CONNECTION] (Test=d4) (Test=d5)
-   * ExitCode: ? - Unexpected exit code from Composer, didn't return 0 or 1 [ERR_STATUS] (Test=d6)
-   * ExitCode: 0 - No composer.phar downloaded [ERR_DOWNLOAD] (Test=d7)
-   * ExitCode: 1 - No errors reported by Composer [ERR_INVALID] (Test=d8)
-  }
 
   Debug('Downloading from {#AppUrl}');
+  
+  Script := PHP_INSTALLER;
+  Args := GetInstallerArgs(Config, False); 
 
-  AddSwitch(Switches, 'download', '');
-
-  if DownloadRec.Force then
-    AddSwitch(Switches, 'force', '');
-
-  if not ExecCmd(PhpRec.Exe, Switches, SW_HIDE, ExitCode) then
-  begin
-    SetDownloadCmdError(ExitCode);
+  {ExecPhp should only fail calling cmd.exe. The NextButton is
+  already set to the default NEXT_NONE} 
+  if not ExecPhp(Script, Args, Config) then   
     Exit;
-  end;
-
-  if not LoadStringsFromFile(TmpFile.Result, Results) then
-  begin
-    SetDownloadStatus(ERR_CMD_EX, ExitCode);
-    Exit;
-  end;
-
-  {The following if... checks all exit codes}
-
-  if ExitCode = 0 then
-  begin
-
-    if not FileExists(TmpDir + '\composer.phar') then
-    begin
-      SetDownloadStatus(ERR_DOWNLOAD, ExitCode);
-      Exit;
-    end;
-
-  end
-  else if ExitCode = 2 then
-  begin
-    SetDownloadStatus(ERR_PHP, ExitCode);
-    Exit;
-  end
-  else if ExitCode = 3 then
-  begin
-    SetDownloadStatus(ERR_CONN, ExitCode);
-    AddLine(DownloadRec.Text, '');
-    GetCmdResults(Results, DownloadRec.Text);
-    Exit;
-  end
-  else if ExitCode <> 1 then
-  begin
-    SetDownloadStatus(ERR_STATUS, ExitCode);
-    Exit;
-  end;
-
-  {We must set status now}
-  if ExitCode = 0 then
-    SetDownloadStatus(ERR_NONE, ExitCode)
+   
+  {Set StatusCodes depending on the ExitCode}
+  case Config.ExitCode of
+    0: Config.StatusCode := ERR_INSTALL_OK;    
+    1: Config.StatusCode := ERR_INSTALL_ERRORS;
   else
-    SetDownloadStatus(ERR_INSTALL, ExitCode);
+    Config.StatusCode := ERR_INSTALL_OUTPUT;
+  end;
 
-  if GetArrayLength(Results) = 0 then
+  if Config.StatusCode = ERR_INSTALL_OK then
   begin
+    
+    {See if we have output which means there are warnings}
+    if Config.LineCount <> 0 then
+      Config.StatusCode := ERR_INSTALL_WARNINGS;
 
-    {no output, check that we are not expecting errors}
-    if ExitCode = 1 then
-      SetDownloadStatus(ERR_INVALID, ExitCode);
-
-    Exit;
+    {Check that composer.phar exists, otherwise setup will
+    complain about not have a file to install}
+    if not FileExists(TmpDir + '\composer.phar') then
+      Config.StatusCode := ERR_INSTALL_OUTPUT;
 
   end;
 
-  GetCmdResults(Results, DownloadRec.Text);
-  DownloadRec.Text := Trim(DownloadRec.Text);
-
-  {Final check}
-  if (ExitCode = 1) and (DownloadRec.Text = '') then
-    SetDownloadStatus(ERR_INVALID, ExitCode);
-
-  if DownloadRec.Text <> '' then
-    AddLine(DownloadRec.Text, '');
+  DownloadSetNextButton(Config);
+  DownloadSetText(Config);
 
 end;
 
 
-procedure ResetDownloadRec(Full: Boolean);
+procedure DownloadSetNextButton(var Config: TConfigRec);
 begin
 
-  DownloadRec.Error := ERR_NONE;
-  DownloadRec.Next := NEXT_NONE;
-
-  if Full then
-    DownloadRec.Force := False;
-
-  DownloadRec.Text := '';
+  case Config.StatusCode of
+    ERR_INSTALL_WARNINGS: Config.NextButton := NEXT_OK;
+    ERR_INSTALL: Config.NextButton := NEXT_NONE;
+  else
+    Config.NextButton := NEXT_RETRY;
+  end;
 
 end;
 
 
-procedure SetDownloadCmdError(ExitCode: Integer);
+procedure DownloadSetText(var Config: TConfigRec);
 var
   Error: String;
-  Text: String;
 
 begin
 
-  SetDownloadStatus(ERR_CMD, ExitCode);
-
-  if GetSysError(ExitCode, CmdExe, Error) = 0 then
-    Text := Error + CmdExe
+  if Config.StatusCode <> ERR_INSTALL_OUTPUT then
+    Config.Error := Config.Output
   else
-    Text := Error;
-
-  DownloadRec.Text := DownloadRec.Text + Text;
-
-end;
-
-
-procedure SetDownloadStatus(StatusCode, ExitCode: Integer);
-var
-  Text: String;
-
-begin
-
-  Text := '';
-  ResetDownloadRec(True);
-
-  case StatusCode of
-
-    ERR_NONE: DownloadRec.Next := NEXT_OK;
-
-    ERR_INSTALL: DownloadRec.Next := NEXT_NONE;
-
-    ERR_CMD, ERR_CMD_EX:
-    begin
-      DownloadRec.Next := NEXT_RETRY;
-      Text := GetCommonCmdError(StatusCode, ExitCode);
-    end;
-
-    ERR_PHP:
-    begin
-      DownloadRec.Next := NEXT_RETRY;
-      Text := 'Internal Error [ERR_PHP]: An internal script did not run correctly';
-    end;
-
-    ERR_STATUS:
-    begin
-      DownloadRec.Next := NEXT_RETRY;
-      DownloadRec.Force := True;
-      Text := Format('Composer Error [ERR_STATUS]: Unexpected exit code from Composer (%d)', [ExitCode]);
-     end;
-
-    ERR_DOWNLOAD:
-    begin
-      DownloadRec.Next := NEXT_RETRY;
-      DownloadRec.Force := True;
-      Text := 'Composer Error [ERR_DOWNLOAD]: Composer was not downloaded';
-    end;
-
-    ERR_INVALID:
-    begin
-      DownloadRec.Next := NEXT_RETRY;
-      DownloadRec.Force := True;
-      Text := 'Composer Error [ERR_INVALID]: The installer script did not run correctly';
-    end;
-
-    ERR_CONN:
-    begin
-      DownloadRec.Next := NEXT_RETRY;
-      DownloadRec.Force := True;
-      Text := 'Connection Error [ERR_CONNECTION]: Unable to connect to {#AppUrl}';
-    end;
-
-  else
-
-    begin
-      StatusCode := ERR_UNKNOWN;
-      DownloadRec.Next := NEXT_RETRY;
-      Text := 'Internal Error [ERR_UNKNOWN]: An unspecified error occurred';
-    end;
+  begin
+    
+    Error := 'The Composer install script did not run correctly';
+      
+    if Config.ExitCode = 0 then
+      Error := Format('%s: %s', [Error, 'composer.phar was not downloaded'])
+    else
+      Error := Format('%s [exit code %d]', [Error, Config.ExitCode]);
+            
+    if Config.Output <> '' then
+      Config.Error := Format('%s:%s%s', [Error, LF + LF, Config.Output])
+    else 
+      Config.Error := Error;
 
   end;
 
-  DownloadRec.Error := StatusCode;
-  DownloadRec.Text := Text;
+  if Config.Error <> '' then
+    AddLine(Config.Error, '');
 
 end;
 
@@ -2126,16 +2014,16 @@ begin
   Text := TNewStaticText(Pages.DownloadMsg.FindComponent('Text'));
   Memo := TNewMemo(Pages.DownloadMsg.FindComponent('Memo'));
 
-  if DownloadRec.Error <> ERR_NONE then
+  if ConfigRec.StatusCode <> ERR_INSTALL_WARNINGS then
   begin
 
     Pages.DownloadMsg.Caption := 'Composer Download Error';
     Pages.DownloadMsg.Description := 'Unable to continue with installation';
 
-    if DownloadRec.Error = ERR_INSTALL then
-      Text.Caption := 'Please review and fix the issues listed below then try again.'
-    else
+    if ConfigRec.StatusCode = ERR_INSTALL_OUTPUT then
       Text.Caption := 'An error occurred. Clicking Retry may resolve this issue.'
+    else
+      Text.Caption := 'Please review and fix the issues listed below then try again.';      
 
   end
   else
@@ -2145,29 +2033,33 @@ begin
     Text.Caption := 'Review the issues listed below then click Next to continue';
   end;
 
-  Memo.Text := DownloadRec.Text;
+  Memo.Text := ConfigRec.Error + LF;
 
 end;
 
 
-procedure ErrorMsgUpdate;
+procedure ErrorPageUpdate(Page: TWizardPage);
 var
   Memo: TNewMemo;
 
 begin
 
-  Memo := TNewMemo(Pages.ErrorMsg.FindComponent('Memo'));
+      
+  {Important to set LastErrorPage for ShouldSkipPage}
+  Flags.LastErrorPage := Page.ID;
 
-  if PhpRec.Error <> '' then
+  Memo := TNewMemo(Page.FindComponent('Memo'));
+
+  if ConfigRec.Error <> '' then
   begin
-    Pages.ErrorMsg.Caption := 'PHP Settings Error';
-    Pages.ErrorMsg.Description := 'Composer will not work with your current settings'
-    Memo.Text := PhpRec.Error;
+    Page.Caption := 'PHP Settings Error';
+    Page.Description := 'Composer will not work with your current settings'
+    Memo.Text := ConfigRec.Error;
   end
   else if Paths.Error <> '' then
   begin
-    Pages.ErrorMsg.Caption := 'Path Settings Error';
-    Pages.ErrorMsg.Description := 'Composer Setup cannot continue with your current settings'
+    Page.Caption := 'Path Settings Error';
+    Page.Description := 'Composer Setup cannot continue with your current settings'
     Memo.Text := Paths.Error;
   end
 
@@ -2205,63 +2097,76 @@ begin
 end;
 
 
-procedure ProgressCheckShow;
-var
-  Progress: TOutputProgressWizardPage;
-   
+procedure ProgressCheckSettings(ErrorPage: TWizardPage);
 begin
 
-  Progress := ProgressPageCreate('Checking your settings');  
-  Progress.SetText('Checking:', Settings.Edit.Text);
-  Progress.Show; 
-  
-  try
+  if not CheckPhpSettings(ConfigRec) then
+  begin
+    {Error will be in PhpRec.Error}
+    ErrorPageUpdate(ErrorPage);
+    Exit;
+  end;
 
-    if not CheckPhp(Settings.Edit.Text) then
-    begin
-      {Error will be in PhpRec.Error}
-      ErrorMsgUpdate();
-      Exit;
-    end;
-        
-    Progress.SetText('Checking:', 'Environment paths');         
-    
-    if not CheckAllPaths then
-    begin
-      {Error will be in Paths.Error}
-      ErrorMsgUpdate();
-      Exit;    
-    end;
- 
-  finally    
-    Progress.Hide;
+  if not CheckAllPaths then
+  begin
+    {Error will be in Paths.Error}
+    ErrorPageUpdate(ErrorPage);
+    Exit;    
   end;
 
 end;
 
 
-function ProgressDownloadShow(CurPageID: Integer): Boolean;
+procedure ProgressPageHide;
+begin
+  Pages.Progress.Hide;
+end;
+
+
+procedure ProgressPageShow(const Caption, Action, Text: String; AfterId: Integer);
+begin
+  
+  Pages.Progress.Caption := Caption;  
+  Pages.Progress.SetText(Action, Text);
+  Pages.Progress.Tag := AfterId;
+
+  {We seem to need to do this style, position, style thing
+  to reset the progress bar when it is npbstMarquee}
+  Pages.Progress.ProgressBar.Style := npbstNormal;  
+  Pages.Progress.ProgressBar.Position := 0;
+  Pages.Progress.ProgressBar.Style := npbstMarquee;
+   
+  Pages.Progress.SetProgress(100, 100);
+  Pages.Progress.Show;
+
+end;
+
+
+function ProgressShowDownload(CurPageID: Integer): Boolean;
 var
-  Progress: TOutputProgressWizardPage;
+  Action: String;
 
 begin
-
+  
+  {This function is called from NextButtonClick and returns true if we can
+  move to the next page, which is the DownloadMsg page if we're called from
+  wpReady, or wpPreparing if we're called from the DownloadMsg page}
   Result := True;
 
-  if DownloadRec.Next = NEXT_OK then
+  {NextButton will only be NEXT_OK if we've already done the download}
+  if ConfigRec.NextButton = NEXT_OK then
     Exit;
 
-  Progress := ProgressPageCreate('Downloading Composer');
-  Progress.SetText('Downloading from {#AppUrl}...', 'composer.phar');
-  Progress.Show;
-
+  Action := 'Downloading from {#AppUrl}...';
+  ProgressPageShow('Downloading Composer', Action, 'composer.phar', CurPageID);
+  
   try
-    DownloadWork;
+    DownloadWork(ConfigRec);
   finally
-    Progress.Hide;
+    ProgressPageHide();
   end;
 
-  if DownloadRec.Text <> '' then
+  if ConfigRec.StatusCode <> ERR_INSTALL_OK then
   begin
     DownloadMsgUpdate();
     Result := CurPageID = wpReady;
@@ -2270,14 +2175,135 @@ begin
 end;
 
 
-function ProgressPageCreate(Caption: String): TOutputProgressWizardPage;
+procedure ProgressShowPhp(CurPageID: Integer; const Filename: String);    
 begin
-  
-  Result := CreateOutputProgressPage(Caption, '');
-  Result.ProgressBar.Style := npbstMarquee;
-  Result.Description := 'Please wait';
-  Result.SetProgress(100, 100);
+
+  {Important to set Flags.ProgressPage because the progress page has no PageID}
+  Flags.ProgressPage := True;
+  ProgressPageShow('Checking your settings', 'Checking:', Filename, CurPageID);
+      
+  try
+      
+    if not CheckPhp(SettingsPage.Edit.Text) then
+    begin
+      {Error will be in PhpRec.Error}
+      ErrorPageUpdate(Pages.ErrorPhp);
+      Exit;
+    end;
+
+    {Exit if no openssl, so the security page is shown}
+    if not ConfigRec.PhpSecure then
+      Exit;
+
+    ProgressCheckSettings(Pages.ErrorPhp);
+        
+  finally    
+    ProgressPageHide();
+  end;
+
 end;
+
+
+procedure ProgressShowSettings(CurPageID: Integer; const Filename: String);
+begin
+
+  {Important to set Flags.ProgressPage because the progress page has no PageID}
+  Flags.ProgressPage := True;  
+  ProgressPageShow('Checking your settings', 'Checking:', Filename, CurPageID);  
+    
+  try
+    ProgressCheckSettings(Pages.ErrorSettings);    
+  finally    
+    ProgressPageHide();
+  end;
+
+end;
+
+
+procedure SecurityCheckBoxClick(Sender: TObject);
+begin
+  WizardForm.NextButton.Enabled := SecurityPage.CheckBox.Checked;
+  Flags.DisableTls := SecurityPage.CheckBox.Checked;
+end;
+
+
+function SecurityPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
+var
+  Top: Integer;
+  S: String;
+
+begin
+
+  Result := CreateCustomPage(Id, Caption, Description);
+
+  SecurityPage.Text := TNewStaticText.Create(Result);
+  SecurityPage.Text.Width := Result.SurfaceWidth;
+  SecurityPage.Text.WordWrap := True;
+  SecurityPage.Text.AutoSize := True;  
+  S := 'The openssl extension is missing from the PHP version you specified.';
+  S := S + ' This means that secure HTTPS transfers are not possible.';
+  SecurityPage.Text.Caption := S;
+  SecurityPage.Text.Parent := Result.Surface;
+
+  Top := SecurityPage.Text.Top + SecurityPage.Text.Height;
+
+  SecurityPage.Ini := TNewStaticText.Create(Result);
+  SecurityPage.Ini.Top := Top + ScaleY(15);
+  SecurityPage.Ini.Width := Result.SurfaceWidth;
+  SecurityPage.Ini.WordWrap := True;
+  SecurityPage.Ini.AutoSize := True;
+  SecurityPage.Ini.Caption := '';
+  SecurityPage.Ini.Parent := Result.Surface;
+
+  Top := SecurityPage.Ini.Top + SecurityPage.Ini.Height;
+
+  SecurityPage.CheckBox := TNewCheckbox.Create(Result);
+  SecurityPage.CheckBox.Top := Top + ScaleY(50);
+  SecurityPage.CheckBox.Width := Result.SurfaceWidth;
+  SecurityPage.CheckBox.Caption := 'Disable this requirement';
+  SecurityPage.CheckBox.Enabled := True;
+  SecurityPage.CheckBox.OnClick := @SecurityCheckBoxClick;
+  SecurityPage.CheckBox.Parent := Result.Surface;
+
+  Top := SecurityPage.CheckBox.Top + SecurityPage.CheckBox.Height;
+
+  SecurityPage.Info := TNewStaticText.Create(Result);
+  SecurityPage.Info.Top := Top + ScaleY(5);
+  SecurityPage.Info.Width := Result.SurfaceWidth;
+  SecurityPage.Info.WordWrap := True;
+  SecurityPage.Info.AutoSize := True;
+  S := 'This option is not recommended.';
+  S := S + ' Your computer could be vulnerable to MITM attacks which may result';
+  S := S + ' in the installation or execution of arbitrary code.';
+  S := S + ' You will have to change the';
+  S := S + Format(' %sdisable-tls%s ', [#39, #39]);
+  S := S + 'config value before you can use Composer.';
+  SecurityPage.Info.Caption := S;
+  SecurityPage.Info.Visible := True;
+  SecurityPage.Info.Parent := Result.Surface;
+
+end;
+
+procedure SecurityPageShow;
+var
+  Enable: String;
+  PhpIni: String;
+
+begin
+
+  if ConfigRec.PhpIni = '' then
+    Enable := 'create a php.ini file and enable the extension'
+  else
+  begin
+    Enable := 'enable the extension in your php.ini'
+    PhpIni := Format(' Your php.ini is located at: %s%s%s', [LF, TAB, ConfigRec.PhpIni]);
+  end;
+    
+  SecurityPage.Ini.Caption := Format('The recommended option is to %s, then click Back and try again.%s', [Enable, PhpIni]);
+  SecurityPage.Checkbox.Checked := Flags.DisableTls;
+
+end;
+
 
 procedure SettingsButtonClick(Sender: TObject);
 var
@@ -2289,7 +2315,7 @@ var
 begin
 
   Filename := '';
-  Dir := ExtractFileDir(Settings.Edit.Text);
+  Dir := ExtractFileDir(SettingsPage.Edit.Text);
 
   if Test = '' then
   begin
@@ -2305,12 +2331,12 @@ begin
   if GetOpenFileName('', Filename, Dir, Filter, Extension) then
   begin
 
-    Settings.Edit.Text := Filename;
+    SettingsPage.Edit.Text := Filename;
 
     if SettingsCheckInPath() then
       SettingsPageUpdate()
     else
-      PhpRec.Selected := Filename;
+      Flags.SelectedPhp := Filename;
  
   end;
 
@@ -2320,8 +2346,8 @@ end;
 procedure SettingsCheckBoxClick(Sender: TObject);
 begin
 
-  if Settings.CheckBox.Checked then
-    Settings.Edit.Text := PhpRec.Selected;
+  if SettingsPage.CheckBox.Checked then
+    SettingsPage.Edit.Text := Flags.SelectedPhp;
 
   SettingsPageUpdate();
 
@@ -2333,12 +2359,12 @@ begin
 
   Result := False;
 
-  if Settings.CheckBox.Checked and (Settings.Edit.Text <> '') then
+  if SettingsPage.CheckBox.Checked and (SettingsPage.Edit.Text <> '') then
   begin
         
-    if CompareText(NormalizePath(Settings.Edit.Text), Paths.Php.Data.Cmd) = 0 then
+    if CompareText(NormalizePath(SettingsPage.Edit.Text), Paths.Php.Data.Cmd) = 0 then
     begin
-      Settings.CheckBox.Checked := False;
+      SettingsPage.CheckBox.Checked := False;
       Result := True;
     end;
 
@@ -2355,49 +2381,49 @@ begin
 
   Result := CreateCustomPage(Id, Caption, Description);
 
-  Settings.Text := TNewStaticText.Create(Result);
-  Settings.Text.AutoSize := True;
-  Settings.Text.Caption := '';
-  Settings.Text.Parent := Result.Surface;
+  SettingsPage.Text := TNewStaticText.Create(Result);
+  SettingsPage.Text.AutoSize := True;
+  SettingsPage.Text.Caption := '';
+  SettingsPage.Text.Parent := Result.Surface;
 
-  Top := Settings.Text.Top + Settings.Text.Height;
+  Top := SettingsPage.Text.Top + SettingsPage.Text.Height;
 
-  Settings.Edit := TNewEdit.Create(Result);
-  Settings.Edit.Top := Top + ScaleY(10);
-  Settings.Edit.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
-  Settings.Edit.ReadOnly := True;
-  Settings.Edit.Text := '';
-  Settings.Edit.Parent := Result.Surface;
+  SettingsPage.Edit := TNewEdit.Create(Result);
+  SettingsPage.Edit.Top := Top + ScaleY(10);
+  SettingsPage.Edit.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
+  SettingsPage.Edit.ReadOnly := True;
+  SettingsPage.Edit.Text := '';
+  SettingsPage.Edit.Parent := Result.Surface;
 
-  Settings.Button := TNewButton.Create(Result);
-  Settings.Button.Top := Settings.Edit.Top - ScaleY(1);
-  Settings.Button.Left := Result.SurfaceWidth - ScaleX(75);
-  Settings.Button.Width := ScaleX(75);
-  Settings.Button.Height := ScaleY(23);
-  Settings.Button.Caption := '&Browse...';
-  Settings.Button.Enabled := False;
-  Settings.Button.OnClick := @SettingsButtonClick;
-  Settings.Button.Parent := Result.Surface;
+  SettingsPage.Button := TNewButton.Create(Result);
+  SettingsPage.Button.Top := SettingsPage.Edit.Top - ScaleY(1);
+  SettingsPage.Button.Left := Result.SurfaceWidth - ScaleX(75);
+  SettingsPage.Button.Width := ScaleX(75);
+  SettingsPage.Button.Height := ScaleY(23);
+  SettingsPage.Button.Caption := '&Browse...';
+  SettingsPage.Button.Enabled := False;
+  SettingsPage.Button.OnClick := @SettingsButtonClick;
+  SettingsPage.Button.Parent := Result.Surface;
 
-  Top := Settings.Button.Top + Settings.Button.Height;
+  Top := SettingsPage.Button.Top + SettingsPage.Button.Height;
 
-  Settings.CheckBox := TNewCheckbox.Create(Result);
-  Settings.CheckBox.Top := Top + ScaleY(10);
-  Settings.CheckBox.Width := Result.SurfaceWidth;
-  Settings.CheckBox.Caption := 'Choose a different php.exe from the one in your path.';
-  Settings.CheckBox.Enabled := False;
-  Settings.CheckBox.OnClick := @SettingsCheckBoxClick;
-  Settings.CheckBox.Parent := Result.Surface;
+  SettingsPage.CheckBox := TNewCheckbox.Create(Result);
+  SettingsPage.CheckBox.Top := Top + ScaleY(10);
+  SettingsPage.CheckBox.Width := Result.SurfaceWidth;
+  SettingsPage.CheckBox.Caption := 'Choose a different php.exe from the one in your path.';
+  SettingsPage.CheckBox.Enabled := False;
+  SettingsPage.CheckBox.OnClick := @SettingsCheckBoxClick;
+  SettingsPage.CheckBox.Parent := Result.Surface;
 
-  Top := Settings.CheckBox.Top + Settings.CheckBox.Height;
+  Top := SettingsPage.CheckBox.Top + SettingsPage.CheckBox.Height;
 
-  Settings.Info := TNewStaticText.Create(Result);
-  Settings.Info.Top := Top + ScaleY(6);
-  Settings.Info.Width := Result.SurfaceWidth;
-  Settings.Info.WordWrap := True;
-  Settings.Info.AutoSize := True;
-  Settings.Info.Caption := '';
-  Settings.Info.Parent := Result.Surface;
+  SettingsPage.Info := TNewStaticText.Create(Result);
+  SettingsPage.Info.Top := Top + ScaleY(6);
+  SettingsPage.Info.Width := Result.SurfaceWidth;
+  SettingsPage.Info.WordWrap := True;
+  SettingsPage.Info.AutoSize := True;
+  SettingsPage.Info.Caption := '';
+  SettingsPage.Info.Parent := Result.Surface;
 
 end;
 
@@ -2406,34 +2432,38 @@ procedure SettingsPageShow;
 begin
 
   if SetPathInfo(False) then
-    PhpRec.Selected := '';
+    Flags.SelectedPhp := '';
+
+  {Important to reset these}
+  Flags.DisableTls := False;
+  Flags.LastErrorPage := 0;
 
   if Paths.Php.Status = PATH_NONE then
   begin
-    Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
-    Settings.Edit.ReadOnly := False;
-    Settings.Button.Enabled := True;
-    Settings.CheckBox.Visible := False;
-    Settings.Info.Caption := '';
+    SettingsPage.Text.Caption := 'Select where php.exe is located, then click Next.';
+    SettingsPage.Edit.ReadOnly := False;
+    SettingsPage.Button.Enabled := True;
+    SettingsPage.CheckBox.Visible := False;
+    SettingsPage.Info.Caption := '';
   end
   else
   begin
 
-    Settings.Edit.ReadOnly := True;
-    Settings.CheckBox.Visible := True;
+    SettingsPage.Edit.ReadOnly := True;
+    SettingsPage.CheckBox.Visible := True;
 
     if Paths.Php.Status = PATH_OK then
     begin
 
       {SettingsCheckInPath only disables the checkbox}
       if not SettingsCheckInPath() then
-        Settings.CheckBox.Enabled := True;
+        SettingsPage.CheckBox.Enabled := True;
 
     end
     else
     begin
-      Settings.CheckBox.Enabled := False;
-      Settings.CheckBox.Checked := False;
+      SettingsPage.CheckBox.Enabled := False;
+      SettingsPage.CheckBox.Checked := False;
     end;
 
     SettingsPageUpdate();
@@ -2446,24 +2476,24 @@ end;
 procedure SettingsPageUpdate;
 begin
 
-  if Settings.CheckBox.Checked then
+  if SettingsPage.CheckBox.Checked then
   begin
     {Checked, Edit.Text already set}
-    Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
-    Settings.Button.Enabled := True;
-    Settings.Info.Caption := 'This will replace the php entry in your path. You must be certain you want to do this.';
+    SettingsPage.Text.Caption := 'Select where php.exe is located, then click Next.';
+    SettingsPage.Button.Enabled := True;
+    SettingsPage.Info.Caption := 'This will replace the php entry in your path. You must be certain you want to do this.';
   end
   else
   begin
     {Unchecked, so we need to add path php.exe to Edit.Text}
-    Settings.Text.Caption := 'We found php.exe in your path. Click Next to use it.';
-    Settings.Button.Enabled := False;
-    Settings.Edit.Text := Paths.Php.Data.Cmd;
+    SettingsPage.Text.Caption := 'We found php.exe in your path. Click Next to use it.';
+    SettingsPage.Button.Enabled := False;
+    SettingsPage.Edit.Text := Paths.Php.Data.Cmd;
 
-    if Settings.CheckBox.Enabled then
-      Settings.Info.Caption := ''
+    if SettingsPage.CheckBox.Enabled then
+      SettingsPage.Info.Caption := ''
     else
-      Settings.Info.Caption := 'To use a different php.exe, you must remove this one from your System path.';
+      SettingsPage.Info.Caption := 'To use a different php.exe, you must remove this one from your System path.';
 
   end;
 
