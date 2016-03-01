@@ -259,7 +259,7 @@ var
   Test: String;                   {flags test mode and contains any test to run}
   Pages: TCustomPagesRec;         {group of custom pages}
   SettingsPage: TSettingsPageRec; {contains Settings page controls}
-  SecurityPage: TSecurityPageRec; {contains security page controls}
+  SecurityPage: TSecurityPageRec; {contains Security page controls}
 
 
 const
@@ -286,7 +286,7 @@ const
   ERR_CMD_EXE = 100;
   ERR_PHP_EXE = 101;
   ERR_PHP_OUTPUT = 200;
-  ERR_PHP_SETTINGS = 200;
+  ERR_PHP_SETTINGS = 201;
   ERR_INSTALL_OK = 300;
   ERR_INSTALL_WARNINGS = 301;
   ERR_INSTALL_ERRORS = 302;
@@ -371,6 +371,7 @@ function ProgressShowDownload(CurPageID: Integer): Boolean; forward;
 procedure ProgressShowPhp(CurPageID: Integer; const Filename: String); forward;
 procedure ProgressShowSettings(CurPageID: Integer; const Filename: String); forward;
 procedure SecurityCheckBoxClick(Sender: TObject); forward;
+procedure SecurityInfoClick(Sender: TObject); forward;
 function SecurityPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure SecurityPageShow; forward;
 procedure SettingsButtonClick(Sender: TObject); forward;
@@ -468,8 +469,10 @@ begin
   begin
 
     {We must check Flags.ProgressPage first}
-    if Flags.ProgressPage then
-      Flags.ProgressPage := False
+    //if Flags.ProgressPage then
+    //  Flags.ProgressPage := False
+    if CurPageID = Pages.Progress.Tag then
+      Pages.Progress.Tag := 0
     else
     begin
       SettingsPageShow();
@@ -963,7 +966,36 @@ begin
   Config.LineCount := GetArrayLength(Output);
 
   for I := 0 to Config.LineCount - 1 do
+  begin
+
+    if Pos('Some settings on your machine', Output[I]) <> 0 then
+      Continue;
+
+    if Pos('Make sure that you fix the issues', Output[I]) <> 0 then
+      Continue;
+
+    if Pos('If you encounter issues', Output[I]) <> 0 then
+      Continue;
+
+    if Pos('php.ini used by', Output[I]) <> 0 then
+      Continue;
+          
+    if Pos('If you can not modify the ini', Output[I]) <> 0 then
+      Continue;
+    
+    if Pos('openssl', Output[I]) <> 0 then
+      Continue;
+
+    if Pos('You have instructed', Output[I]) <> 0 then
+      Continue;
+
+    if Pos('This will leave all downloads', Output[I]) <> 0 then
+      Continue;
+
+    StringChangeEx(Output[I], '`', '', True);
+        
     AddLine(Lines, Output[I]);
+  end;
 
   Config.Output := Trim(Lines);
   
@@ -1019,11 +1051,21 @@ begin
   AddParam('quiet', Result);
     
   if Check then
+  begin
     AddParam('check', Result);
+    
+    if not Config.PhpSecure then
+      AddParam('disable-tls', Result);
+
+  end
+  else
+  begin
   
-  {Important to check both these values}
-  if not Config.PhpSecure and Flags.DisableTls then
-    AddParam('disable-tls', Result);
+    {Important to check both these values}
+    if not Config.PhpSecure and Flags.DisableTls then
+      AddParam('disable-tls', Result);
+
+  end;
 
 end;
 
@@ -1730,10 +1772,10 @@ begin
   can be shown for certain error conditions in the called process}
   
   Params := '-v';
-  Debug(Format('Calling %s with params: %s', [Config.PhpExe, Params]));
+  Debug(Format('Calling "%s" %s', [Config.PhpExe, Params]));
   Result := Exec(Config.PhpExe, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
 
-  if not Result then
+  if not Result or (Config.ExitCode <> 0) then
     SetPhpError(ERR_PHP_EXE, Config);
 
 end;
@@ -1899,7 +1941,7 @@ begin
   begin
     
     {See if we have output which means there are warnings}
-    if Config.LineCount <> 0 then
+    if Config.Output <> '' then
       Config.StatusCode := ERR_INSTALL_WARNINGS;
 
     {Check that composer.phar exists, otherwise setup will
@@ -2054,7 +2096,7 @@ begin
   begin
     Page.Caption := 'PHP Settings Error';
     Page.Description := 'Composer will not work with your current settings'
-    Memo.Text := ConfigRec.Error;
+    Memo.Text := ConfigRec.Error + Format('%sThe php.ini used by your command-line PHP is located at: %s%s', [LF + LF, LF, ConfigRec.PhpIni]);;
   end
   else if Paths.Error <> '' then
   begin
@@ -2179,23 +2221,31 @@ procedure ProgressShowPhp(CurPageID: Integer; const Filename: String);
 begin
 
   {Important to set Flags.ProgressPage because the progress page has no PageID}
-  Flags.ProgressPage := True;
+  //Flags.ProgressPage := True;
   ProgressPageShow('Checking your settings', 'Checking:', Filename, CurPageID);
       
   try
       
-    if not CheckPhp(SettingsPage.Edit.Text) then
+    if not CheckPhp(Filename) then
     begin
       {Error will be in PhpRec.Error}
       ErrorPageUpdate(Pages.ErrorPhp);
       Exit;
     end;
 
-    {Exit if no openssl, so the security page is shown}
-    if not ConfigRec.PhpSecure then
+    if not CheckPhpSettings(ConfigRec) then
+    begin
+      {Error will be in PhpRec.Error}
+      ErrorPageUpdate(Pages.ErrorPhp);
       Exit;
+    end;
 
-    ProgressCheckSettings(Pages.ErrorPhp);
+    if not CheckAllPaths then
+    begin
+      {Error will be in Paths.Error}
+      ErrorPageUpdate(Pages.ErrorPhp);
+      Exit;    
+    end;
         
   finally    
     ProgressPageHide();
@@ -2224,6 +2274,13 @@ procedure SecurityCheckBoxClick(Sender: TObject);
 begin
   WizardForm.NextButton.Enabled := SecurityPage.CheckBox.Checked;
   Flags.DisableTls := SecurityPage.CheckBox.Checked;
+end;
+
+
+procedure SecurityInfoClick(Sender: TObject);
+begin
+  SecurityPage.CheckBox.Checked := not SecurityPage.CheckBox.Checked;
+  SecurityCheckBoxClick(Sender);
 end;
 
 
@@ -2280,6 +2337,7 @@ begin
   S := S + 'config value before you can use Composer.';
   SecurityPage.Info.Caption := S;
   SecurityPage.Info.Visible := True;
+  SecurityPage.Info.OnClick := @SecurityInfoClick;
   SecurityPage.Info.Parent := Result.Surface;
 
 end;
@@ -2290,13 +2348,15 @@ var
   PhpIni: String;
 
 begin
+  
+  Flags.LastErrorPage := 0;
 
   if ConfigRec.PhpIni = '' then
     Enable := 'create a php.ini file and enable the extension'
   else
   begin
     Enable := 'enable the extension in your php.ini'
-    PhpIni := Format(' Your php.ini is located at: %s%s%s', [LF, TAB, ConfigRec.PhpIni]);
+    PhpIni := Format('The php.ini used by your command-line PHP is: %s%s%s', [LF, TAB, ConfigRec.PhpIni]);
   end;
     
   SecurityPage.Ini.Caption := Format('The recommended option is to %s, then click Back and try again.%s', [Enable, PhpIni]);
