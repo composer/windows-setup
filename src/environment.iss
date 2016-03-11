@@ -1,7 +1,7 @@
 [Code]
 
 {This code section is included into the main script and keeps the
-important path functions separate from it. There should be no need
+important environment functions separate from it. There should be no need
 to change this.}
 
 function ExpandEnvironmentStrings(Src: String; Dst: String; Size: DWord): DWord;
@@ -10,12 +10,15 @@ function ExpandEnvironmentStrings(Src: String; Dst: String; Size: DWord): DWord;
 function SendMessageTimeout(Hwnd, Msg, WParam: LongInt; LParam: String; Flags, Timeout: LongInt; lpdwResult: DWord): DWord;
   external 'SendMessageTimeoutW@user32.dll stdcall delayload';
 
+function EnvAdd(Hive: Integer; Name, Value: String; Display: Boolean): Integer; forward;
+function EnvRemove(Hive: Integer; Name, Value: String; Display: Boolean): Integer; forward;
 function AddToPath(Hive: Integer; Value: String): Integer; forward;
 function RemoveFromPath(Hive: Integer; Value: String): Integer; forward;
 function GetRawPath(Hive: Integer; var Value: String): Boolean; forward;
 function SplitPath(Value: String): TArrayOfString; forward;
 function GetPathKeyForHive(Hive: Integer): String; forward;
 function GetHiveName(Hive: Integer): String; forward;
+function GetHiveFriendlyName(Hive: Integer): String; forward;
 function NormalizePath(const Value: String): String; forward;
 function GetSafePathList(Hive: Integer): TPathList; forward;
 function GetSafePath(var PathList: TPathList; Index: Integer): String; forward;
@@ -23,15 +26,99 @@ procedure SetPathList(Hive: Integer; const Path: String; var SafeList: TPathList
 function DirectoryInPath(var Directory: String; PathList: TPathList; Hive: Integer): Boolean; forward;
 function SearchPath(PathList: TPathList; Hive: Integer; const Cmd: String): String; forward;
 function SearchPathEx(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String; forward;
-procedure NotifyPathChange; forward;
+procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Display: Boolean); forward;
+procedure DbgPath(Action, Hive: Integer; Value: String); forward;
+procedure DbgError(Name: String); forward;
+procedure NotifyEnvironmentChange; forward;
 function NeedsTrailingSeparator: Boolean; forward;
 
 const
-  PATH_MOD_CHANGED = 0;
-  PATH_MOD_NONE = 1;
-  PATH_MOD_FAILED = 2;
+  ENV_CHANGED = 0;
+  ENV_NONE = 1;
+  ENV_FAILED = 2;
+  ENV_ADD = 100;
+  ENV_REMOVE = 101;
 
-  PATH_FAIL_MSG = 'Failed, path could not be updated';
+  ENV_KEY_PATH = 'PATH';
+  
+
+function EnvAdd(Hive: Integer; Name, Value: String; Display: Boolean): Integer;
+var
+  Key: String;
+  Existing: String;
+  Res: Boolean;
+
+begin
+
+  if CompareText(ENV_KEY_PATH, Name) = 0 then
+  begin
+    Result := AddToPath(Hive, Value);
+    Exit;
+  end;
+
+  Key := GetPathKeyForHive(Hive);
+
+  if RegQueryStringValue(Hive, Key, Name, Existing) then
+  begin
+    
+    if CompareText(Existing, Value) = 0 then
+    begin
+      Result := ENV_NONE;
+      Exit;
+    end;
+  end;
+
+  DbgEnv(ENV_ADD, Hive, Name, Value, Display);
+  Existing := Value;  
+
+  {See if we are expandable}
+  if StringChangeEx(Existing, '%', '', True) = 2 then
+    Res := RegWriteExpandStringValue(Hive, Key, Name, Value)
+  else
+    Res := RegWriteStringValue(Hive, Key, Name, Value);
+
+  if Res then
+    Result := ENV_CHANGED
+  else
+  begin
+    Result := ENV_FAILED;
+    DbgError(Name);
+  end;
+
+end;
+
+
+function EnvRemove(Hive: Integer; Name, Value: String; Display: Boolean): Integer;
+var
+  Key: String;
+
+begin
+
+  if CompareText(ENV_KEY_PATH, Name) = 0 then
+  begin
+    Result := RemoveFromPath(Hive, Value);
+    Exit;
+  end;
+
+  Key := GetPathKeyForHive(Hive);
+
+  if not RegValueExists(Hive, Key, Name) then
+  begin
+    Result := ENV_NONE;
+    Exit;
+  end;
+
+  DbgEnv(ENV_REMOVE, Hive, Name, Value, Display);
+
+  if RegDeleteValue(Hive, Key, Name) then
+    Result := ENV_CHANGED
+  else
+  begin
+    Result := ENV_FAILED;
+    DbgError(Name);
+  end;
+
+end;
 
 
 function AddToPath(Hive: Integer; Value: String): Integer;
@@ -49,7 +136,7 @@ begin
   {We exit if NormalizePath failed and/or we have no value}
   if SafeDirectory = '' then
   begin
-    Result := PATH_MOD_FAILED;
+    Result := ENV_FAILED;
     Exit;
   end;
 
@@ -59,16 +146,16 @@ begin
   {See if our directory is already in the path}
   if DirectoryInPath(SafeDirectory, SafeList, Hive) then
   begin
-    Result := PATH_MOD_NONE;
+    Result := ENV_NONE;
     Exit;
   end;
 
   {Get the current path values from registry}
   Key := GetPathKeyForHive(Hive);
   Path := '';
-  RegQueryStringValue(Hive, Key, 'PATH', Path);
+  RegQueryStringValue(Hive, Key, ENV_KEY_PATH, Path);
 
-  Debug(Format('Adding %s to path [%s\%s]', [SafeDirectory, GetHiveName(Hive), Key]));
+  DbgPath(ENV_ADD, Hive, SafeDirectory);  
   
   {Add trailing separator to path if required}
   if (Path <> '') and (Path[Length(Path)] <> ';') then
@@ -81,12 +168,12 @@ begin
   if NeedsTrailingSeparator then
     Path := Path + ';';
 
-  if RegWriteExpandStringValue(Hive, Key, 'PATH', Path) then
-    Result := PATH_MOD_CHANGED
+  if RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, Path) then
+    Result := ENV_CHANGED
   else
   begin
-    Result := PATH_MOD_FAILED;
-    Debug(PATH_FAIL_MSG);    
+    Result := ENV_FAILED;
+    DbgError(ENV_KEY_PATH);    
   end;
 
 end;
@@ -112,14 +199,14 @@ begin
   {We exit if NormalizePath failed}
   if SafeDirectory = '' then
   begin
-    Result := PATH_MOD_FAILED;
+    Result := ENV_FAILED;
     Exit;
   end;
 
   {Paranoid check to make sure we are not removing a system path - should not happen}
   if Pos(AnsiLowercase(GetSystemDir()), AnsiLowercase(SafeDirectory)) = 1 then
   begin
-    Result := PATH_MOD_FAILED;
+    Result := ENV_FAILED;
     Exit;
   end;
 
@@ -129,11 +216,11 @@ begin
 
   if not GetRawPath(Hive, CurrentPath) then
   begin
-    Result := PATH_MOD_NONE;
+    Result := ENV_NONE;
     Exit;
   end;
-
-  Debug(Format('Removing %s from path [%s\%s]', [SafeDirectory, GetHiveName(Hive), Key]));
+    
+  DbgPath(ENV_REMOVE, Hive, SafeDirectory);
   
   {Split current path into a list of raw entries}
   RawList := SplitPath(CurrentPath);
@@ -166,23 +253,23 @@ begin
   {See if we found the entry we want to remove}
   if not FoundEntry then
   begin
-    Result := PATH_MOD_NONE;
+    Result := ENV_NONE;
     Exit;
   end;
 
   if (NewPath = '') and (Hive = HKEY_CURRENT_USER) then
     {We have an empty User PATH, so we can delete the subkey}
-    Res := RegDeleteValue(Hive, Key, 'PATH')
+    Res := RegDeleteValue(Hive, Key, ENV_KEY_PATH)
   else
     {Write the new path (could be empty for HKEY_LOCAL_MACHINE)}
-    Res := RegWriteExpandStringValue(Hive, Key, 'PATH', NewPath);
+    Res := RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, NewPath);
 
   if Res then
-    Result := PATH_MOD_CHANGED
+    Result := ENV_CHANGED
   else
   begin
-    Result := PATH_MOD_FAILED;
-    Debug(PATH_FAIL_MSG);
+    Result := ENV_FAILED;
+    DbgError(ENV_KEY_PATH);
   end;
 
 end;
@@ -196,7 +283,7 @@ begin
 
   Value := '';
   Key := GetPathKeyForHive(Hive);
-  Result := RegQueryStringValue(Hive, Key, 'PATH', Value);
+  Result := RegQueryStringValue(Hive, Key, ENV_KEY_PATH, Value);
 
 end;
 
@@ -261,6 +348,17 @@ begin
     Result := 'HKLM'
   else
     Result := 'HKCU';
+
+end;
+
+
+function GetHiveFriendlyName(Hive: Integer): String;
+begin
+  
+  if Hive = HKEY_LOCAL_MACHINE then
+    Result := 'System'
+  else
+    Result := 'User';
 
 end;
 
@@ -456,7 +554,57 @@ begin
 end;
 
 
-procedure NotifyPathChange;
+procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Display: Boolean);
+var
+  Path: String;
+  Prefix: String;
+  
+begin
+
+  Path := Format('%s\%s', [GetPathKeyForHive(Hive), GetHiveName(Hive)]);
+  Name := Format('%s%s%s', [#39, Name, #39]);
+
+  if Display then
+    Value := Format(' with value %s%s%s', [#39, Value, #39])
+  else
+    Value := '';
+
+  if Action = ENV_ADD then
+    Prefix := Format('Adding %s%s to', [Name, Value])
+  else
+    Prefix := Format('Removing %s%s from', [Name, Value]);
+
+  Debug(Format('%s [%s]', [Prefix, Path]));
+
+end;
+
+
+procedure DbgError(Name: String);
+begin
+  Debug(Format('Failed to update %s value', [Name]));
+end;
+
+
+procedure DbgPath(Action, Hive: Integer; Value: String);
+var
+  Path: String;
+  Prefix: String;
+
+begin
+
+  Path := Format('%s\%s\%s', [GetPathKeyForHive(Hive), GetHiveName(Hive), ENV_KEY_PATH]);
+
+  if Action = ENV_ADD then
+    Prefix := Format('Adding %s%s%s to', [#39, Value, #39])
+  else
+    Prefix := Format('Removing %s%s%s from', [#39, Value, #39]);
+
+  Debug(Format('%s [%s]', [Prefix, Path]));
+
+end;
+
+
+procedure NotifyEnvironmentChange;
 var
   Res: DWORD;
 

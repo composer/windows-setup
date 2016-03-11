@@ -33,7 +33,7 @@ type
   end;
 
 function DeleteUserData(HParent: HWND; DirList: String): Boolean;
-  external 'DeleteUserData@{app}\{#DllData} stdcall uninstallonly';
+  external 'DeleteUserData@{app}\{#DllData} stdcall delayload uninstallonly';
 
 procedure UserDataDelete; forward;
 function UserDataGet: TUserDataList; forward;

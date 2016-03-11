@@ -13,8 +13,10 @@
 process(is_array($argv) ? $argv : array());
 
 /**
- * processes the installer
- */
+*  in the process function
+*
+* @param array $argv
+*/
 function process($argv)
 {
     if (in_array('--help', $argv)) {
@@ -29,28 +31,25 @@ function process($argv)
     $force      = in_array('--force', $argv);
     $quiet      = in_array('--quiet', $argv);
     $disableTls = in_array('--disable-tls', $argv);
-    $winSetup   = in_array('--win-setup', $argv);
     $installDir = getOptValue('--install-dir', $argv, false);
     $version    = getOptValue('--version', $argv, false);
     $filename   = getOptValue('--filename', $argv, 'composer.phar');
     $cafile     = getOptValue('--cafile', $argv, false);
 
+    if (!checkParams($installDir, $version, $cafile)) {
+        exit(1);
+    }
+
     $warnings = array();
-    $ok = checkPlatform($warnings, $quiet, $disableTls, $winSetup);
-    $stop = !checkParams($installDir, $version, $cafile);
+    $ok = checkPlatform($warnings, $quiet, $disableTls);
 
     if ($check) {
-        // winSetup checks php configuration first and doesn't need any warnings
-        if (!$winSetup) {
+        // Only show warnings if we haven't output any errors
+        if ($ok) {
             showWarnings($warnings);
             showSecurityWarning($disableTls);
         }
         exit($ok ? 0 : 1);
-    }
-
-    // This might be wrong, until I fathom out the purpose of the --force flag
-    if ($stop || !($ok || $force)) {
-        exit(1);
     }
 
     /**
@@ -58,20 +57,26 @@ function process($argv)
     * - Catch exceptions *thrown* in installComposer, output e->message and exit 1
     * - Remove composer home if created and installation fails
     * - Continue retry loop on first error
-    * - Reduce retry error messages for winSetup
+    * - Reduce retry error messages for quiet mode
     * - Only showWarnings if installation has succeeded (check this is desired
-    *   behaviour outside winSetup)
+    *   behaviour)
     * - Check error/warning/security messages are displayed correctly
     */
 
-    installComposer($version, $installDir, $filename, $quiet, $disableTls, $cafile);
-    showWarnings($warnings);
-    showSecurityWarning($disableTls);
-    exit(0);
+    if ($ok || $force) {
+        $installer = new Installer($quiet, $disableTls);
+        if ($installer->run($version, $installDir, $filename, $cafile)) {
+            showWarnings($warnings);
+            showSecurityWarning($disableTls);
+            exit(0);
+        }
+    }
+
+    exit(1);
 }
 
 /**
- * displays the help
+ * Displays the help
  */
 function displayHelp()
 {
@@ -86,7 +91,6 @@ Options
 --no-ansi            disable ANSI color output
 --quiet              do not output unimportant messages
 --disable-tls        disable SSL/TLS security for file downloads
---win-setup          modify output for the windows installer
 --install-dir="..."  accepts a target installation directory
 --version="..."      accepts a specific version to install instead of the latest
 --filename="..."     accepts a target filename (default: composer.phar)
@@ -101,6 +105,7 @@ EOF;
 * @param string $opt The command-line option to check
 * @param array $argv Command-line arguments
 * @param mixed $default Default value to be returned
+*
 * @return mixed The command-line value or the default
 */
 function getOptValue($opt, $argv, $default)
@@ -136,7 +141,8 @@ function setUseAnsi($argv)
     } else {
         // On Windows, default to no ANSI, except in ANSICON and ConEmu.
         // Everywhere else, default to ANSI if stdout is a terminal.
-        define('USE_ANSI',
+        define(
+            'USE_ANSI',
             (DIRECTORY_SEPARATOR == '\\')
                 ? (false !== getenv('ANSICON') || 'ON' === getenv('ConEmuANSI'))
                 : (function_exists('posix_isatty') && posix_isatty(1))
@@ -144,47 +150,36 @@ function setUseAnsi($argv)
     }
 }
 
- /**
- * Checks the platform for possible issues running Composer
- *
- * Errors are written to the output, warnings are saved for later display.
- *
- * @param array $warnings Populated by method, to be shown later
- * @param bool $quiet Quiet mode
- * @param bool $disableTls Bypass tls
- * @param bool $winSetup The windows installer
- * @return bool True if there are no errors
- */
-function checkPlatform(&$warnings, $quiet, $disableTls, $winSetup)
+/**
+* Checks the platform for possible issues running Composer
+*
+* Errors are written to the output, warnings are saved for later display.
+*
+* @param array $warnings Populated by method, to be shown later
+* @param bool $quiet Quiet mode
+* @param bool $disableTls Bypass tls
+*
+* @return bool True if there are no errors
+*/
+function checkPlatform(&$warnings, $quiet, $disableTls)
 {
-    // winSetup provides its own php.ini information
-    $iniMessage = !$winSetup ? getIniMessage() : '';
-    getPlatformIssues($errors, $warnings, $iniMessage);
+    getPlatformIssues($errors, $warnings);
 
-    // make openssl warning an error if tls has not been specifically disabled
+    // Make openssl warning an error if tls has not been specifically disabled
     if (isset($warnings['openssl']) && !$disableTls) {
         $errors['openssl'] = $warnings['openssl'];
         unset($warnings['openssl']);
     }
 
-    if ($winSetup) {
-        // winSetup provides its own openssl status handling
-        unset($errors['openssl']);
-        unset($warnings['openssl']);
-    }
-
     if (!empty($errors)) {
-        // winSetup provides its own instructions
-        if (!$winSetup) {
-            out('Some settings on your machine make Composer unable to work properly.', 'error');
-            out('Make sure that you fix the issues listed below and run this script again:', 'error');
-        }
+        out('Some settings on your machine make Composer unable to work properly.', 'error');
+        out('Make sure that you fix the issues listed below and run this script again:', 'error');
         outputIssues($errors);
         return false;
     }
 
     if (empty($warnings) && !$quiet) {
-       out('All settings correct for using Composer', 'success');
+        out('All settings correct for using Composer', 'success');
     }
     return true;
 }
@@ -195,6 +190,7 @@ function checkPlatform(&$warnings, $quiet, $disableTls, $winSetup)
 * @param mixed $installDir The required istallation directory
 * @param mixed $version The required composer version to install
 * @param mixed $cafile Certificate Authority file
+*
 * @return bool True if the supplied params are okay
 */
 function checkParams($installDir, $version, $cafile)
@@ -215,7 +211,6 @@ function checkParams($installDir, $version, $cafile)
         out("The defined Certificate Authority (CA) cert file ({$cafile}) does not exist or is not readable.", 'info');
         $result = false;
     }
-
     return $result;
 }
 
@@ -260,37 +255,24 @@ function outputIssues($issues)
 }
 
 /**
-* Returns info about the current php.ini to help resolve issues
-*
-* @return string
-*/
-function getIniMessage()
-{
-    $path = php_ini_loaded_file();
-    $msg = PHP_EOL.PHP_EOL;
-
-    if ($path) {
-        $msg .= 'The php.ini used by your command-line PHP is: '.$path;
-    } else {
-        $msg .= 'A php.ini file does not exist. You will have to create one.';
-    }
-    $msg .= PHP_EOL.'If you can not modify the ini file, you can also run `php -d option=value` to modify ini values on the fly. You can use -d multiple times.';
-
-    return $msg;
-}
-
-/**
 * Checks platform configuration for common incompatibility issues
 *
 * @param array $errors Populated by method
 * @param array $warnings Populated by method
-* @param string $iniMessage Info about the current php.ini
-* @return bool True if any errors or warnings have been found
+*
+* @return bool If any errors or warnings have been found
 */
-function getPlatformIssues(&$errors, &$warnings, $iniMessage)
+function getPlatformIssues(&$errors, &$warnings)
 {
     $errors = array();
     $warnings = array();
+
+    if ($iniPath = php_ini_loaded_file()) {
+        $iniMessage = PHP_EOL.'The php.ini used by your command-line PHP is: ' . $iniPath;
+    } else {
+        $iniMessage = PHP_EOL.'A php.ini file does not exist. You will have to create one.';
+    }
+    $iniMessage .= PHP_EOL.'If you can not modify the ini file, you can also run `php -d option=value` to modify ini values on the fly. You can use -d multiple times.';
 
     if (ini_get('detect_unicode')) {
         $errors['unicode'] = array(
@@ -352,6 +334,7 @@ function getPlatformIssues(&$errors, &$warnings, $iniMessage)
     if (!ini_get('allow_url_fopen')) {
         $errors['allow_url_fopen'] = array(
             'The allow_url_fopen setting is incorrect.',
+            'Add the following to the end of your `php.ini`:',
             '    allow_url_fopen = On',
             $iniMessage
         );
@@ -408,6 +391,22 @@ function getPlatformIssues(&$errors, &$warnings, $iniMessage)
         );
     }
 
+    if (extension_loaded('xdebug')) {
+        $warnings['xdebug_loaded'] = array(
+            'The xdebug extension is loaded, this can slow down Composer a little.',
+            'Disabling it when using Composer is recommended.'
+        );
+
+        if (ini_get('xdebug.profiler_enabled')) {
+            $warnings['xdebug_profile'] = array(
+                'The xdebug.profiler_enabled setting is enabled, this can slow down Composer a lot.',
+                'Add the following to the end of your `php.ini` to disable it:',
+                '    xdebug.profiler_enabled = 0',
+                $iniMessage
+            );
+        }
+    }
+
     ob_start();
     phpinfo(INFO_GENERAL);
     $phpinfo = ob_get_clean();
@@ -443,180 +442,6 @@ function getPlatformIssues(&$errors, &$warnings, $iniMessage)
 }
 
 /**
- * installs composer to the current working directory
- */
-function installComposer($version, $installDir, $filename, $quiet, $disableTls, $cafile)
-{
-    $installPath = (is_dir($installDir) ? rtrim($installDir, '/').'/' : '') . $filename;
-    $installDir  = realpath($installDir) ? realpath($installDir) : getcwd();
-    $file        = $installDir.DIRECTORY_SEPARATOR.$filename;
-
-    if (is_readable($file)) {
-        @unlink($file);
-    }
-
-    $home = getHomeDir();
-    file_put_contents($home.'/keys.dev.pub', <<<DEVPUBKEY
------BEGIN PUBLIC KEY-----
-MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAnBDHjZS6e0ZMoK3xTD7f
-FNCzlXjX/Aie2dit8QXA03pSrOTbaMnxON3hUL47Lz3g1SC6YJEMVHr0zYq4elWi
-i3ecFEgzLcj+pZM5X6qWu2Ozz4vWx3JYo1/a/HYdOuW9e3lwS8VtS0AVJA+U8X0A
-hZnBmGpltHhO8hPKHgkJtkTUxCheTcbqn4wGHl8Z2SediDcPTLwqezWKUfrYzu1f
-o/j3WFwFs6GtK4wdYtiXr+yspBZHO3y1udf8eFFGcb2V3EaLOrtfur6XQVizjOuk
-8lw5zzse1Qp/klHqbDRsjSzJ6iL6F4aynBc6Euqt/8ccNAIz0rLjLhOraeyj4eNn
-8iokwMKiXpcrQLTKH+RH1JCuOVxQ436bJwbSsp1VwiqftPQieN+tzqy+EiHJJmGf
-TBAbWcncicCk9q2md+AmhNbvHO4PWbbz9TzC7HJb460jyWeuMEvw3gNIpEo2jYa9
-pMV6cVqnSa+wOc0D7pC9a6bne0bvLcm3S+w6I5iDB3lZsb3A9UtRiSP7aGSo7D72
-8tC8+cIgZcI7k9vjvOqH+d7sdOU2yPCnRY6wFh62/g8bDnUpr56nZN1G89GwM4d4
-r/TU7BQQIzsZgAiqOGXvVklIgAMiV0iucgf3rNBLjjeNEwNSTTG9F0CtQ+7JLwaE
-wSEuAuRm+pRqi8BRnQ/GKUcCAwEAAQ==
------END PUBLIC KEY-----
-DEVPUBKEY
-);
-    file_put_contents($home.'/keys.tags.pub', <<<TAGSPUBKEY
------BEGIN PUBLIC KEY-----
-MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA0Vi/2K6apCVj76nCnCl2
-MQUPdK+A9eqkYBacXo2wQBYmyVlXm2/n/ZsX6pCLYPQTHyr5jXbkQzBw8SKqPdlh
-vA7NpbMeNCz7wP/AobvUXM8xQuXKbMDTY2uZ4O7sM+PfGbptKPBGLe8Z8d2sUnTO
-bXtX6Lrj13wkRto7st/w/Yp33RHe9SlqkiiS4MsH1jBkcIkEHsRaveZzedUaxY0M
-mba0uPhGUInpPzEHwrYqBBEtWvP97t2vtfx8I5qv28kh0Y6t+jnjL1Urid2iuQZf
-noCMFIOu4vksK5HxJxxrN0GOmGmwVQjOOtxkwikNiotZGPR4KsVj8NnBrLX7oGuM
-nQvGciiu+KoC2r3HDBrpDeBVdOWxDzT5R4iI0KoLzFh2pKqwbY+obNPS2bj+2dgJ
-rV3V5Jjry42QOCBN3c88wU1PKftOLj2ECpewY6vnE478IipiEu7EAdK8Zwj2LmTr
-RKQUSa9k7ggBkYZWAeO/2Ag0ey3g2bg7eqk+sHEq5ynIXd5lhv6tC5PBdHlWipDK
-tl2IxiEnejnOmAzGVivE1YGduYBjN+mjxDVy8KGBrjnz1JPgAvgdwJ2dYw4Rsc/e
-TzCFWGk/HM6a4f0IzBWbJ5ot0PIi4amk07IotBXDWwqDiQTwyuGCym5EqWQ2BD95
-RGv89BPD+2DLnJysngsvVaUCAwEAAQ==
------END PUBLIC KEY-----
-TAGSPUBKEY
-);
-
-    if (false === $disableTls && empty($cafile) && !HttpClient::getSystemCaRootBundlePath()) {
-        $errorHandler = new ErrorHandler();
-        set_error_handler(array($errorHandler, 'handleError'));
-
-        $target = $home . '/cacert.pem';
-        $write = file_put_contents($target, HttpClient::getPackagedCaFile(), LOCK_EX);
-        @chmod($target, 0644);
-
-        restore_error_handler();
-
-        if (!$write) {
-            throw new RuntimeException('Unable to write bundled cacert.pem to: '.$target);
-        }
-        $cafile = $target;
-    }
-
-    $httpClient = new HttpClient($disableTls, $cafile);
-
-    $retries = 3;
-    while ($retries--) {
-        if (!$quiet) {
-            out("Downloading...", 'info');
-        }
-
-        $uriScheme = false === $disableTls ? 'https' : 'http';
-        $urlPath   = (false !== $version ? "/download/{$version}" : '') . '/composer.phar';
-        $url       = "{$uriScheme}://getcomposer.org{$urlPath}";
-        $errorHandler = new ErrorHandler();
-        set_error_handler(array($errorHandler, 'handleError'));
-
-        // download signature file
-        if (false === $disableTls) {
-            $signature = $httpClient->get($url.'.sig');
-            if (!$signature) {
-                out('Download failed: '.$errorHandler->message, 'error');
-            } else {
-                $signature = json_decode($signature, true);
-                $signature = base64_decode($signature['sha384']);
-            }
-        }
-
-        $fh = fopen($file, 'w');
-        if (!$fh) {
-            out('Could not create file '.$file.': '.$errorHandler->message, 'error');
-        }
-        if (!fwrite($fh, $httpClient->get($url))) {
-            out('Download failed: '.$errorHandler->message, 'error');
-        }
-        fclose($fh);
-
-        restore_error_handler();
-        if ($errorHandler->message) {
-            continue;
-        }
-
-        try {
-            // create a temp file ending in .phar since the Phar class only accepts that
-            if ('.phar' !== substr($file, -5)) {
-                copy($file, $file.'.tmp.phar');
-                $pharFile = $file.'.tmp.phar';
-            } else {
-                $pharFile = $file;
-            }
-
-            // verify signature
-            if (false === $disableTls) {
-                $pubkeyid = openssl_pkey_get_public('file://'.$home.'/' . ($version ? 'keys.tags.pub' : 'keys.dev.pub'));
-                $algo = defined('OPENSSL_ALGO_SHA384') ? OPENSSL_ALGO_SHA384 : 'SHA384';
-                if (!in_array('SHA384', openssl_get_md_methods())) {
-                    out('SHA384 is not supported by your openssl extension, could not verify the phar file integrity', 'error');
-                    exit(1);
-                }
-                $verified = 1 === openssl_verify(file_get_contents($file), $signature, $pubkeyid, $algo);
-                openssl_free_key($pubkeyid);
-                if (!$verified) {
-                    out('Signature mismatch, could not verify the phar file integrity', 'error');
-                    exit(1);
-                }
-            }
-
-            // test the phar validity
-            if (!ini_get('phar.readonly')) {
-                $phar = new Phar($pharFile);
-                // free the variable to unlock the file
-                unset($phar);
-            }
-            // clean up temp file if needed
-            if ($file !== $pharFile) {
-                unlink($pharFile);
-            }
-            break;
-        } catch (Exception $e) {
-            if (!$e instanceof UnexpectedValueException && !$e instanceof PharException) {
-                throw $e;
-            }
-            // clean up temp file if needed
-            if ($file !== $pharFile) {
-                unlink($pharFile);
-            }
-            unlink($file);
-            if ($retries) {
-                if (!$quiet) {
-                   out('The download is corrupt, retrying...', 'error');
-                }
-            } else {
-                out('The download is corrupt ('.$e->getMessage().'), aborting.', 'error');
-                exit(1);
-            }
-        }
-    }
-
-    if ($errorHandler->message) {
-        out('The download failed repeatedly, aborting.', 'error');
-        exit(1);
-    }
-
-    chmod($file, 0755);
-
-    if (!$quiet) {
-        out(PHP_EOL."Composer successfully installed to: " . $file, 'success', false);
-        out(PHP_EOL."Use it: php $installPath", 'info');
-        out('');
-    }
-}
-
-/**
  * colorize output
  */
 function out($text, $color = null, $newLine = true)
@@ -642,34 +467,54 @@ function out($text, $color = null, $newLine = true)
 
 function getHomeDir()
 {
-    $home = getenv('COMPOSER_HOME');
-    if (!$home) {
-        if (defined('PHP_WINDOWS_VERSION_MAJOR')) {
-            if (!getenv('APPDATA')) {
-                throw new RuntimeException('The APPDATA or COMPOSER_HOME environment variable must be set for composer to install correctly');
-            }
-            $home = strtr(getenv('APPDATA'), '\\', '/') . '/Composer';
-        } else {
-            if (!getenv('HOME')) {
-                throw new RuntimeException('The HOME or COMPOSER_HOME environment variable must be set for composer to install correctly');
-            }
-            $home = rtrim(getenv('HOME'), '/') . '/.composer';
+    if (($home = getenv('COMPOSER_HOME'))) {
+        return $home;
+    }
+
+    if (defined('PHP_WINDOWS_VERSION_MAJOR')) {
+        if (!($userDir = getenv('APPDATA'))) {
+            throw new RuntimeException('The APPDATA or COMPOSER_HOME environment variable must be set for composer to install correctly');
+        }
+        return rtrim(strtr($userDir, '\\', '/'), '/') . '/Composer';
+    }
+
+    if (!($userDir = getenv('HOME'))) {
+        throw new RuntimeException('The HOME or COMPOSER_HOME environment variable must be set for composer to install correctly');
+    }
+
+    if (is_dir($userDir . '/.composer')) {
+        return $userDir . '/.composer';
+    }
+
+    if (useXdg()) {
+        // XDG Base Directory Specifications
+        if (!($xdgConfig = getenv('XDG_CONFIG_HOME'))) {
+            $xdgConfig = $userDir . '/.config';
+        }
+        return $xdgConfig . '/composer';
+    }
+
+    return $userDir . '/.composer';
+}
+
+/**
+ * @return bool
+ */
+function useXdg()
+{
+    foreach (array_keys($_SERVER) as $key) {
+        if (substr($key, 0, 4) === 'XDG_') {
+            return true;
         }
     }
-
-    if (!is_dir($home)) {
-        @mkdir($home, 0777, true);
-    }
-
-    return $home;
+    return false;
 }
 
 function validateCaFile($contents)
 {
     // assume the CA is valid if php is vulnerable to
     // https://www.sektioneins.de/advisories/advisory-012013-php-openssl_x509_parse-memory-corruption-vulnerability.html
-    if (
-        PHP_VERSION_ID <= 50327
+    if (PHP_VERSION_ID <= 50327
         || (PHP_VERSION_ID >= 50400 && PHP_VERSION_ID < 50422)
         || (PHP_VERSION_ID >= 50500 && PHP_VERSION_ID < 50506)
     ) {
@@ -679,20 +524,521 @@ function validateCaFile($contents)
     return (bool) openssl_x509_parse($contents);
 }
 
-class ErrorHandler
+class Installer
 {
-    public $message = '';
+    protected $quiet;
+    protected $disableTls;
+    protected $installPath;
+    protected $target;
+    protected $tmpFile;
+    protected $homeUrl;
+    protected $sigUrl;
+    protected $cafile;
+    protected $algo;
+    protected $pubKeyId;
+    protected $errHandler;
+    protected $installs = array();
 
-    public function handleError($code, $msg)
+    /**
+    * Constructor
+    *
+    * @param bool $quiet Quiet mode
+    * @param bool $disableTls Bypass tls
+    */
+    public function __construct($quiet, $disableTls)
     {
-        if ($this->message) {
-            $this->message .= "\n";
+        if (($this->quiet = $quiet)) {
+            ob_start();
         }
-        $this->message .= preg_replace('{^copy\(.*?\): }', '', $msg);
+        $this->disableTls = $disableTls;
+        $this->errHandler = new ErrorHandler();
+    }
+
+    /**
+    * Runs the installer
+    *
+    * @param mixed $version Specific version to install, or false
+    * @param mixed $installDir Specific installation directory, or false
+    * @param string $filename Specific filename to save to, or composer.phar
+    * @param mixed $cafile Path to CA bundle, or false
+    * @throws Exception If anything other than a RuntimeException is caught
+    *
+    * @return bool If the installation succeeded
+    */
+    public function run($version, $installDir, $filename, $cafile)
+    {
+        try {
+            $this->setTargetAndUrl($version, $installDir, $filename);
+            $this->setKeysAndTls($version, $cafile);
+            $result = $this->install();
+        } catch (Exception $e) {
+            $result = false;
+        }
+
+        // Always clean up
+        $this->cleanUp($result);
+
+        if (isset($e)) {
+            // Rethrow anything that is not a RuntimeException
+            if (!$e instanceof RuntimeException) {
+                throw $e;
+            }
+            out($e->getMessage(), 'error');
+        }
+        return $result;
+    }
+
+    /**
+    * Initialization methods to set the filenames and urls required
+    *
+    * @param mixed $version Specific version to install, or false
+    * @param mixed $installDir Specific installation directory, or false
+    * @param string $filename Specific filename to save to, or composer.phar
+    * @throws RuntimeException If the installation directory is not writable
+    */
+    protected function setTargetAndUrl($version, $installDir, $filename)
+    {
+        $this->installPath = (is_dir($installDir) ? rtrim($installDir, '/').'/' : '').$filename;
+        $installDir = realpath($installDir) ? realpath($installDir) : getcwd();
+
+        if (!is_writeable($installDir)) {
+            throw new RuntimeException('The installation directory "'.$installDir.'" is not writable');
+        }
+
+        $this->target = $installDir.DIRECTORY_SEPARATOR.$filename;
+        $this->tmpFile = $installDir.DIRECTORY_SEPARATOR.basename($this->target, '.phar').'-temp.phar';
+
+        $uriScheme = $this->disableTls ? 'http' : 'https';
+        $urlPath   = ($version ? "/download/{$version}" : '').'/composer.phar';
+        $this->homeUrl = "{$uriScheme}://getcomposer.org{$urlPath}";
+        $this->sigUrl = $this->homeUrl.'.sig';
+    }
+
+    /**
+    * A wrapper around methods to write public keys and set tls values
+    *
+    * @param mixed $version Specific version to install, or false
+    * @param mixed $cafile Path to CA bundle, or false
+    */
+    protected function setKeysAndTls($version, $cafile)
+    {
+        $home = $this->getComposerHome();
+        $devKey = $this->installKey(self::getDevPubKey(), $home, 'keys.dev.pub');
+        $tagsKey = $this->installKey(self::getTagsPubKey(), $home, 'keys.tags.pub');
+
+        if (!$this->disableTls) {
+            $this->setTlsValues($version ? $tagsKey : $devKey);
+
+            if (empty($cafile) && !HttpClient::getSystemCaRootBundlePath()) {
+                $cafile = $this->installKey(HttpClient::getPackagedCaFile(), $home, 'cacert.pem');
+            }
+            $this->cafile = $cafile;
+        }
+    }
+
+    /**
+    * Returns the Composer home directory, creating it if required
+    * @throws Runtime Exception If the directory cannot be created
+    *
+    * @return string
+    */
+    protected function getComposerHome()
+    {
+        $home = getHomeDir();
+
+        if (!is_dir($home)) {
+            $this->errHandler->start();
+
+            if (!mkdir($home, 0777, true)) {
+                throw new RuntimeException(sprintf(
+                    'Unable to create Composer home directory "%s": %s',
+                    $home,
+                    $this->errHandler->message
+                ));
+            }
+            $this->installs[] = $home;
+            $this->errHandler->stop();
+        }
+        return $home;
+    }
+
+    /**
+    * Writes public key data to disc
+    *
+    * @param string $data The public key(s) in pem format
+    * @param string $path The directory to write to
+    * @param string $filename The name of the file
+    * @throws RuntimeException If the file cannot be written
+    *
+    * @return string The path to the saved data
+    */
+    protected function installKey($data, $path, $filename)
+    {
+        $this->errHandler->start();
+
+        $target = $path.DIRECTORY_SEPARATOR.$filename;
+        $installed = file_exists($target);
+        $write = file_put_contents($target, $data, LOCK_EX);
+        @chmod($target, 0644);
+
+        $this->errHandler->stop();
+
+        if (!$write) {
+            throw new RuntimeException(sprintf('Unable to write %s to: %s', $filename, $path));
+        }
+
+        if (!$installed) {
+            $this->installs[] = $target;
+        }
+
+        return $target;
+    }
+
+    /**
+    * The main install function
+    *
+    * @return bool If the installation succeeded
+    */
+    protected function install()
+    {
+        $httpClient = new HttpClient($this->disableTls, $this->cafile);
+        $retries = 3;
+        $result = false;
+        $infoMsg = 'Downloading...';
+        $infoType = 'info';
+
+        while ($retries--) {
+            if (!$this->quiet) {
+                out($infoMsg, $infoType);
+                $infoMsg = 'Retrying...';
+                $infoType = 'error';
+            }
+
+            if (!$this->downloadToTmp($httpClient, $signature, $error)) {
+                out($error, 'error');
+                continue;
+            }
+
+            if (!$this->verifyAndSave($signature, $error)) {
+                out($error, 'error');
+                continue;
+            }
+
+            $result = true;
+            break;
+        }
+
+        if (!$this->quiet) {
+            if ($result) {
+                out(PHP_EOL."Composer successfully installed to: {$this->target}", 'success');
+                out("Use it: php {$this->installPath}", 'info');
+                out('');
+            } else {
+                out('The download failed repeatedly, aborting.', 'error');
+            }
+        }
+        return $result;
+    }
+
+    /**
+    * A wrapper around the methods needed to download and save the phar
+    *
+    * @param HttpClient $httpClient
+    * @param null|string $signature Set by method on successful download
+    * @param null|string $error Set by method on failure
+    *
+    * @return bool If the operation succeeded
+    */
+    protected function downloadToTmp($httpClient, &$signature, &$error)
+    {
+        $error = '';
+        $errFmt = 'The "%s" file could not be downloaded: %s';
+        $this->errHandler->start();
+
+        if (!$fh = fopen($this->tmpFile, 'w')) {
+            $error = sprintf('Could not create file "%s": %s', $this->tmpFile, $this->errHandler->message);
+
+        } elseif (!$this->getSignature($httpClient, $this->sigUrl, $signature)) {
+            $error = sprintf($errFmt, $this->sigUrl, $this->errHandler->message);
+
+        } elseif (!fwrite($fh, $httpClient->get($this->homeUrl))) {
+            $error = sprintf($errFmt, $this->homeUrl, $this->errHandler->message);
+        }
+
+        if (is_resource($fh)) {
+            fclose($fh);
+        }
+        $this->errHandler->stop();
+        return empty($error);
+    }
+
+    /**
+    * Verifies the downloaded file and saves it to the target location
+    *
+    * @param string $signature The digital signature to check
+    * @param null|string $error Set by method on failure
+    *
+    * @return bool If the operation succeeded
+    */
+    protected function verifyAndSave($signature, &$error)
+    {
+        $error = '';
+
+        if (!$this->validatePhar($this->tmpFile, $pharError)) {
+            $error = 'The download is corrupt: '.$pharError;
+
+        } elseif (!$this->verifySignature($this->tmpFile, $signature)) {
+            $error = 'Signature mismatch, could not verify the phar file integrity';
+
+        } else {
+            $this->errHandler->start();
+
+            if (!rename($this->tmpFile, $this->target)) {
+                $error = sprintf('Could not write to file "%s": %s', $this->target, $this->errHandler->message);
+            }
+            chmod($this->target, 0755);
+            $this->errHandler->stop();
+        }
+
+        return empty($error);
+    }
+
+    /**
+    * Sets the signature algo and public key resource
+    *
+    * @param string $keyFile The path to the public key
+    * @throws RuntimeException If SHA384 is not supported
+    */
+    protected function setTlsValues($keyFile)
+    {
+        if (!in_array('SHA384', openssl_get_md_methods())) {
+            throw new RuntimeException('SHA384 is not supported by your openssl extension');
+        }
+
+        $this->algo = defined('OPENSSL_ALGO_SHA384') ? OPENSSL_ALGO_SHA384 : 'SHA384';
+        $this->pubKeyId = openssl_pkey_get_public('file://'.$keyFile);
+    }
+
+    /**
+    * Downloads the digital signature of required phar file
+    *
+    * @param HttpClient $httpClient
+    * @param string $url The signature url
+    * @param null|string $signature Set by method on success
+    *
+    * @return bool If the download succeeded
+    */
+    protected function getSignature($httpClient, $url, &$signature)
+    {
+        if (!$result = $this->disableTls) {
+            $signature = $httpClient->get($url);
+
+            if ($signature) {
+                $signature = json_decode($signature, true);
+                $signature = base64_decode($signature['sha384']);
+                $result = true;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+    * Verifies the signature of the downloaded phar
+    *
+    * @param string $file The temp phar file
+    * @param string $signature The downloaded digital signature
+    *
+    * @return bool If the operation succeeded
+    */
+    protected function verifySignature($file, $signature)
+    {
+        if (!$result = $this->disableTls) {
+            $result = 1 === openssl_verify(
+                file_get_contents($file),
+                $signature,
+                $this->pubKeyId,
+                $this->algo
+            );
+        }
+
+        return $result;
+    }
+
+    /**
+    * Validates the downloaded phar file
+    *
+    * @param string $pharFile The temp phar file
+    * @param null|string $error Set by method on failure
+    *
+    * @return bool If the operation succeeded
+    */
+    protected function validatePhar($pharFile, &$error)
+    {
+        if (ini_get('phar.readonly')) {
+            return true;
+        }
+
+        try {
+            // Test the phar validity
+            $phar = new Phar($pharFile);
+            // Free the variable to unlock the file
+            unset($phar);
+            $result = true;
+
+        } catch (Exception $e) {
+            if (!$e instanceof UnexpectedValueException && !$e instanceof PharException) {
+                throw $e;
+            }
+            $error = $e->getMessage();
+            $result = false;
+        }
+        return $result;
+    }
+
+    /**
+    * Cleans up resources at the end of the installation
+    *
+    * @param bool $result If the installation succeeded
+    */
+    protected function cleanUp($result)
+    {
+        if (!$this->disableTls && is_resource($this->pubKeyId)) {
+            openssl_free_key($this->pubKeyId);
+        }
+
+        if (!$result) {
+            // Output buffered errors
+            if ($this->quiet) {
+                $this->outputErrors();
+            }
+            // Clean up stuff we created
+            $this->uninstall();
+        }
+    }
+
+    /**
+    * Outputs unique errors when in quiet mode
+    *
+    */
+    protected function outputErrors()
+    {
+        $errors = explode(PHP_EOL, ob_get_clean());
+        $shown = array();
+
+        foreach ($errors as $error) {
+            if ($error && !in_array($error, $shown)) {
+                out($error, 'error');
+                $shown[] = $error;
+            }
+        }
+    }
+
+    /**
+    * Uninstalls newly-created files and dirs on failure
+    *
+    */
+    protected function uninstall()
+    {
+        foreach (array_reverse($this->installs) as $target) {
+            if (is_file($target)) {
+                @unlink($target);
+            } elseif (is_dir($target)) {
+                @rmdir($target);
+            }
+        }
+    }
+
+    public static function getDevPubKey()
+    {
+        return <<<DEVPUBKEY
+-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAnBDHjZS6e0ZMoK3xTD7f
+FNCzlXjX/Aie2dit8QXA03pSrOTbaMnxON3hUL47Lz3g1SC6YJEMVHr0zYq4elWi
+i3ecFEgzLcj+pZM5X6qWu2Ozz4vWx3JYo1/a/HYdOuW9e3lwS8VtS0AVJA+U8X0A
+hZnBmGpltHhO8hPKHgkJtkTUxCheTcbqn4wGHl8Z2SediDcPTLwqezWKUfrYzu1f
+o/j3WFwFs6GtK4wdYtiXr+yspBZHO3y1udf8eFFGcb2V3EaLOrtfur6XQVizjOuk
+8lw5zzse1Qp/klHqbDRsjSzJ6iL6F4aynBc6Euqt/8ccNAIz0rLjLhOraeyj4eNn
+8iokwMKiXpcrQLTKH+RH1JCuOVxQ436bJwbSsp1VwiqftPQieN+tzqy+EiHJJmGf
+TBAbWcncicCk9q2md+AmhNbvHO4PWbbz9TzC7HJb460jyWeuMEvw3gNIpEo2jYa9
+pMV6cVqnSa+wOc0D7pC9a6bne0bvLcm3S+w6I5iDB3lZsb3A9UtRiSP7aGSo7D72
+8tC8+cIgZcI7k9vjvOqH+d7sdOU2yPCnRY6wFh62/g8bDnUpr56nZN1G89GwM4d4
+r/TU7BQQIzsZgAiqOGXvVklIgAMiV0iucgf3rNBLjjeNEwNSTTG9F0CtQ+7JLwaE
+wSEuAuRm+pRqi8BRnQ/GKUcCAwEAAQ==
+-----END PUBLIC KEY-----
+DEVPUBKEY;
+    }
+
+    public static function getTagsPubKey()
+    {
+        return <<<TAGSPUBKEY
+-----BEGIN PUBLIC KEY-----
+MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA0Vi/2K6apCVj76nCnCl2
+MQUPdK+A9eqkYBacXo2wQBYmyVlXm2/n/ZsX6pCLYPQTHyr5jXbkQzBw8SKqPdlh
+vA7NpbMeNCz7wP/AobvUXM8xQuXKbMDTY2uZ4O7sM+PfGbptKPBGLe8Z8d2sUnTO
+bXtX6Lrj13wkRto7st/w/Yp33RHe9SlqkiiS4MsH1jBkcIkEHsRaveZzedUaxY0M
+mba0uPhGUInpPzEHwrYqBBEtWvP97t2vtfx8I5qv28kh0Y6t+jnjL1Urid2iuQZf
+noCMFIOu4vksK5HxJxxrN0GOmGmwVQjOOtxkwikNiotZGPR4KsVj8NnBrLX7oGuM
+nQvGciiu+KoC2r3HDBrpDeBVdOWxDzT5R4iI0KoLzFh2pKqwbY+obNPS2bj+2dgJ
+rV3V5Jjry42QOCBN3c88wU1PKftOLj2ECpewY6vnE478IipiEu7EAdK8Zwj2LmTr
+RKQUSa9k7ggBkYZWAeO/2Ag0ey3g2bg7eqk+sHEq5ynIXd5lhv6tC5PBdHlWipDK
+tl2IxiEnejnOmAzGVivE1YGduYBjN+mjxDVy8KGBrjnz1JPgAvgdwJ2dYw4Rsc/e
+TzCFWGk/HM6a4f0IzBWbJ5ot0PIi4amk07IotBXDWwqDiQTwyuGCym5EqWQ2BD95
+RGv89BPD+2DLnJysngsvVaUCAwEAAQ==
+-----END PUBLIC KEY-----
+TAGSPUBKEY;
     }
 }
 
-class HttpClient {
+class ErrorHandler
+{
+    public $message;
+    protected $active;
+
+    /**
+    * Handle php errors
+    *
+    * @param mixed $code The error code
+    * @param mixed $msg The error message
+    */
+    public function handleError($code, $msg)
+    {
+        if ($this->message) {
+            $this->message .= PHP_EOL;
+        }
+        $this->message .= preg_replace('{^file_get_contents\(.*?\): }', '', $msg);
+    }
+
+    /**
+    * Starts error-handling if not already active
+    *
+    * Any message is cleared
+    */
+    public function start()
+    {
+        if (!$this->active) {
+            set_error_handler(array($this, 'handleError'));
+            $this->active = true;
+        }
+        $this->message = '';
+    }
+
+    /**
+    * Stops error-handling if active
+    *
+    * Any message is preserved until the next call to start()
+    */
+    public function stop()
+    {
+        if ($this->active) {
+            restore_error_handler();
+            $this->active = false;
+        }
+    }
+}
+
+class HttpClient
+{
 
     private $options = array('http' => array());
     private $disableTls = false;
@@ -4967,5 +5313,4 @@ hkIGuUE=
 -----END CERTIFICATE-----
 CACERT;
     }
-
 }
