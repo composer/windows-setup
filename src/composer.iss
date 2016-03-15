@@ -202,15 +202,9 @@ type
   end;
 
 type
-  TVersionRec = record
-    Major   : Integer;
-    Minor   : Integer;
-  end;
-
-type
   TVersionInfo = record
-    Existing    : TVersionRec;
-    Setup       : TVersionRec;
+    Existing    : Integer;
+    Setup       : Integer;
     Installed   : Boolean;
     Mixed       : Boolean;
   end;
@@ -239,9 +233,8 @@ end;
 type
   TSettingsPageRec = record
     Text      : TNewStaticText;
-    Edit      : TNewEdit;
+    Combo     : TNewComboBox;
     Browse    : TNewButton;
-    Checkbox  : TNewCheckbox;
     Info      : TNewStaticText;   
 end;
 
@@ -268,11 +261,11 @@ var
   TmpDir: String;                 {the temp directory that setup/uninstall uses}
   ConfigRec: TConfigRec;          {contains path/selected php.exe data and any error}
   Paths: TPathInfo;               {contains latest path info}
+  PhpList: TStringList;          {contains found PHP locations}
   ProxyRec: TProxyRec;            {contains latest proxy info}
   CmdExe: String;                 {full pathname to system cmd}
   EnvChanges: TEnvChangeList;     {list of environment changes to make, or made}
   Flags: TFlagsRec;               {contains global flags that won't go anywhere else}
-  Test: String;                   {flags test mode and contains any test to run}
   Pages: TCustomPagesRec;         {group of custom pages}
   SettingsPage: TSettingsPageRec; {contains Settings page controls}
   SecurityPage: TSecurityPageRec; {contains Security page controls}
@@ -283,8 +276,7 @@ const
   SEP_PATH = ';';
   LF = #13#10;
   TAB = #32#32#32#32#32#32;
-  TEST_FLAG = '?';
-
+  
   PHP_CHECK = '{#PhpCheck}';
   PHP_CHECK_ID = '{#PHP_CHECK_ID}';
   PHP_INSTALLER = '{#PhpInstaller}';
@@ -335,9 +327,13 @@ function GetInstallerArgs(Config: TConfigRec): String; forward;
 function GetStatusText(Status: Integer): String; forward;
 procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
 procedure ShowStopMessage(const Message: String); forward;
-function StrToVer(Value: String): TVersionRec; forward;
-function VersionCompare(V1, V2: TVersionRec): Integer; forward;
-function VersionCompareEx(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean; forward;
+function StrToVer(Version: String): Integer; forward;
+
+{Find PHP functions}
+procedure CheckLocation(Directory: String; List: TStringList); forward;
+procedure CheckWildcardLocation(Directory: String; List: TStringList); forward;
+procedure FindPhp; forward;
+procedure SetCommonLocations(List: TStringList); forward;
 
 {Misc functions}
 function CheckPermisions: Boolean; forward;
@@ -408,17 +404,11 @@ procedure SecurityCheckboxClick(Sender: TObject); forward;
 function SecurityPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure SecurityPageUpdate; forward;
 procedure SettingsBrowseClick(Sender: TObject); forward;
-procedure SettingsCheckboxClick(Sender: TObject); forward;
-function SettingsCheckInPath: Boolean; forward;
 function SettingsCheckSelected: Boolean; forward;
+procedure SettingsComboChange(Sender: TObject); forward;
+procedure SettingsComboAdd(PhpExe: String; List: TStringList); forward;
 function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure SettingsPageUpdate; forward;
-procedure SettingsPageRefresh; forward;
-
-
-{Test functions}
-procedure TestCreateSelect; forward;
-procedure TestOnChange(Sender: TObject); forward;
 
 #include "environment.iss"
 #include "userdata.iss"
@@ -451,13 +441,11 @@ begin
   registry settings that force command.exe to open in a particular directory,
   rather than the cwd. It would also break cygwin php}
   TmpFile.Check := PHP_CHECK;
-
-  if Pos('/TEST', GetCmdTail) <> 0 then
-    Test := TEST_FLAG;
   
   {Set initial data here, so displaying the Settings page does not lag}
   SetPathInfo(False);
   SetProxyType();
+  FindPhp();
 
   Result := True;
 
@@ -470,7 +458,11 @@ begin
   if not Flags.Completed then
     EnvRevokeChanges(EnvChanges);
 
-  RestartReplace(ExpandConstant('{log}'), '');
+  if PhpList <> nil then
+    PhpList.Free;
+
+  if IsAdminLoggedOn then
+    RestartReplace(ExpandConstant('{log}'), '');
 
 end;
 
@@ -489,10 +481,8 @@ begin
   Pages.Security := SecurityPageCreate(Pages.ErrorSettings.ID,
     'Composer Security Warning', 'Please choose one of the following options.');
 
-  //Pages.Proxy := ProxyPageCreate(Pages.Security.ID,
-  //  'Proxy Settings', 'We need your proxy server settings');
   Pages.Proxy := ProxyPageCreate(Pages.Security.ID,
-    'Proxy Settings', 'Choose if you want to use a proxy.');
+    'Proxy Settings', 'Choose if you need to use a proxy.');
 
   Pages.ProgressInstaller := CreateOutputProgressPage('Downloading Composer', 'Please wait');
   Pages.ProgressInstaller.SetText('Running the Composer installer script...' , '');
@@ -502,11 +492,7 @@ begin
   Pages.Environment := EnvironmentPageCreate(wpInstalling,
     'Information', 'Please read the following information before continuing.');
 
-  if Test = TEST_FLAG then
-    TestCreateSelect();
-
-
-    end;
+end;
 
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -602,7 +588,7 @@ begin
     else
     begin
       {Show the progress page which calls the check function}
-      ProgressPageSettings(SettingsPage.Edit.Text);
+      ProgressPageSettings(SettingsPage.Combo.Text);
     end;
 
   end
@@ -771,7 +757,7 @@ begin
     Error := 'Composer is already installed on this computer for %s.';
     Info := 'If you wish to continue, uninstall it from the Control Panel first.';
 
-    if IsAdminLoggedOn then
+    if not IsAdminLoggedOn then
       User := 'All Users'
     else
       User := 'user ' + GetUserNameString;
@@ -787,14 +773,14 @@ begin
     Error := 'Sorry, but this installer is %s the one used for the current installation.';
 
     {Check if we are installing over a version lower then 4.0}
-    if VersionCompareEx(Version.Existing, '<', StrToVer('4.0')) then
+    if Version.Existing < StrToVer('4.0') then
     begin
       InitError(Format(Error, ['not compatible with']), Info);
       Exit;
     end;
 
     {Check if we are installing a lower version}
-    if VersionCompareEx(Version.Setup, '<', Version.Existing) then
+    if Version.Setup < Version.Existing then
     begin
       InitError(Format(Error, ['older than']), Info);
       Exit;
@@ -859,7 +845,7 @@ begin
   Result.Setup := StrToVer('{#SetupVersion}');
 
   {We started storing version info with v2.7}
-  Result.Installed := VersionCompareEx(Result.Existing, '>=', StrToVer('2.7'));
+  Result.Installed := Result.Existing >= StrToVer('2.7');
 
   OldAdmin := ExpandConstant('{commonappdata}\Composer\bin');
   OldUser := ExpandConstant('{userappdata}\Composer\bin');
@@ -1194,79 +1180,162 @@ begin
 end;
 
 
-function StrToVer(Value: String): TVersionRec;
+function StrToVer(Version: String): Integer;
 var
-  Index: Integer;
-  Major: Integer;
-  Minor: Integer;
+  List: TStringList;
+  I: Integer;
+  Part: Integer;
 
 begin
+ 
+  StringChangeEx(Version, '.', #13, True);  
+  List := TStringList.Create;
 
-  Result.Major := 0;
-  Result.Minor := 0;
+  try
+    List.Text := Version;
 
-  Index := Pos('.', Value);
+    for I := 0 to List.Count - 1 do
+    begin
+      Part := StrToIntDef(List.Strings[I], -1);
 
-  if Index > 0 then
-  begin
+      if Part = -1 then
+      begin
+        Result := 0;
+        Exit;
+      end;
 
-    Major := StrToIntDef(Copy(Value, 1, Index - 1), 0);
-    Minor := StrToIntDef(Copy(Value, Index + 1, MaxInt), -1);
+      case I of
+        0: Result := Part shl 24;
+        1: Result := Result or (Part shl 16);
+        2: Result := Result or (Part shl 8);
+        3: Result := Result or Part; 
+      end;
+      
+    end;
 
-    {We only started versioning in the 2 releases}
-    if (Major < 1) or (Minor < 0) then
-      Exit;
-
-    Result.Major := Major;
-    Result.Minor := Minor;
-
+  finally
+    List.Free;
   end;
 
 end;
 
 
-function VersionCompare(V1, V2: TVersionRec): Integer;
+{*************** Find PHP functions ***************}
+
+procedure CheckLocation(Directory: String; List: TStringList);
+var
+  Exe: String;
+
 begin
+  
+  Exe := AddBackslash(Directory) + '{#CmdPhp}';
 
-  if V1.Major < V2.Major then
-    Result := -1
-  else if V1.Major > V2.Major then
-    Result := 1
-  else
-  begin
+  if FileExists(Exe) then
+    List.Add(Exe);
 
-    if V1.Minor < V2.Minor then
-      Result := -1
-    else if V1.Minor > V2.Minor then
-      Result := 1
-    else
-      Result := 0;
+end;
 
+
+procedure CheckWildcardLocation(Directory: String; List: TStringList);
+var
+  FindRec: TFindRec;
+  Path: String;
+
+begin
+ 
+  try
+    Path := ExtractFilePath(Directory);
+
+    if FindFirst(Directory, FindRec) then
+    begin      
+      
+      repeat        
+        if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY = FILE_ATTRIBUTE_DIRECTORY then
+          CheckLocation(Path + FindRec.Name, List);
+ 
+      until not FindNext(FindRec);             
+    end;
+
+  finally
+    FindClose(FindRec);
   end;
 
 end;
 
 
-function VersionCompareEx(V1: TVersionRec; const Op: String; V2: TVersionRec): Boolean;
+procedure FindPhp;
 var
-  Diff: Integer;
+  List: TStringList;
+  I: Integer;
 
 begin
 
-  Diff := VersionCompare(V1, V2);
+  {First create our global}
+  PhpList := TStringList.Create;
+  PhpList.Sorted := True;
+  PhpList.Duplicates := dupIgnore;
 
-  if Op = '<' then
-    Result := Diff < 0
-  else if Op = '<=' then
-    Result := Diff <= 0
-  else if Op = '=' then
-    Result := Diff = 0
-  else if Op = '>' then
-    Result := Diff > 0
-  else if Op = '>=' then
-    Result := Diff >= 0
+  List := TStringList.Create;
+  
+  try
+
+    SetCommonLocations(List);
+
+    for I := 0 to List.Count - 1 do
+    begin
+      
+      if Pos('*', List.Strings[I]) = 0 then
+        CheckLocation(List.Strings[I], PhpList)      
+      else
+        CheckWildcardLocation(List.Strings[I], PhpList);               
+
+    end;
+
+  finally
+    List.Free;
+  end;
+
+end;
+
+
+procedure SetCommonLocations(List: TStringList);
+var
+  System: String;
+  SystemBin: String;
+  UserBin: String;
+
+begin
+
+  {System php}
+  System := ExpandConstant('{sd}');
+  List.Add(System + '\php*');
+  List.Add(System + '\php\php*');
+
+  SystemBin := System + '\bin';
+  List.Add(SystemBin + '\php*');
+  List.Add(SystemBin + '\php\php*');
+ 
+  {User php}
+  
+  UserBin := AddBackslash(GetEnv('USERPROFILE')) + 'bin';
+  List.Add(UserBin + '\php*');
+  List.Add(UserBin + '\php\php*');
+
+  {Xampp}
+  List.Add('C:\xampp\php');
+
+  {Wamp Server}
+  List.Add('C:\wamp64\bin\php\php*');
+  List.Add('C:\wamp\bin\php\php*');
+
+  {Nusphere}
+  if not IsWin64 then
+    List.Add(ExpandConstant('{pf}') + '\NuSphere\PhpEd\php*')
   else
-    RaiseException('Unknown Op in VersionCompare');
+  begin
+    List.Add(ExpandConstant('{pf32}') + '\NuSphere\PhpEd\php*');
+    List.Add(ExpandConstant('{pf64}') + '\NuSphere\PhpEd\php*');
+  end;
 
 end;
 
@@ -1462,8 +1531,8 @@ var
 
 begin
 
+  {Return if the path data has changed}
   Result := GetPathData(Paths);
-
   IsUser := not IsAdminLoggedOn;
 
   if not Paths.Php.Checked then
@@ -1557,8 +1626,7 @@ function CheckAllPaths: Boolean;
 begin
 
   Result := False;
-  Debug('Checking paths');
-
+  
   Flags.EnvChanged := False;
   SetArrayLength(EnvChanges, 0);
   SetPathInfo(True);
@@ -1592,7 +1660,7 @@ var
 begin
 
   Result := True;
-  Debug('Checking for composer bin path');
+  Debug('Checking composer bin path');
   BinPath := GetBinDir('');
 
   if Rec.Status = PATH_NONE then
@@ -1799,6 +1867,8 @@ begin
   EnvChanges[Next].Display := Display;  
   EnvChanges[Next].Show := Show;
   EnvChanges[Next].Done := False;
+
+  Debug('Registering: ' + EnvChangeToString(EnvChanges[Next], ''));
 
 end;
 
@@ -2075,7 +2145,7 @@ begin
   Result := False;
 
   ConfigRec := ConfigRecInit(Filename);
-  Debug('Checking php: ' + Filename);
+  Debug('Checking selected php: ' + Filename);
 
   {Make sure whatever we've been given can execute}
   if not CheckPhpExe(ConfigRec) then
@@ -2096,7 +2166,7 @@ begin
   end;
 
   {Everthing ok}
-  Debug(Format('Php version %s, tls = %d, ini = %s', [ConfigRec.PhpVersion,
+  Debug(Format('Details: version %s, tls = %d, ini = %s', [ConfigRec.PhpVersion,
     ConfigRec.PhpSecure, ConfigRec.PhpIni]));
 
   Result := True;
@@ -2229,7 +2299,7 @@ begin
   else
   begin
     if Indent then
-      Spacing := LF + TAB
+      Spacing := LF + LF + TAB
     else
       Spacing := #32;
 
@@ -2290,7 +2360,7 @@ begin
     
     {Check in case we have no output. Although very unlikely, not
     trapping this would leave the user with no information}
-    if GetArrayLength(Config.Output) > 0 then
+    if GetArrayLength(Config.Output) = 0 then
       Status := ERR_INSTALL_OUTPUT;
 
   end;
@@ -2667,7 +2737,7 @@ begin
     else if ProxyRec.RegHttp <> '' then 
       Proxy.Edit.Text := ProxyRec.RegHttp
     else
-      {This will cause the installer script to fail}
+      {This will cause the installer script to fail later}
       Proxy.Edit.Text := ProxyRec.RegHttps;
 
   end;
@@ -2727,7 +2797,7 @@ begin
   Base := GetBase(SecurityPage.Ini);
 
   SecurityPage.Checkbox := TNewCheckbox.Create(Result);
-  SecurityPage.Checkbox.Top := Base + ScaleY(60);
+  SecurityPage.Checkbox.Top := Base + ScaleY(75);
   SecurityPage.Checkbox.Width := Result.SurfaceWidth;
   SecurityPage.Checkbox.Caption := 'Disable this requirement - this option is not recommended';
   SecurityPage.Checkbox.Enabled := True;
@@ -2744,7 +2814,7 @@ begin
   S := 'Your computer could be vulnerable to MITM attacks which may result';
   S := S + ' in the installation or execution of arbitrary code.';
   S := S + #13#13
-  S := S + 'You will have to modify the Composer config before you can use it.';   
+  S := S + 'You will have to modify a config file before you can use Composer.';   
   SecurityPage.Info.Caption := S;
   SecurityPage.Info.Visible := False;
   SecurityPage.Info.Parent := Result.Surface;
@@ -2754,8 +2824,6 @@ end;
 
 procedure SecurityPageUpdate;
 var
-  Enable: String;
-  Ini: String;
   S: String;
 
 begin
@@ -2764,21 +2832,6 @@ begin
   S := S + ' then click Back and try again. ' + GetPhpIni(ConfigRec, True);
   
   SecurityPage.Ini.Caption := S;
-  SecurityPage.Checkbox.Checked := Flags.DisableTls;
-  Exit;
-
-  if ConfigRec.PhpIni = '' then
-  begin
-    Enable := 'create a php.ini file and enable the extension';
-    Ini := '';
-  end
-  else
-  begin
-    Enable := 'enable the extension in your php.ini'
-    Ini := Format('The php.ini used by your command-line PHP is: %s%s%s', [LF, TAB, ConfigRec.PhpIni]);
-  end;
-
-  SecurityPage.Ini.Caption := Format('The recommended option is to %s, then click Back and try again.%s', [Enable, Ini]);
   SecurityPage.Checkbox.Checked := Flags.DisableTls;
 
 end;
@@ -2794,59 +2847,22 @@ var
 begin
 
   Filename := '';
-  Dir := ExtractFileDir(SettingsPage.Edit.Text);
 
-  if Test = '' then
-  begin
-    Filter := 'php.exe|php.exe';
-    Extension := '.exe';
-  end
-  else
-  begin
-    Filter := 'All files|*.*';
-    Extension := '';
-  end;
+  {Show last last selected directory, or Program Files}
+  if Flags.SelectedPhp <> '' then
+    Dir := ExtractFileDir(Flags.SelectedPhp)
+  else if IsWin64 then
+    Dir := ExpandConstant('{pf64}')
+  else 
+    Dir := ExpandConstant('{pf}');
 
+  Filter := 'php.exe|php.exe';
+  Extension := '.exe';
+  
   if GetOpenFileName('', Filename, Dir, Filter, Extension) then
   begin
-
-    SettingsPage.Edit.Text := Filename;
-
-    if SettingsCheckInPath() then
-      SettingsPageRefresh()
-    else
-      Flags.SelectedPhp := Filename;
-
-  end;
-
-end;
-
-
-procedure SettingsCheckboxClick(Sender: TObject);
-begin
-
-  if SettingsPage.Checkbox.Checked then
-    SettingsPage.Edit.Text := Flags.SelectedPhp;
-
-  SettingsPageRefresh();
-
-end;
-
-
-function SettingsCheckInPath: Boolean;
-begin
-
-  Result := False;
-
-  if SettingsPage.Checkbox.Checked and (SettingsPage.Edit.Text <> '') then
-  begin
-
-    if CompareText(NormalizePath(SettingsPage.Edit.Text), Paths.Php.Data.Cmd) = 0 then
-    begin
-      SettingsPage.Checkbox.Checked := False;
-      Result := True;
-    end;
-
+    Flags.SelectedPhp := Filename;
+    SettingsComboAdd(Filename, PhpList);
   end;
 
 end;
@@ -2858,20 +2874,62 @@ var
 
 begin
 
-  Result := FileExists(SettingsPage.Edit.Text);
+  Result := FileExists(SettingsPage.Combo.Text);
 
   if not Result then
-  begin
-    
-    if SettingsPage.Edit.Text = '' then
-      Error := 'Please select where php.exe is located.'
-    else
-      Error := 'The file you specified does not exist.';
-
-    ShowStopMessage(Error);    
-
+  begin     
+    Error := 'The file you specified does not exist.';
+    ShowStopMessage(Error);
   end;
 
+end;
+
+
+procedure SettingsComboAdd(PhpExe: String; List: TStringList);
+var
+  I: Integer;
+  Index: Integer;
+
+begin
+
+  if PhpExe <> '' then
+    Index := List.Add(PhpExe);
+
+  if SettingsPage.Combo.Items.Count > 0 then
+    SettingsPage.Combo.Items.Clear;
+
+  for I := 0 to List.Count - 1 do
+    SettingsPage.Combo.Items.Add(List.Strings[I]);
+
+  SettingsPage.Combo.ItemIndex := Index;
+  SettingsComboChange(SettingsPage.Combo);
+   
+end;
+
+
+procedure SettingsComboChange(Sender: TObject);
+var
+  Caption: String;
+
+begin
+
+  case Paths.Php.Status of
+    PATH_OK:
+    begin
+      
+      if CompareText(SettingsPage.Combo.Text, Paths.Php.Data.Cmd) = 0 then
+        Caption := 'This is the PHP in your path. Click Next to use it.'
+      else
+        Caption := 'This will replace the PHP entry in your path. Click Next if you want to do this.';
+
+    end;
+
+    PATH_NONE: Caption := '';
+    PATH_FIXED: Caption := 'To use a different PHP, you must remove this one from your System path.'; 
+  end;
+  
+  SettingsPage.Info.Caption := Caption; 
+     
 end;
 
 
@@ -2882,73 +2940,57 @@ var
 begin
 
   Result := CreateCustomPage(Id, Caption, Description);
-
+  
   SettingsPage.Text := TNewStaticText.Create(Result);
   SettingsPage.Text.AutoSize := True;
-  SettingsPage.Text.Caption := '';
+  SettingsPage.Text.Caption := 'Choose the command-line PHP you want to use:';  
   SettingsPage.Text.Parent := Result.Surface;
-  
+    
   Base := GetBase(SettingsPage.Text);
-
-  SettingsPage.Edit := TNewEdit.Create(Result);
-  SettingsPage.Edit.Top := Base + ScaleY(10);
-  SettingsPage.Edit.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
-  SettingsPage.Edit.ReadOnly := True;
-  SettingsPage.Edit.Text := '';
-  SettingsPage.Edit.Parent := Result.Surface;
+  
+  SettingsPage.Combo := TNewComboBox.Create(Result);
+  SettingsPage.Combo.Top := Base + ScaleY(8);
+  SettingsPage.Combo.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
+  SettingsPage.Combo.Style := csDropDownList;
+  SettingsPage.Combo.OnChange := @SettingsComboChange;
+  SettingsPage.Combo.Parent := Result.Surface;
 
   SettingsPage.Browse := TNewButton.Create(Result);
-  SettingsPage.Browse.Top := SettingsPage.Edit.Top - ScaleY(1);
+  SettingsPage.Browse.Top := SettingsPage.Combo.Top - ScaleY(1);
   SettingsPage.Browse.Left := Result.SurfaceWidth - ScaleX(75);
   SettingsPage.Browse.Width := ScaleX(75);
   SettingsPage.Browse.Height := ScaleY(23);
   SettingsPage.Browse.Caption := '&Browse...';
-  SettingsPage.Browse.Enabled := False;
   SettingsPage.Browse.OnClick := @SettingsBrowseClick;
   SettingsPage.Browse.Parent := Result.Surface;
-
-  Base := GetBase(SettingsPage.Browse);
-
-  SettingsPage.Checkbox := TNewCheckbox.Create(Result);
-  SettingsPage.Checkbox.Top := Base + ScaleY(10);
-  SettingsPage.Checkbox.Width := Result.SurfaceWidth;
-  SettingsPage.Checkbox.Caption := 'Choose a different php.exe from the one in your path.';
-  SettingsPage.Checkbox.Enabled := False;
-  SettingsPage.Checkbox.OnClick := @SettingsCheckboxClick;
-  SettingsPage.Checkbox.Parent := Result.Surface;
-
-  Base := GetBase(SettingsPage.Checkbox);
-
+    
+  Base := GetBase(SettingsPage.Combo);
+  
   SettingsPage.Info := TNewStaticText.Create(Result);
-  SettingsPage.Info.Top := Base + ScaleY(6);
-  SettingsPage.Info.Width := Result.SurfaceWidth;
-  SettingsPage.Info.WordWrap := True;
-  SettingsPage.Info.AutoSize := True;
+  SettingsPage.Info.Top := Base + ScaleY(8); 
+  SettingsPage.Info.AutoSize := True;  
   SettingsPage.Info.Caption := '';
-  SettingsPage.Info.Parent := Result.Surface;
+  SettingsPage.Info.Parent := Result.Surface;     
+  
+ end;
 
-end;
 
-
-procedure SettingsPageUpdate;
-var
-  Settings: TSettingsPageRec;
-   
+procedure SettingsPageUpdate;  
 begin
 
-  Settings := SettingsPage;
-      
-  if Pages.Settings.Tag = 0 then  
-    {First showing, required data already set}
-    Pages.Settings.Tag := 1
+  Pages.Settings.Tag := Pages.Settings.Tag + 1;
+  
+  if Pages.Settings.Tag = 1 then
+  begin  
+    {First showing, path and proxy data already obtained, but we
+    must add the found PhpList to the combo box}    
+    SettingsComboAdd(Paths.Php.Data.Cmd, PhpList);    
+  end
   else
-  begin
-
-    if SetPathInfo(False) then
-      Flags.SelectedPhp := '';
-    
+  begin    
+    {Update path and proxy data}
+    SetPathInfo(False);
     SetProxyType();
-
   end;
 
   {Important to reset these}
@@ -2956,126 +2998,10 @@ begin
   Flags.DisableTls := False;
   Pages.Proxy.Tag := 0;
   
-  if Paths.Php.Status = PATH_NONE then
-  begin
-    Settings.Text.Caption := 'Select where php.exe is located, then click Next.';
-    Settings.Edit.ReadOnly := False;
-    Settings.Browse.Enabled := True;
-    Settings.Checkbox.Visible := False;
-    Settings.Info.Caption := '';
-  end
-  else
-  begin
+  SettingsPage.Combo.Enabled := Paths.Php.Status <> PATH_FIXED;
+  SettingsPage.Browse.Enabled := Paths.Php.Status <> PATH_FIXED;
 
-    Settings.Edit.ReadOnly := True;
-    Settings.Checkbox.Visible := True;
-
-    if Paths.Php.Status = PATH_OK then
-    begin
-
-      {SettingsCheckInPath only disables the checkbox}
-      if not SettingsCheckInPath() then
-        Settings.Checkbox.Enabled := True;
-
-    end
-    else
-    begin
-      Settings.Checkbox.Enabled := False;
-      Settings.Checkbox.Checked := False;
-    end;
-
-    SettingsPageRefresh();
-
-  end;
-  
-end;
-
-
-procedure SettingsPageRefresh;
-begin
-
-  if SettingsPage.Checkbox.Checked then
-  begin
-    {Checked, Edit.Text already set}
-    SettingsPage.Text.Caption := 'Select where php.exe is located, then click Next.';
-    SettingsPage.Browse.Enabled := True;
-    SettingsPage.Info.Caption := 'This will replace the php entry in your path. You must be certain you want to do this.';
-  end
-  else
-  begin
-    {Unchecked, so we need to add path php.exe to Edit.Text}
-    SettingsPage.Text.Caption := 'We found php.exe in your path. Click Next to use it.';
-    SettingsPage.Browse.Enabled := False;
-    SettingsPage.Edit.Text := Paths.Php.Data.Cmd;
-
-    if SettingsPage.Checkbox.Enabled then
-      SettingsPage.Info.Caption := ''
-    else
-      SettingsPage.Info.Caption := 'To use a different php.exe, you must remove this one from your System path.';
-
-  end;
-
-end;
-
-
-{*************** Test functions ***************}
-
-procedure TestCreateSelect;
-var
-  ComboBox: TNewComboBox;
-  I: Integer;
-
-begin
-
-  ComboBox := TNewComboBox.Create(WizardForm);
-  ComboBox.Left := ScaleX(10);
-  ComboBox.Top := WizardForm.CancelButton.Top;
-  ComboBox.Width := ScaleX(75);
-  ComboBox.OnChange := @TestOnChange;
-  ComboBox.Parent := WizardForm;
-  ComboBox.Style := csDropDownList;
-
-  ComboBox.DropDownCount := 5;
-  ComboBox.Items.Add('Test');
-  ComboBox.ItemIndex := 0;
-
-  for I := 1 to 6 do
-    ComboBox.Items.Add('p' + IntToStr(I));
-
-  for I := 1 to 8 do
-    ComboBox.Items.Add('d' + IntToStr(I));
-
-end;
-
-
-procedure TestOnChange(Sender: TObject);
-var
-  ComboBox: TNewComboBox;
-  Id: String;
-  Caption: String;
-  Index: Integer;
-  Value: String;
-
-begin
-
-  ComboBox := Sender as TNewComboBox;
-
-  if ComboBox.ItemIndex = 0 then
-    Test := TEST_FLAG
-  else
-    Test := ComboBox.Items[ComboBox.ItemIndex];
-
-  Id := ' /test: ';
-  Caption := WizardForm.Caption;
-  Index := Pos(Id, WizardForm.Caption);
-  Value := '';
-
-  if Test <> TEST_FLAG then
-    Value := Id + Test;
-
-  if Index <> 0 then
-    Caption := Copy(WizardForm.Caption, 1, Index - 1);
-
-  WizardForm.Caption := Caption + Value;
-
+  if Pages.Settings.Tag > 1 then
+    SettingsComboChange(SettingsPage.Combo);
+    
 end;

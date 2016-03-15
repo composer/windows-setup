@@ -1,10 +1,17 @@
 ; This file is only included in release builds
 
 #sub Sign
-  #if Exec(SignCmd + " " + Module, "", SourcePath) != 0
+  ; sign SHA1
+  #if Exec(SignExe + " " + SignSha1 + " " + Module, "", SourcePath) != 0
     #pragma error "Code signing failed: " + AddBackslash(SourcePath) + Module
   #endif
-  #pragma message "Signed: " + AddBackslash(SourcePath) + Module
+  #pragma message "Signed SHA1: " + AddBackslash(SourcePath) + Module
+
+  ; sign SHA2
+  #if Exec(SignExe + " " + SignSha2 + " " + Module, "", SourcePath) != 0
+    #pragma error "Code signing failed: " + AddBackslash(SourcePath) + Module
+  #endif
+  #pragma message "Signed SHA2: " + AddBackslash(SourcePath) + Module
 #endsub
 
 ; release defines
@@ -24,4 +31,5 @@
 [Setup]
 OutputDir={#OutputDir}
 OutputBaseFilename={#OutputBaseFilename}
-SignTool={#SignTool}
+SignTool={#SignTool} {#SignExe} {#SignSha1} $f
+SignTool={#SignTool} {#SignExe} {#SignSha2} $f
