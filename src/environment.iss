@@ -561,7 +561,7 @@ var
   
 begin
 
-  Path := Format('%s\%s', [GetPathKeyForHive(Hive), GetHiveName(Hive)]);
+  Path := Format('%s\%s', [GetHiveName(Hive), GetPathKeyForHive(Hive)]);
   Name := Format('%s%s%s', [#39, Name, #39]);
 
   if Display then
@@ -592,7 +592,7 @@ var
 
 begin
 
-  Path := Format('%s\%s\%s', [GetPathKeyForHive(Hive), GetHiveName(Hive), ENV_KEY_PATH]);
+  Path := Format('%s\%s\%s', [GetHiveName(Hive), GetPathKeyForHive(Hive), ENV_KEY_PATH]);
 
   if Action = ENV_ADD then
     Prefix := Format('Adding %s%s%s to', [#39, Value, #39])

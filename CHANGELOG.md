@@ -1,12 +1,15 @@
-## v3.1
-2014-01-24
+## Unreleased
 
-* Added a Settings item to the Shell Menus, under Composer Options. This displays `settings.exe` which handles the new features described below. 
-* Added Default Console property to Shell Menus, allowing the use of console programs other than Command Prompt. Cygwin, Git Bash, Msys and PowerShell are supported out of the box (if installed) with a mechanism to use other programs like Console2.
-* Added Collapse property to Shell Menus, to display an initial submenu and save space on the main context-menu.
-* Added settings.exe dialog to implement new Shell Menu properties and provide setup Change functionality.
-* Fixed bug that prevented uninstall on XP - [Issue #30](https://github.com/johnstevenson/composer-setup/issues/30)
-* Previous-data ShellExt removed. Superseded by looking in registry for Shell Menus CLSID.
+* Added unattended/silent install and uninstall functionality.
+* Changed Settings page to display a list of existing php installations. Only common locations are searched, starting with the system drive
+(usually C:) for the following directories: `\php*`, `php\php*`, `bin\php*`, `bin\php\php*`. It then repeats the process for the User profile directory, then looks for specific (xampp, wamp, PhpEd) locations.
+* Simpler error handling introduced, which displays all php output received.
+* Added a Proxy page for the user to enter an `http_proxy` value, with a value pre-entered if a proxy is found in any registry Internet
+Settings. The variable is then set in the User environment (but not deleted on Uninstall). The Proxy page is also shown if an `http_proxy` is already set or passed in as a param.
+* Added a Security page for when openssl is disabled, with the option to not use it. Sets `disable-tls` flag for installer script
+* Added installation logging, stored in the users temp directory `AppData\Local\Temp` as `Setup Log YYYY-MM-DD #nnn.txt`. The log is deleted
+on reboot (Admin installs only).
+* Removed Shell Menus feature to simplify the setup.
 
 
 ## v3.0
@@ -16,7 +19,7 @@
 * Added optional Shell Menus context-menu handler, to allow Composer usage from Windows Explorer/File Manager. Not available on pre-Vista.
 * Added dialog requiring user to shutdown programs that are locking context-menu dll.
 * Added Change feature to installer, to allow Composer reinstall and to add/remove context-menus.
-* Changed installation directories to split files into application (shell, installer, uninstaller etc) and bin (composer.phar, shims) categories. For admin installs these are `<ProgramFiles>\ComposerSetup` and `%ProgramData%\ComposerSetup\bin`. For user installs these are `%LOCALAPPDATA%\ComposerSetup` and `%LOCALAPPDATA%\ComposerSetup\bin`. The base folder name has been changed to ComposerSetup to avoid any conflicts in the Program Files directory. 
+* Changed installation directories to split files into application (shell, installer, uninstaller etc) and bin (composer.phar, shims) categories. For admin installs these are `<ProgramFiles>\ComposerSetup` and `%ProgramData%\ComposerSetup\bin`. For user installs these are `%LOCALAPPDATA%\ComposerSetup` and `%LOCALAPPDATA%\ComposerSetup\bin`. The base folder name has been changed to ComposerSetup to avoid any conflicts in the Program Files directory.
 * Previous-data added: shell menus installed (key: ShellExt).
 * Previous-data added: application directory (key: AppDir).
 * Previous-data added: bin directory (key: BinDir).

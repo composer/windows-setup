@@ -18,6 +18,9 @@
 #define PrevDataApp "AppDir"
 #define PrevDataBin "BinDir"
 #define PrevDataVersion "Version"
+#define ParamPhp "php"
+#define ParamProxy "proxy"
+#define IniSection "params"
 #define PHP_CHECK_ID "<ComposerSetup:>"
 
 
@@ -127,6 +130,13 @@ type
   end;
 
 type
+  TParamsRec = record
+    Php     : String;
+    Proxy   : String;
+    SaveInf : String;
+  end;
+
+type
   TPathRec = record
     System  : String;
     User    : String;
@@ -164,11 +174,11 @@ type
 
 type
   TProxyRec = record
-    Status      : Integer;  {One of PROXY_NONE, PROXY_ENV, PROXY_REG}    
-    ShowPage    : Boolean;  {Controls if the Proxy page is shown}    
-    RegHttp     : String;   {Any formatted http value from the registry}
-    RegHttps    : String;   {Any formatted https value from the registry}
+    Status      : Integer;  {One of PROXY_NONE, PROXY_PARAM, PROXY_ENV, PROXY_REG}    
+    Http        : String;   {Any http value from the registry}
+    Https       : String;   {Any https value from the registry}
     UserUrl     : String;   {Controls the setting of the http_proxy environment}
+    Hash        : String;   {Hash to determine changes}
   end;
 
 type
@@ -260,9 +270,10 @@ var
   TmpFile: TTmpFile;              {contains full pathname of temp files}
   TmpDir: String;                 {the temp directory that setup/uninstall uses}
   ConfigRec: TConfigRec;          {contains path/selected php.exe data and any error}
+  ParamsRec: TParamsRec;          {contains any params from the command line or ini file}
   Paths: TPathInfo;               {contains latest path info}
-  PhpList: TStringList;          {contains found PHP locations}
-  ProxyRec: TProxyRec;            {contains latest proxy info}
+  PhpList: TStringList;           {contains found PHP locations}
+  ProxyInfo: TProxyRec;           {contains latest proxy info}
   CmdExe: String;                 {full pathname to system cmd}
   EnvChanges: TEnvChangeList;     {list of environment changes to make, or made}
   Flags: TFlagsRec;               {contains global flags that won't go anywhere else}
@@ -287,8 +298,9 @@ const
   PATH_FIXED = 2;
 
   PROXY_NONE = 0;
-  PROXY_ENV = 1;
-  PROXY_REG = 2;
+  PROXY_PARAM = 1;
+  PROXY_ENV = 2;
+  PROXY_REG = 3;
   PROXY_KEY = 'http_proxy';
     
   ERR_SUCCESS = 0;
@@ -307,7 +319,9 @@ function SetEnvironmentVariable (Name: String; Value: String): LongBool;
 function InitCheckVersion: Boolean; forward;
 procedure InitCommon; forward;
 procedure InitError(const Error, Info: String); forward;
+function InitGetParams: TParamsRec; forward;
 function InitGetVersion: TVersionInfo; forward;
+procedure InitSetData(); forward;
 
 {Common functions}
 procedure AddPhpParam(const Value: String; var Params: String); forward;
@@ -326,14 +340,16 @@ function GetRegHive: Integer; forward;
 function GetInstallerArgs(Config: TConfigRec): String; forward;
 function GetStatusText(Status: Integer): String; forward;
 procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
-procedure ShowStopMessage(const Message: String); forward;
+procedure ShowErrorIfSilent; forward;
+procedure ShowErrorMessage(const Message: String); forward;
 function StrToVer(Version: String): Integer; forward;
 
 {Find PHP functions}
-procedure CheckLocation(Directory: String; List: TStringList); forward;
-procedure CheckWildcardLocation(Directory: String; List: TStringList); forward;
-procedure FindPhp; forward;
-procedure SetCommonLocations(List: TStringList); forward;
+procedure CheckLocation(Path: String; ResultList: TStringList); forward;
+procedure CheckWildcardLocation(Path: String; ResultList: TStringList); forward;
+function FindPhp(Locations, ResultList: TStringList): Boolean; forward;
+procedure GetCommonLocations(List: TStringList); forward;
+procedure SetPhpLocations; forward;
 
 {Misc functions}
 function CheckPermisions: Boolean; forward;
@@ -368,12 +384,16 @@ procedure PathChange(Hive, Action: Integer; const Path: String; Show: Boolean); 
 procedure ProxyChange(const Value: String; Action: Integer); forward;
 
 {Proxy functions}
+function ProxyCanModify(Proxy: TProxyRec): Boolean; forward;
 procedure ProxyEnvClear; forward;
 procedure ProxyEnvSet; forward;
-function ProxyInEnvironment(Hive: Integer): Boolean; forward;
+function ProxyInEnvironment(Hive: Integer; var Proxy: TProxyRec): Boolean; forward;
+function ProxyInParam(var Proxy: TProxyRec): Boolean; forward;
 function ProxyInRegistry(Hive: Integer; const SettingsKey: String; var Servers: String): Boolean; forward;
+procedure SetProxyData(var Proxy: TProxyRec); forward;
 procedure SetProxyFromReg(const Servers: String; var Proxy: TProxyRec); forward;
-procedure SetProxyType; forward;
+procedure SetProxyHash(var Proxy: TProxyRec); forward;
+function SetProxyStatus: Boolean; forward;
 
 {Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
@@ -398,6 +418,8 @@ procedure ProgressShow(Page: TOutputProgressWizardPage); forward;
 procedure ProxyCheckboxClick(Sender: TObject); forward;
 function ProxyCheckInput: Boolean; forward;
 function ProxyPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+function ProxyPageGetEdit(var EnvName: String): String; forward;
+function ProxyPageGetInfo(EnvName: String): String; forward;
 procedure ProxyPageUpdate; forward;
 procedure ProxyPageRefresh; forward;
 procedure SecurityCheckboxClick(Sender: TObject); forward;
@@ -406,7 +428,8 @@ procedure SecurityPageUpdate; forward;
 procedure SettingsBrowseClick(Sender: TObject); forward;
 function SettingsCheckSelected: Boolean; forward;
 procedure SettingsComboChange(Sender: TObject); forward;
-procedure SettingsComboAdd(PhpExe: String; List: TStringList); forward;
+procedure SettingsComboAdd(PhpExe: String); forward;
+procedure SettingsComboInit; forward;
 function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure SettingsPageUpdate; forward;
 
@@ -442,10 +465,8 @@ begin
   rather than the cwd. It would also break cygwin php}
   TmpFile.Check := PHP_CHECK;
   
-  {Set initial data here, so displaying the Settings page does not lag}
-  SetPathInfo(False);
-  SetProxyType();
-  FindPhp();
+  {Set our initial data}
+  InitSetData();
 
   Result := True;
 
@@ -513,10 +534,11 @@ begin
   end
   else if CurPageID = Pages.ErrorSettings.ID then
   begin
-
+    
     ErrorSettingsUpdate();
     WizardForm.ActiveControl := nil;
     WizardForm.NextButton.Enabled := False;
+    ShowErrorIfSilent();
 
   end
   else if CurPageID = Pages.Security.ID then
@@ -525,6 +547,7 @@ begin
     SecurityPageUpdate();
     WizardForm.NextButton.Enabled := SecurityPage.Checkbox.Checked;
     WizardForm.ActiveControl := nil;
+    ShowErrorIfSilent();
 
   end
   else if CurPageID = Pages.Proxy.ID then
@@ -534,13 +557,6 @@ begin
     WizardForm.ActiveControl := nil;
 
   end
-  else if CurPageID = wpPreparing then
-  begin
-
-    {Only shown for a major error}
-    WizardForm.BackButton.Enabled := False;
-
-  end
   else if CurPageID = Pages.ErrorInstaller.ID then
   begin
 
@@ -548,8 +564,11 @@ begin
     WizardForm.ActiveControl := nil;
     WizardForm.BackButton.Enabled := ConfigRec.StatusCode <> ERR_INSTALL_WARNINGS;
     
-    if ConfigRec.StatusCode <> ERR_INSTALL_WARNINGS then 
-      WizardForm.NextButton.Caption := 'Retry';          
+    if ConfigRec.StatusCode <> ERR_INSTALL_WARNINGS then
+    begin       
+      WizardForm.NextButton.Caption := 'Retry';
+      ShowErrorIfSilent();
+    end;          
 
   end;
 
@@ -565,8 +584,6 @@ begin
     Result := not Flags.SettingsError
   else if PageID = Pages.Security.ID then
     Result := ConfigRec.PhpSecure
-  else if PageID = Pages.Proxy.ID then
-    Result := not ProxyRec.ShowPage
   else if PageID = Pages.ErrorInstaller.ID then
     Result := ConfigRec.StatusCode = ERR_SUCCESS
   else if PageID = Pages.Environment.ID then
@@ -655,7 +672,7 @@ begin
 
   Result := '';
 
-  Debug('Running PrepareToInstall tasks');
+  Debug('Running PrepareToInstall tasks...');
 
   if not UnixifyShellFile(TmpFile.Composer, Result) then
     Exit;
@@ -689,9 +706,17 @@ end;
 
 procedure RegisterPreviousData(PreviousDataKey: Integer);
 begin
+  
   SetPreviousData(PreviousDataKey, '{#PrevDataApp}', GetAppDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataBin}', GetBinDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataVersion}', '{#SetupVersion}');
+
+  if ParamsRec.SaveInf <> '' then
+  begin
+    SetIniString('{#IniSection}', '{#ParamPhp}', ConfigRec.PhpExe, ParamsRec.SaveInf);
+    SetIniString('{#IniSection}', '{#ParamProxy}', ProxyInfo.UserUrl, ParamsRec.SaveInf);
+  end;
+
 end;
 
 
@@ -717,7 +742,7 @@ begin
 		PathChange(HKEY_CURRENT_USER, ENV_REMOVE, GetVendorBinDir(), False);
 
     if EnvMakeChanges(EnvChanges, Error) = ENV_FAILED then
-      ShowStopMessage(Error);      
+      ShowErrorMessage(Error);      
     
     {Call NotifyEnvironmentChange here since the Uninstall Form is showing.
     If there are hung programs then the progress bar will not start immediately.
@@ -726,8 +751,7 @@ begin
     NotifyEnvironmentChange();
 
     {We must call this in usUninstall, or the dll and app dir will not be deleted}
-    if not UninstallSilent then
-      UserDataDelete();
+    UserDataDelete();
 
   end;
 
@@ -826,7 +850,32 @@ begin
   else
     AddLine(S, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
 
-  ShowStopMessage(S);
+  ShowErrorMessage(S);
+
+end;
+
+
+function InitGetParams: TParamsRec;
+var
+  LoadInf: String;
+
+begin
+
+  {Get any command line values, making sure we expand any relative paths}
+  Result.Php := ExpandConstant('{param:{#ParamPhp}}');
+  Result.Proxy := ExpandConstant('{param:{#ParamProxy}}');
+  Result.SaveInf := ExpandFilename(ExpandConstant('{param:saveinf}'));
+  LoadInf := ExpandFilename(ExpandConstant('{param:loadinf}'));
+  
+  if LoadInf <> '' then
+  begin
+    {Command line values take precedence}
+    if Result.Php = '' then
+      Result.Php := GetIniString('{#IniSection}', '{#ParamPhp}', '', LoadInf);
+
+    if Result.Proxy = '' then
+      Result.Proxy := GetIniString('{#IniSection}', '{#ParamProxy}', '', LoadInf);
+  end;
 
 end;
 
@@ -875,6 +924,17 @@ begin
 
   Result.Mixed := (GetUninstaller(OldPath, Exe) or GetUninstaller(Path, Exe));
 
+end;
+
+
+procedure InitSetData();
+begin
+
+  ParamsRec := InitGetParams();
+  SetPathInfo(False);
+  SetProxyStatus();
+  SetPhpLocations();
+  
 end;
 
 
@@ -1158,25 +1218,27 @@ begin
 end;
 
 
-procedure ShowStopMessage(const Message: String);
+procedure ShowErrorIfSilent;
 var
-  Silent: Boolean;
+  S: String;
 
 begin
-  
-  if IsUninstaller then
-    Silent := UninstallSilent
-  else
-    Silent := WizardSilent;
-     
-  if not Silent then
-    MsgBox(Message, mbCriticalError, MB_OK)
-  else
+
+  if WizardSilent then
   begin
-    Debug('Showing stop message');
-    Debug(Message);
+    S := Format('%s is unable to continue.%s', ['{#AppInstallName}', LF + LF]);
+    S := Format('%sPlease run setup interactively for more details,', [S]); 
+    S := Format('%s or view the log file: %s', [S, ExpandConstant('{log}')]);
+    ShowErrorMessage(S);
+    WizardForm.NextButton.Enabled := False;
   end;
 
+end;
+
+
+procedure ShowErrorMessage(const Message: String);
+begin
+  SuppressibleMsgBox(Message, mbCriticalError, MB_OK, IDOK);
 end;
 
 
@@ -1222,36 +1284,36 @@ end;
 
 {*************** Find PHP functions ***************}
 
-procedure CheckLocation(Directory: String; List: TStringList);
+procedure CheckLocation(Path: String; ResultList: TStringList);
 var
   Exe: String;
 
 begin
   
-  Exe := AddBackslash(Directory) + '{#CmdPhp}';
+  Exe := AddBackslash(Path) + '{#CmdPhp}';
 
   if FileExists(Exe) then
-    List.Add(Exe);
+    ResultList.Add(Exe);
 
 end;
 
 
-procedure CheckWildcardLocation(Directory: String; List: TStringList);
+procedure CheckWildcardLocation(Path: String; ResultList: TStringList);
 var
   FindRec: TFindRec;
-  Path: String;
+  BasePath: String;
 
 begin
  
   try
-    Path := ExtractFilePath(Directory);
+    BasePath := ExtractFilePath(Path);
 
-    if FindFirst(Directory, FindRec) then
+    if FindFirst(Path, FindRec) then
     begin      
       
       repeat        
         if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY = FILE_ATTRIBUTE_DIRECTORY then
-          CheckLocation(Path + FindRec.Name, List);
+          CheckLocation(BasePath + FindRec.Name, ResultList);
  
       until not FindNext(FindRec);             
     end;
@@ -1263,42 +1325,30 @@ begin
 end;
 
 
-procedure FindPhp;
+function FindPhp(Locations, ResultList: TStringList): Boolean;
 var
-  List: TStringList;
   I: Integer;
+  Path: String;
 
 begin
-
-  {First create our global}
-  PhpList := TStringList.Create;
-  PhpList.Sorted := True;
-  PhpList.Duplicates := dupIgnore;
-
-  List := TStringList.Create;
   
-  try
+  for I := 0 to Locations.Count - 1 do
+  begin
+    Path := Locations.Strings[I];
+     
+    if Pos('*', Path) = 0 then
+      CheckLocation(Path, ResultList)      
+    else
+      CheckWildcardLocation(Path, ResultList);
 
-    SetCommonLocations(List);
-
-    for I := 0 to List.Count - 1 do
-    begin
-      
-      if Pos('*', List.Strings[I]) = 0 then
-        CheckLocation(List.Strings[I], PhpList)      
-      else
-        CheckWildcardLocation(List.Strings[I], PhpList);               
-
-    end;
-
-  finally
-    List.Free;
   end;
+
+  Result := ResultList.Count <> 0;
 
 end;
 
 
-procedure SetCommonLocations(List: TStringList);
+procedure GetCommonLocations(List: TStringList);
 var
   System: String;
   SystemBin: String;
@@ -1335,6 +1385,43 @@ begin
   begin
     List.Add(ExpandConstant('{pf32}') + '\NuSphere\PhpEd\php*');
     List.Add(ExpandConstant('{pf64}') + '\NuSphere\PhpEd\php*');
+  end;
+
+end;
+
+
+procedure SetPhpLocations;
+var
+  Locations: TStringList;
+  I: Integer;
+  Path: String;
+
+begin
+
+  {First create our global}
+  PhpList := TStringList.Create;
+  PhpList.Sorted := True;
+  PhpList.Duplicates := dupIgnore;
+
+  Locations := TStringList.Create;
+  
+  try
+
+    GetCommonLocations(Locations);
+
+    for I := 0 to Locations.Count - 1 do
+    begin
+      Path := Locations.Strings[I];
+       
+      if Pos('*', Path) = 0 then
+        CheckLocation(Path, PhpList)      
+      else
+        CheckWildcardLocation(Path, PhpList);
+
+    end;
+    
+  finally
+    Locations.Free;
   end;
 
 end;
@@ -1959,10 +2046,18 @@ end;
 
 {*************** Proxy functions ***************}
 
+function ProxyCanModify(Proxy: TProxyRec): Boolean;
+begin
+  
+  {Returns whether we can modify the http_proxy variable}
+  Result := (Proxy.UserUrl <> '') and (Proxy.Status <> PROXY_ENV); 
+end;
+
+
 procedure ProxyEnvClear;
 begin
 
-  if ProxyRec.UserUrl <> '' then
+  if ProxyCanModify(ProxyInfo) then
   begin
     Debug(Format('Clearing %s environment variable', [PROXY_KEY]));
     SetEnvironmentVariable(PROXY_KEY, '');
@@ -1974,43 +2069,60 @@ end;
 procedure ProxyEnvSet;
 begin
 
-  if ProxyRec.UserUrl <> '' then
+  if ProxyCanModify(ProxyInfo) then
   begin
     Debug(Format('Setting %s environment variable', [PROXY_KEY])); 
-    SetEnvironmentVariable(PROXY_KEY, ProxyRec.UserUrl);
+    SetEnvironmentVariable(PROXY_KEY, ProxyInfo.UserUrl);
   end;
 
 end;
 
 
-function ProxyInEnvironment(Hive: Integer): Boolean;
+function ProxyInEnvironment(Hive: Integer; var Proxy: TProxyRec): Boolean;
 var
   Key: String;
   Name: String;
-  HttpProxy: String;
-  HttpsProxy: String;
 
 begin
   
   Result := False;
+  Proxy.Http := '';
+  Proxy.Https := '';
 
   Key := GetPathKeyForHive(Hive);
   Name := GetHiveFriendlyName(Hive);
 
-  RegQueryStringValue(Hive, Key, 'http_proxy', HttpProxy);
-  RegQueryStringValue(Hive, Key, 'https_proxy', HttpsProxy);
+  RegQueryStringValue(Hive, Key, PROXY_KEY, Proxy.Http);
+  RegQueryStringValue(Hive, Key, 'https_proxy', Proxy.Https);
 
-  if HttpProxy <> '' then
+  if Proxy.Http <> '' then
   begin
     Result := True;
     Debug(Format('Found http_proxy in %s environment', [Name]));  
   end; 
   
-  if HttpsProxy <> '' then
+  if Proxy.Https <> '' then
   begin
     Result := True;
     Debug(Format('Found https_proxy in %s environment', [Name]));  
   end;
+
+end;
+
+
+function ProxyInParam(var Proxy: TProxyRec): Boolean;
+begin
+
+  Result := False;
+
+  if ProxyInfo.Status = PROXY_PARAM then
+    Result := True
+  else if ParamsRec.Proxy <> '' then
+  begin
+    ProxyInfo.Status := PROXY_PARAM; 
+    ProxyInfo.UserUrl := ParamsRec.Proxy;    
+    Result := True;
+  end; 
 
 end;
 
@@ -2037,6 +2149,52 @@ begin
 end;
 
 
+procedure SetProxyData(var Proxy: TProxyRec);
+var
+  Key: String;
+  Servers: String;
+
+begin
+
+  if ProxyInEnvironment(HKEY_CURRENT_USER, Proxy) then
+  begin
+    Proxy.Status := PROXY_ENV;    
+    Exit;
+  end;
+
+  if ProxyInEnvironment(HKEY_LOCAL_MACHINE, Proxy) then
+  begin
+    Proxy.Status := PROXY_ENV;    
+    Exit;
+  end;
+  
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Internet Settings';
+   
+  if ProxyInRegistry(HKEY_CURRENT_USER, Key, Servers) then
+  begin
+    SetProxyFromReg(Servers, Proxy);        
+    Exit;
+  end;
+
+  if ProxyInRegistry(HKEY_LOCAL_MACHINE, Key, Servers) then
+  begin
+    SetProxyFromReg(Servers, Proxy);    
+    Exit;
+  end;
+
+  Key := 'Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Internet Settings';
+
+  if ProxyInRegistry(HKEY_LOCAL_MACHINE, Key, Servers) then
+  begin
+    SetProxyFromReg(Servers, Proxy);    
+    Exit;
+  end;
+  
+  Proxy.Status := PROXY_NONE;
+
+end;
+
+
 procedure SetProxyFromReg(const Servers: String; var Proxy: TProxyRec);
 var
   Value: String;
@@ -2046,8 +2204,8 @@ var
 begin
 
   Proxy.Status := PROXY_REG;
-  Proxy.RegHttp := '';
-  Proxy.RegHttps := '';
+  Proxy.Http := '';
+  Proxy.Https := '';
 
   Value := Trim(Servers);
 
@@ -2069,9 +2227,9 @@ begin
       Value := List.Strings[I]; 
       
       if StringChangeEx(Value, 'http=', 'http://', True) <> 0 then
-        Proxy.RegHttp := Value
+        Proxy.Http := Value
       else if StringChangeEx(Value, 'https=', 'https://', True) <> 0 then
-        Proxy.RegHttps := Value;
+        Proxy.Https := Value;
     end;
 
   finally
@@ -2081,54 +2239,43 @@ begin
 end;
 
 
-procedure SetProxyType;
+procedure SetProxyHash(var Proxy: TProxyRec);
 var
-  Key: String;
-  Servers: String;
+  Text: String;
 
 begin
+
+  Text := IntToStr(Proxy.Status) + Proxy.Http + Proxy.Https;
+  Proxy.Hash := GetMD5OfUnicodeString(Text);
+
+end;
+
+
+function SetProxyStatus: Boolean;
+var
+  Hash: String;
+
+begin
+
+  {A proxy param overrides all other settings
+  and cannot be changed}
+  if ProxyInParam(ProxyInfo) then
+  begin
+    Result := False;
+    Exit;
+  end;
     
-  {Important to reset these values as they control whether the
-  proxy page is shown and the proxy env var is set}
-  ProxyRec.ShowPage := False;
-  ProxyRec.UserUrl := '';
-
-  if ProxyInEnvironment(HKEY_CURRENT_USER) then
-  begin
-    ProxyRec.Status := PROXY_ENV;    
-    Exit;
-  end;
-
-  if ProxyInEnvironment(HKEY_LOCAL_MACHINE) then
-  begin
-    ProxyRec.Status := PROXY_ENV;    
-    Exit;
-  end;
+  {Important to reset this value}
+  ProxyInfo.UserUrl := '';
   
-  ProxyRec.ShowPage := True;
-  Key := 'Software\Microsoft\Windows\CurrentVersion\Internet Settings';
-   
-  if ProxyInRegistry(HKEY_CURRENT_USER, Key, Servers) then
-  begin
-    SetProxyFromReg(Servers, ProxyRec);        
-    Exit;
-  end;
-
-  if ProxyInRegistry(HKEY_LOCAL_MACHINE, Key, Servers) then
-  begin
-    SetProxyFromReg(Servers, ProxyRec);    
-    Exit;
-  end;
-
-  Key := 'Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Internet Settings';
-
-  if ProxyInRegistry(HKEY_LOCAL_MACHINE, Key, Servers) then
-  begin
-    SetProxyFromReg(Servers, ProxyRec);    
-    Exit;
-  end;
+  Hash := ProxyInfo.Hash;
+  SetProxyData(ProxyInfo);
+  SetProxyHash(ProxyInfo);
   
-  ProxyRec.Status := PROXY_NONE;
+  if Hash = '' then
+    Result := True
+  else
+    Result := CompareText(ProxyInfo.Hash, Hash) <> 0; 
   
 end;
 
@@ -2640,19 +2787,23 @@ begin
 
   if not ProxyPage.Checkbox.Checked then
   begin
-    ProxyRec.UserUrl := '';
+    ProxyInfo.UserUrl := '';
     ProxyChange('', ENV_REMOVE);
   end
   else
   begin    
-    ProxyRec.UserUrl := ProxyPage.Edit.Text;
+    ProxyInfo.UserUrl := ProxyPage.Edit.Text;
 
-    if ProxyRec.UserUrl <> '' then
-      ProxyChange(ProxyRec.UserUrl, ENV_ADD)
+    if ProxyInfo.UserUrl <> '' then
+    begin
+      {Register environment change if applicable}
+      if ProxyCanModify(ProxyInfo) then
+        ProxyChange(ProxyInfo.UserUrl, ENV_ADD);
+    end
     else
     begin
       Error := 'You must enter a proxy url to use a proxy server.';
-      ShowStopMessage(Error);
+      ShowErrorMessage(Error);
       Result := False;
     end;
 
@@ -2664,7 +2815,6 @@ end;
 function ProxyPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
 var
   Base: Integer;
-  S: String;
   
 begin
 
@@ -2701,10 +2851,60 @@ begin
   ProxyPage.Info.Width := Result.SurfaceWidth;
   ProxyPage.Info.WordWrap := True;
   ProxyPage.Info.AutoSize := True;
-  S := Format('This will set your %s%s%s environment variable, ', [#39, PROXY_KEY, #39]);
-  S := S + 'which is used by Composer and other programs to connect through a proxy server.';
-  ProxyPage.Info.Caption := S;
+  ProxyPage.Info.Caption := '';
   ProxyPage.Info.Parent := Result.Surface;
+
+end;
+
+
+function ProxyPageGetEdit(var EnvName: String): String;
+begin
+
+  EnvName := PROXY_KEY;
+
+  case ProxyInfo.Status of
+    PROXY_NONE: Result := '';
+    PROXY_PARAM: Result := ParamsRec.Proxy;
+  else
+    begin  
+
+      if not Flags.DisableTls and (ProxyInfo.Https <> '') then
+        Result := ProxyInfo.Https
+      else
+      begin
+        
+        {No tls. If we haven't got an http value the installer script
+        may fail later, but it is hard to something else with it here}
+        if ProxyInfo.Http <> '' then
+          Result := ProxyInfo.Http
+        else
+          Result := ProxyInfo.Https;
+      end;
+
+      if CompareText(Result, ProxyInfo.Http) <> 0 then
+        EnvName := 'https_proxy';
+         
+    end;
+  end; 
+
+end;
+
+
+function ProxyPageGetInfo(EnvName: String): String;
+var
+  Name: String;
+  S: String;
+
+begin
+
+  Name := Format('%s%s%s environment variable', [#39, EnvName, #39]);
+   
+  if ProxyInfo.Status = PROXY_ENV then
+    S := Format('Your %s is already set.', [Name])
+  else
+    S := Format('This will set your %s.', [Name]);
+
+  Result := S + ' It is used by Composer and other programs to connect through a proxy server.';
 
 end;
 
@@ -2712,37 +2912,33 @@ end;
 procedure ProxyPageUpdate;
 var
   Proxy: TProxyPageRec;
+  EnvName: String;
 
 begin
 
   Proxy := ProxyPage;
+    
   Pages.Proxy.Tag := Pages.Proxy.Tag + 1;
 
+  {The Settings page will have zeroed the tag if the data has changed}
   if Pages.Proxy.Tag > 1 then  
     Exit;
 
-  if ProxyRec.Status = PROXY_NONE then
-  begin
-    Proxy.Checkbox.Caption := 'Use a proxy server to connect to internet.';
-    Proxy.Text.Caption := 'Enter proxy url:';
-    Proxy.Edit.Text := ''; 
-  end
+  if ProxyInfo.Status = PROXY_NONE then
+    Proxy.Text.Caption := 'Enter proxy url:'
   else
-  begin
-    Proxy.Checkbox.Caption := 'Use a proxy server - registry settings detected.';
     Proxy.Text.Caption := 'Proxy url:';
-
-    if not Flags.DisableTls and (ProxyRec.RegHttps <> '') then
-      Proxy.Edit.Text := ProxyRec.RegHttps
-    else if ProxyRec.RegHttp <> '' then 
-      Proxy.Edit.Text := ProxyRec.RegHttp
-    else
-      {This will cause the installer script to fail later}
-      Proxy.Edit.Text := ProxyRec.RegHttps;
-
-  end;
   
-  Proxy.Checkbox.Checked := ProxyRec.Status = PROXY_REG;
+  case ProxyInfo.Status of
+    PROXY_NONE: Proxy.Checkbox.Caption := 'Use a proxy server to connect to internet.';
+    PROXY_PARAM: Proxy.Checkbox.Caption := 'Use a proxy server - command param present.';
+    PROXY_ENV: Proxy.Checkbox.Caption := 'Use a proxy server - environment variable present.';
+    PROXY_REG: Proxy.Checkbox.Caption := 'Use a proxy server - registry settings detected.'; 
+  end;    
+
+  Proxy.Edit.Text := ProxyPageGetEdit(EnvName);
+  Proxy.Info.Caption := ProxyPageGetInfo(EnvName);
+  Proxy.Checkbox.Checked := ProxyInfo.Status <> PROXY_NONE;
   ProxyPageRefresh();
 
 end;
@@ -2750,10 +2946,19 @@ end;
 
 procedure ProxyPageRefresh;
 begin
-
-  ProxyPage.Text.Enabled := ProxyPage.Checkbox.Checked;
-  ProxyPage.Edit.Enabled := ProxyPage.Checkbox.Checked;
-  ProxyPage.Info.Enabled := ProxyPage.Checkbox.Checked;
+  
+  if (ProxyInfo.Status = PROXY_PARAM) or (ProxyInfo.Status = PROXY_ENV) then
+  begin
+    ProxyPage.Checkbox.Enabled := False;
+    ProxyPage.Edit.Enabled := False;
+    ProxyPage.Info.Enabled := True;
+  end
+  else
+  begin
+    ProxyPage.Checkbox.Enabled := True;
+    ProxyPage.Edit.Enabled := ProxyPage.Checkbox.Checked;
+    ProxyPage.Info.Enabled := ProxyPage.Checkbox.Checked;
+  end;
 
 end;
 
@@ -2834,6 +3039,9 @@ begin
   SecurityPage.Ini.Caption := S;
   SecurityPage.Checkbox.Checked := Flags.DisableTls;
 
+  {Report action for logging when silent}
+  Debug(Format('Error: openssl is not enabled for %s.', [ConfigRec.PhpExe]));
+
 end;
 
 
@@ -2862,7 +3070,7 @@ begin
   if GetOpenFileName('', Filename, Dir, Filter, Extension) then
   begin
     Flags.SelectedPhp := Filename;
-    SettingsComboAdd(Filename, PhpList);
+    SettingsComboAdd(Filename);
   end;
 
 end;
@@ -2870,40 +3078,74 @@ end;
 
 function SettingsCheckSelected: Boolean;
 var
+  DebugMsg: String;
   Error: String;
-
+  Selected: String;    
+  
 begin
 
-  Result := FileExists(SettingsPage.Combo.Text);
+  Selected := SettingsPage.Combo.Text;
+     
+  {Check filename is php.exe, for param input}     
+  DebugMsg := Format('Error, file name must be php.exe: %s', [Selected]);
+  Error := Format('The file name you specified must be php.exe:%s%s', [LF, Selected]);
+  Result := CompareText(ExtractFileName(Selected), 'php.exe') = 0;
 
   if not Result then
   begin     
-    Error := 'The file you specified does not exist.';
-    ShowStopMessage(Error);
+    Debug(DebugMsg);
+    ShowErrorMessage(Error);
+    Exit;
+  end;
+
+  {Check file exists}
+  DebugMsg := Format('Error, file does not exist: %s', [Selected]);
+  Error := Format('The file you specified does not exist:%s%s', [LF, Selected]);
+  Result := FileExists(Selected);
+
+  if not Result then
+  begin     
+    Debug(DebugMsg);
+    ShowErrorMessage(Error);
+    Exit;
   end;
 
 end;
 
 
-procedure SettingsComboAdd(PhpExe: String; List: TStringList);
+procedure SettingsComboAdd(PhpExe: String);
 var
   I: Integer;
   Index: Integer;
 
 begin
 
+  {Add the exe to the main PhpList. It might not
+  exist if we are initialzing}
   if PhpExe <> '' then
-    Index := List.Add(PhpExe);
+    Index := PhpList.Add(PhpExe);
 
   if SettingsPage.Combo.Items.Count > 0 then
     SettingsPage.Combo.Items.Clear;
 
-  for I := 0 to List.Count - 1 do
-    SettingsPage.Combo.Items.Add(List.Strings[I]);
+  for I := 0 to PhpList.Count - 1 do
+    SettingsPage.Combo.Items.Add(PhpList.Strings[I]);
 
   SettingsPage.Combo.ItemIndex := Index;
   SettingsComboChange(SettingsPage.Combo);
    
+end;
+
+
+procedure SettingsComboInit;
+begin
+  
+  {Always add the path php, even if it does not
+  exist, because we need to add the PhpList data}
+  SettingsComboAdd(Paths.Php.Data.Cmd);
+
+  if ParamsRec.Php <> '' then
+    SettingsComboAdd(ParamsRec.Php);
 end;
 
 
@@ -2983,21 +3225,24 @@ begin
   if Pages.Settings.Tag = 1 then
   begin  
     {First showing, path and proxy data already obtained, but we
-    must add the found PhpList to the combo box}    
-    SettingsComboAdd(Paths.Php.Data.Cmd, PhpList);    
+    must init the combo box with all the php location data}
+    SettingsComboInit();        
   end
   else
   begin    
-    {Update path and proxy data}
+    {Update path data}
     SetPathInfo(False);
-    SetProxyType();
+    
+    {Update proxy data and clear page tag if it has changed}
+    if SetProxyStatus() then
+      Pages.Proxy.Tag := 0;
+
   end;
 
   {Important to reset these}
   Flags.SettingsError := False;
   Flags.DisableTls := False;
-  Pages.Proxy.Tag := 0;
-  
+    
   SettingsPage.Combo.Enabled := Paths.Php.Status <> PATH_FIXED;
   SettingsPage.Browse.Enabled := Paths.Php.Status <> PATH_FIXED;
 
@@ -3005,3 +3250,7 @@ begin
     SettingsComboChange(SettingsPage.Combo);
     
 end;
+
+{Keep this at the very bottom so it compiles
+all includes into a single git-ignored file}
+#expr SaveToFile("debug.iss")

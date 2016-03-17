@@ -1,6 +1,7 @@
 output/
 release*
 develop*
+debug*
 *.phar
 *.tmp
 *test*

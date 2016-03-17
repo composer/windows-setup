@@ -8,7 +8,7 @@ type
     User      : String;
     Home      : String;
     Cache     : String;
-    Other     : Boolean;
+    Caption   : String;    
     Delete    : Boolean;
   end;
 
@@ -27,48 +27,48 @@ type
 type
   TDataForm = record
     Main: TSetupForm;
-    Text: TNewStaticText;
     ListBox: TNewCheckListBox;
-    Info: TNewStaticText;
   end;
 
 function DeleteUserData(HParent: HWND; DirList: String): Boolean;
   external 'DeleteUserData@{app}\{#DllData} stdcall delayload uninstallonly';
 
 procedure UserDataDelete; forward;
-function UserDataGet: TUserDataList; forward;
+function UserDataGet(Delete: Boolean): TUserDataList; forward;
 procedure UserGetFolders(var List: TUserDataList); forward;
 function UserGetAccountsWmi(var Accounts: TUserProfileList): Boolean; forward;
 function UserGetAccountsReg(var Accounts: TUserProfileList): Boolean; forward;
 function UserGetProfile(const Sid: String; var Path: String): Boolean; forward;
 procedure UserAddProfileRec(const User, Profile: String; var Accounts: TUserProfileList); forward;
 procedure UserAddDataRec(Rec: TUserDataRec; var List: TUserDataList); forward;
+procedure UserAddDataType(const Value: String; var Caption: String); forward;
 function UserGetFolderPrefix(const Folder: String; var Prefix: String): Boolean; forward;
-function UserDefinedCache(Rec: TUserDataRec): Boolean; forward;
-function UserCheckConfig(const Key, Json: String; var Location: String): Boolean; forward;
 procedure UserDeleteData(List: TUserDataList; const DllData: String); forward;
 function UserDataSelect(var List: TUserDataList): Boolean; forward;
 procedure UserDataCreateForm(var Form: TDataForm); forward;
-procedure UserDataScaleForm(var Form: TDataForm); forward;
 
 
 procedure UserDataDelete;
 var
   List: TUserDataList;
   DllData: String;
+  Delete: Boolean;
 
 begin
 
-  {
-    The main function, must be called from Uninstall step usUninstall,
-    otherwise the dll and app dir will not be deleted
-  }
+  {The main function, must be called from Uninstall step usUninstall,
+  otherwise the dll and app dir will not be deleted}
 
   DllData := ExpandConstant('{app}\{#DllData}');
+  Delete :=  Pos('/delete', Lowercase(GetCmdTail)) <> 0;
+
+  {We haven't updated the dll to do silent installs yet}
+  if UninstallSilent then
+    Exit;
 
   try
 
-    List := UserDataGet();
+    List := UserDataGet(Delete);
 
     if UserDataSelect(List) then
       UserDeleteData(List, DllData);
@@ -81,12 +81,12 @@ begin
 end;
 
 
-function UserDataGet: TUserDataList;
+function UserDataGet(Delete: Boolean): TUserDataList;
 var
   List: TUserDataList;
   I: Integer;
   Index: Integer;
-
+  
 begin
 
   {Add current user as first item}
@@ -101,39 +101,31 @@ begin
   {See if paths exist and add records to Result}
   for I := 0 to GetArrayLength(List) - 1 do
   begin
-
-    if not DirExists(List[I].Cache) then
-      List[I].Cache := '';
-
+    
     if not DirExists(List[I].Home) then
       List[I].Home := ''
     else
-    begin
+    begin      
+      
+      if DirExists(List[I].Home + '\vendor') then
+        UserAddDataType('global', List[I].Caption);
 
-      {If admin and bin dir exists, a user has an older setup of Composer installed}
-      if IsAdminLoggedOn and (DirExists(List[I].Home + '\bin'))  then
-        Continue;
-
-      {See if we have any user-defined caches in config}
-      if UserDefinedCache(List[I]) then
-      begin
-
-        List[I].Other := True;
-
-        {we don't delete Home config data}
-        List[I].Home := '';
-
-      end;
+      UserAddDataType('config', List[I].Caption);
 
     end;
 
-    if (List[I].Home <> '') or (List[I].Cache <> '') or List[I].Other then
-    begin
-      List[I].Delete := False;
-      Index := GetArrayLength(Result);
-      SetArrayLength(Result, Index + 1);
-      Result[Index] := List[I];
-    end;
+    if not DirExists(List[I].Cache) then
+      List[I].Cache := ''
+    else
+      UserAddDataType('cache', List[I].Caption);
+
+    if (List[I].Home = '') and (List[I].Cache = '') then
+      Continue;
+
+    List[I].Delete := Delete;
+    Index := GetArrayLength(Result);
+    SetArrayLength(Result, Index + 1);
+    Result[Index] := List[I];    
 
   end;
 
@@ -152,11 +144,9 @@ var
 
 begin
 
-  {
-    We use Windows wmi as this is a reliable way to get the correct user name
-    for each local account. If this is not available (it is missing from XP Home),
-    we fallback to using the registry.
-  }
+  {We use Windows wmi as this is a reliable way to get the correct user name
+  for each local account. If this is not available (it is missing from XP Home),
+  we fallback to using the registry.}
 
   if UserGetFolderPrefix('AppData', HomeSuffix) then
     HomeSuffix := AddBackslash(HomeSuffix) + 'Composer'
@@ -229,10 +219,8 @@ begin
 
     SList.LoadFromFile(Output);
 
-    {
-      Format is always: Disabled (TRUE/FALSE) tab UserName tab SID, for example:
-      FALSE    Fred    S-1-5-21-2053653857-3368111017-1490883677-1002
-    }
+    {Format is always: Disabled (TRUE/FALSE) tab UserName tab SID, for example:
+    FALSE    Fred    S-1-5-21-2053653857-3368111017-1490883677-1002}
 
     for I := 0 to SList.Count - 1 do
     begin
@@ -348,10 +336,21 @@ begin
 end;
 
 
+procedure UserAddDataType(const Value: String; var Caption: String);
+begin
+
+  if Caption <> '' then
+    Caption := Caption + '\';
+
+  Caption := Caption + Value;
+
+end;
+
+
 function UserGetFolderPrefix(const Folder: String; var Prefix: String): Boolean;
 var
   SubKey: String;
-  P: Integer;
+  Profile: String;
 
 begin
 
@@ -362,125 +361,15 @@ begin
 
   if not RegQueryStringValue(HKEY_USERS, SubKey, Folder, Prefix) then
     Exit;
+  
+  Profile := '%USERPROFILE%';
 
-  if Pos('%', Prefix) <> 1 then
-    Exit
-  else
-    Prefix := Copy(Prefix, 2, MaxInt);
-
-  P := Pos('%', Prefix);
-
-  if P = 0 then
-    Exit
-  else
-    Prefix := Copy(Prefix, P + 2, MaxInt);
-
+  if Pos(Profile, Prefix) <> 1 then
+    Exit;
+  
+  Prefix := Copy(Prefix, Length(Profile) + 1, MaxInt);
   StringChangeEx(Prefix, '/', '\', True);
-
   Result := Prefix <> '';
-
-end;
-
-
-function UserDefinedCache(Rec: TUserDataRec): Boolean;
-var
-  Lines: TArrayOfString;
-  Keys: TArrayOfString;
-  I: Integer;
-  Json: String;
-  Location: String;
-
-begin
-
-  Result := False;
-  Json := '';
-
-  if LoadStringsFromFile(AddBackslash(Rec.Home) + 'config.json', Lines) then
-  begin
-
-    for I := 0 to GetArrayLength(Lines) - 1 do
-      Json := Json + Trim(Lines[I]);
-
-  end;
-
-  if Json = '' then
-    Exit;
-
-  SetArrayLength(Keys, 4);
-  Keys[0] := 'cache-dir';
-  Keys[1] := 'cache-files-dir';
-  Keys[2] := 'cache-repo-dir';
-  Keys[3] := 'cache-vcs-dir';
-
-  for I := 0 to GetArrayLength(Keys) - 1 do
-  begin
-
-    if not UserCheckConfig(Keys[I], Json, Location) then
-      Continue;
-
-    if DirExists(Location) then
-    begin
-
-      {Check if Location is on a different path from default}
-      if Pos(AnsiLowercase(Rec.Cache), AnsiLowercase(Location)) <> 1 then
-      begin
-        Result := True;
-        Exit;
-      end;
-
-    end;
-
-  end;
-
-end;
-
-
-function UserCheckConfig(const Key, Json: String; var Location: String): Boolean;
-var
-  P: Integer;
-
-begin
-
-  {
-    Config cache entries are key-value pairs, with the value as a String.
-    For example: "cache-dir": "path\to\cache"
-  }
-
-  Result := False;
-  Location := '';
-
-  {Check quoted Key}
-  Key := '"' + Key + '"';
-  P := Pos(Key, Json);
-
-  if P = 0 then
-    Exit;
-
-  Json := TrimLeft(Copy(Json, P + Length(Key), MaxInt));
-
-  {Check colon}
-  if Json[1] = ':' then
-    Json := TrimLeft(Copy(Json, 2, MaxInt))
-  else
-    Exit;
-
-  {Check opening double-quote}
-  if Json[1] = '"' then
-    Json := TrimLeft(Copy(Json, 2, MaxInt))
-  else
-    Exit;
-
-  {Check closing double-quote}
-  P := Pos('"', Json);
-
-  if P <> 0 then
-  begin
-    Location := Copy(Json, 1, P - 1);
-    {Important to change backslashes in path}
-    StringChangeEx(Location, '/', '\', True);
-  end;
-
-  Result := Location <> '';
 
 end;
 
@@ -529,12 +418,7 @@ end;
 function UserDataSelect(var List: TUserDataList): Boolean;
 var
   Form: TDataForm;
-  S: String;
-  I: Integer;
-  Sub: String;
-  Enabled: Boolean;
-  Available: Integer;
-  UserDefined: Boolean;
+  I: Integer;  
   UserChecked: Integer;
   Index: Integer;
 
@@ -555,61 +439,12 @@ begin
 
   try
 
-    {Populate the listbox}
-    Available := 0;
-    UserDefined := False;
-
+    {Populate the listbox}    
     for I := 0 to GetArrayLength(List) - 1 do
-    begin
-
-      if not List[I].Other then
-      begin
-        Sub := 'cache/config';
-        Enabled := True;
-        Inc(Available);
-        Form.ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
-      end
-      else
-      begin
-
-        if List[I].Cache <> '' then
-        begin
-          Sub := 'cache';
-          Enabled := True;
-          Inc(Available);
-          Form.ListBox.AddCheckBox('User: ' + List[I].User, Sub + ' data', 0, False, Enabled, False, True, TObject(I));
-        end;
-
-        Sub := 'user-defined cache';
-        Enabled := False;
-        Form.ListBox.AddCheckBox('User: ' + List[I].User, Sub, 0, False, Enabled, False, True, nil);
-        UserDefined := True;
-
-      end;
-
-    end;
-
-    {Update Text caption if we data to delete}
-    if Available > 0 then
-      Form.Text.Caption := Form.Text.Caption + ' Please select the user data you want to delete.';
-
-    {Update Info caption if we have user-defined caches}
-    if UserDefined then
-    begin
-      S := 'User-defined cache and configuration data must be deleted manually. ';
-      Form.Info.Caption := S + Form.Info.Caption;
-    end;
-
-    UserDataScaleForm(Form);
+      Form.ListBox.AddCheckBox(List[I].User, List[I].Caption, 0, List[I].Delete, True, False, False, TObject(I));
 
     {Show the form}
     Form.Main.ShowModal();
-
-    if Available = 0 then
-    begin
-      Debug('No user data to delete');
-      Exit;
-    end;
 
     UserChecked := 0;
 
@@ -617,12 +452,11 @@ begin
     for I := 0 to Form.ListBox.Items.Count - 1 do
     begin
 
+      Index := Integer(Form.ListBox.ItemObject[I]);
+      List[Index].Delete := Form.ListBox.Checked[I];
+      
       if Form.ListBox.Checked[I] then
-      begin
-        Index := Integer(Form.ListBox.ItemObject[I]);
-        List[Index].Delete := True;
-        UserChecked := UserChecked + 1;
-      end;
+        Inc(UserChecked);
 
     end;
 
@@ -644,41 +478,47 @@ procedure UserDataCreateForm(var Form: TDataForm);
 var
   Left: Integer;
   Width: Integer;
+  Text: TNewStaticText;
   OkButton: TButton;
+  S: String;
 
 begin
 
   Form.Main := CreateCustomForm();
 
   Form.Main.ClientWidth := ScaleX(380);
-  Form.Main.ClientHeight := ScaleY(290);
+  Form.Main.ClientHeight := ScaleY(255);
   Form.Main.Caption := 'Delete User Data';
   Form.Main.CenterInsideControl(UninstallProgressForm, False);
 
   Left := ScaleX(20);
   Width := Form.Main.ClientWidth - (Left * 2);
 
-  Form.Text := TNewStaticText.Create(Form.Main);
-  Form.Text.Parent := Form.Main;
-  Form.Text.Left := Left;
-  Form.Text.Width := Width;
-  Form.Text.AutoSize := True;
-  Form.Text.WordWrap := True;
-  Form.Text.Caption := 'Composer stores cache and configuration data on your computer.';
+  Text := TNewStaticText.Create(Form.Main);
+  Text.Top := ScaleY(16);
+  Text.Parent := Form.Main;
+  Text.Left := Left;
+  Text.Width := Width;
+  Text.AutoSize := True;
+  Text.WordWrap := True;
+  S := 'Composer saves global packages, configuration and cache data for each user.';
+  Text.Caption := S + ' Please select the data you want to delete.';
 
   Form.ListBox := TNewCheckListBox.Create(Form.Main);
+  Form.ListBox.Top := Text.Top + Text.Height + ScaleY(10);
   Form.ListBox.Parent := Form.Main;
   Form.ListBox.Left := Left;
   Form.ListBox.Width := Width;
   Form.ListBox.Height := ScaleY(148);
 
-  Form.Info := TNewStaticText.Create(Form.Main);
-  Form.Info.Parent := Form.Main;
-  Form.Info.Left := Left;
-  Form.Info.Width := Width;
-  Form.Info.AutoSize := True;
-  Form.Info.WordWrap := True;
-  Form.Info.Caption := 'Caches defined at project level will not be listed.';
+  Text := TNewStaticText.Create(Form.Main);
+  Text.Top := Form.ListBox.Top + Form.ListBox.Height + ScaleY(6);
+  Text.Parent := Form.Main;
+  Text.Left := Left;
+  Text.Width := Width;
+  Text.AutoSize := True;
+  Text.WordWrap := True;
+  Text.Caption := 'User-defined caches will not be listed.';
 
   OkButton := TButton.Create(Form.Main);
   OkButton.Parent := Form.Main;
@@ -691,19 +531,5 @@ begin
   OKButton.Default := True;
 
   Form.Main.ActiveControl := OkButton;
-
-end;
-
-
-procedure UserDataScaleForm(var Form: TDataForm);
-begin
-
-  Form.Main.Update;
-
-  Form.Text.Top := ScaleY(16);
-  Form.ListBox.Top := Form.Text.Top + Form.Text.Height + ScaleY(10);
-  Form.Info.Top := Form.ListBox.Top + Form.ListBox.Height + ScaleY(6);
-
-  Form.Main.Update;
 
 end;

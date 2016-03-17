@@ -27,7 +27,20 @@ This IDE value should be "uniquename=$p" (the $p is replaced by the actual param
      
 Note that both the "develop.iss" and "release.iss" files are git-ignored.
 
-Certum CA notes for cheap open source certificates:
+Notes
+=====
+
+Debugging
+---------
+A "debug.iss" file is created each time you compile. This concatenates all the includes files so that you
+can debug from a single script (because the Inno IDE only allows one script open at a time). Remember that
+changes you make will be overwritten next time you compile "composer.iss".
+
+
+Code Signing
+------------
+The following instructions relate to Certum CA, who provide cheap open source certificates.
+
 Use Firefox to renew/create a certificate because it allows you to backup and save your complete
 certificate (ie private and public keys).
 

@@ -13,7 +13,7 @@
 process(is_array($argv) ? $argv : array());
 
 /**
-*  in the process function
+*  The main process function
 *
 * @param array $argv
 */
@@ -51,17 +51,6 @@ function process($argv)
         }
         exit($ok ? 0 : 1);
     }
-
-    /**
-    * TODO:
-    * - Catch exceptions *thrown* in installComposer, output e->message and exit 1
-    * - Remove composer home if created and installation fails
-    * - Continue retry loop on first error
-    * - Reduce retry error messages for quiet mode
-    * - Only showWarnings if installation has succeeded (check this is desired
-    *   behaviour)
-    * - Check error/warning/security messages are displayed correctly
-    */
 
     if ($ok || $force) {
         $installer = new Installer($quiet, $disableTls);
