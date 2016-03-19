@@ -1,8 +1,8 @@
 object Form1: TForm1
   Left = 0
   Top = 0
-  Caption = 'Degub UserData DLL'
-  ClientHeight = 214
+  Caption = 'Debug UserData DLL'
+  ClientHeight = 261
   ClientWidth = 418
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
@@ -23,11 +23,27 @@ object Form1: TForm1
   end
   object Button1: TButton
     Left = 24
-    Top = 64
+    Top = 80
     Width = 75
     Height = 25
     Caption = 'Run'
     TabOrder = 0
     OnClick = Button1Click
+  end
+  object cbSilent: TCheckBox
+    Left = 24
+    Top = 43
+    Width = 97
+    Height = 17
+    Caption = 'Silent'
+    TabOrder = 1
+  end
+  object InfoMemo: TMemo
+    Left = 24
+    Top = 128
+    Width = 369
+    Height = 120
+    ScrollBars = ssBoth
+    TabOrder = 2
   end
 end

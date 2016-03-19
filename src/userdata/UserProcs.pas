@@ -8,7 +8,6 @@ uses
 const
   IDP_TEXT = 100;
   IDP_PROGRESS = 200;
-  IDP_CANCEL = 300;
 
   IDR_TEXT = 100;
   IDR_LIST = 200;
@@ -24,7 +23,6 @@ function ResultProc(hwndDlg: HWND; msg: UInt; wParam: WPARAM; lParam: LPARAM): I
 procedure DeleteDirectories(DirList: PTDirList);
 function DeleteTree(Path: String): Boolean;
 procedure DialogCenter(HDialog: HWND);
-function ProgressCancel(HDialog, HCancel: HWND): Boolean;
 procedure ProgressInit(HDialog: HWND);
 procedure ResultInit(HDialog: HWND; List: PTDirList);
 
@@ -37,8 +35,8 @@ begin
 
   try
 
-    // the dialog signals this when it is shown
-    if WaitForSingleObject(Status.HEvent, INFINITE) <> WAIT_OBJECT_0 then
+    // the manager signals this when we start
+    if WaitForSingleObject(Manager.HEvent, INFINITE) <> WAIT_OBJECT_0 then
       Exit;
 
     // allow the dialog to show Please wait
@@ -47,8 +45,8 @@ begin
     // DeleteDirectories checks if the user has cancelled
     DeleteDirectories(DirList);
 
-    // always send a message to close the dialog
-    SendMessage(Status.HDialog, WM_CLOSE, 0, 0);
+    // always ask the manager to close the dialog
+    Manager.ProgressClose;
     Result := THD_EXIT_OK;
 
   except
@@ -73,8 +71,11 @@ begin
     WM_SYSCOMMAND:
     begin
 
-      if (wParam = SC_CLOSE) and ProgressCancel(hwndDlg, 0) then
+      if wParam = SC_CLOSE then
+      begin
+        Manager.SetCancelled;
         Result := 1;
+      end;
 
     end;
 
@@ -82,17 +83,6 @@ begin
     begin
       EndDialog(hwndDlg, IDCANCEL);
       Result := 1;
-    end;
-
-    WM_COMMAND:
-    begin
-
-      if LOWORD(wParam) = IDP_CANCEL then
-      begin
-        ProgressCancel(hwndDlg, HWND(lParam));
-        Result := 1;
-      end;
-
     end;
 
   end;
@@ -131,6 +121,7 @@ begin
 
 end;
 
+
 procedure DeleteDirectories(DirList: PTDirList);
 var
   I: Integer;
@@ -162,7 +153,7 @@ begin
 
   Result := True;
 
-  if Status.Cancelled then
+  if Manager.Cancelled then
   begin
     Result := False;
     Exit;
@@ -176,6 +167,8 @@ begin
     BasePath := Path;
     Path := Copy(Path, 1, Length(Path) - 1);
   end;
+
+  Manager.SetText(Path);
 
   FindSpec := BasePath + '*';
   Hnd := FindFirstFile(PChar(FindSpec), FindData);
@@ -195,13 +188,10 @@ begin
       if FindData.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY = 0 then
       begin
 
-        if Status.Cancelled then
+        if Manager.Cancelled then
           Result := False
         else
-        begin
-          Status.SetText(BasePath + Name);
           DeleteFile(PChar(BasePath + Name));
-        end;
 
       end
       else
@@ -215,8 +205,8 @@ begin
 
   if Result then
   begin
-    Status.SetText(Path);
-    RemoveDirectory(PChar(Path));
+    Manager.SetText(Path);
+    Result := RemoveDirectory(PChar(Path));
   end;
 
 end;
@@ -272,52 +262,36 @@ begin
 
 end;
 
-function ProgressCancel(HDialog, HCancel: HWND): Boolean;
-begin
-
-  // HCancel is 0 when user clicks sys close
-  if HCancel = 0 then
-  begin
-    HCancel := GetDlgItem(HDialog, IDP_CANCEL);
-    Result := IsWindowEnabled(HCancel);
-  end
-  else
-    Result := True;
-
-  if Result then
-  begin
-    EnableWindow(HCancel, False);
-    Status.SetCancelled;
-  end;
-
-end;
-
 procedure ProgressInit(HDialog: HWND);
+var
+  HText: HWND;
+  HProgress: HWND;
+
 begin
 
-  Status.HDialog := HDialog;
-  Status.HText := GetDlgItem(HDialog, IDP_TEXT);
-  Status.HProgress := GetDlgItem(HDialog, IDP_PROGRESS);
+  HText := GetDlgItem(HDialog, IDP_TEXT);
+  HProgress := GetDlgItem(HDialog, IDP_PROGRESS);
 
   // set up path ellipse
-  SetWindowLong(Status.HText, GWL_STYLE,
-    GetWindowLong(Status.HText, GWL_STYLE) or SS_PATHELLIPSIS);
+  SetWindowLong(HText, GWL_STYLE,
+    GetWindowLong(HText, GWL_STYLE) or SS_PATHELLIPSIS);
 
   // set up scrolling progress bar
-  SetWindowLong(Status.HProgress, GWL_STYLE,
-    GetWindowLong(Status.HProgress, GWL_STYLE) or PBS_MARQUEE);
-  SendMessage(Status.HProgress, PBM_SETMARQUEE, 1, 0);
+  SetWindowLong(HProgress, GWL_STYLE,
+    GetWindowLong(HProgress, GWL_STYLE) or PBS_MARQUEE);
+  SendMessage(HProgress, PBM_SETMARQUEE, 1, 0);
 
   DialogCenter(HDialog);
 
-  // signal the thread that we are ready to work
-  SetEvent(Status.HEvent);
+  // tell the manager to signal the thread
+  Manager.Start(HDialog, HText);
 
 end;
 
 procedure ResultInit(HDialog: HWND; List: PTDirList);
 var
   HList: HWND;
+  HBtn: HWND;
   Rc: TRect;
   Size: TSize;
   Dc: HDC;
@@ -378,6 +352,10 @@ begin
   end;
 
   DialogCenter(HDialog);
+
+  // focus the okay button
+  HBtn := GetDlgItem(HDialog, IDR_OK);
+  SendMessage(HDialog, WM_NEXTDLGCTL, HBtn, 1);
 
 end;
 

@@ -6,10 +6,17 @@ const
 type
   TUserDataRec = record
     User      : String;
-    Home      : String;
-    Cache     : String;
+    Folder    : String;
     Caption   : String;    
     Delete    : Boolean;
+    Local     : Boolean;
+  end;
+
+type
+  TUserFolderRec = record
+    User      : String;
+    Home      : String;
+    Cache     : String;
   end;
 
 type
@@ -27,32 +34,45 @@ type
 type
   TDataForm = record
     Main: TSetupForm;
-    ListBox: TNewCheckListBox;
+    ListBox: TNewCheckListBox;    
   end;
 
-function DeleteUserData(HParent: HWND; DirList: String): Boolean;
-  external 'DeleteUserData@{app}\{#DllData} stdcall delayload uninstallonly';
+var
+  UserForm: TDataForm;
+  
+const
+  DELETE_NONE = 0;
+  DELETE_LOCAL = 1;
+  DELETE_ALL = 2;
+
+function DeleteData(HParent: HWND; DirList: String; Silent: Boolean): Boolean;
+  external 'DeleteData@{app}\{#DllData} stdcall delayload uninstallonly';
+
+function GetResult(StrBuf: String; BufCount: DWord): DWord;
+  external 'GetResult@{app}\{#DllData} stdcall delayload uninstallonly';
 
 procedure UserDataDelete; forward;
-function UserDataGet(Delete: Boolean): TUserDataList; forward;
-procedure UserGetFolders(var List: TUserDataList); forward;
+function UserDataGet(Delete: Integer): TUserDataList; forward;
+procedure UserDataGetAll(const User: String; var List: TUserDataList); forward;
 function UserGetAccountsWmi(var Accounts: TUserProfileList): Boolean; forward;
 function UserGetAccountsReg(var Accounts: TUserProfileList): Boolean; forward;
 function UserGetProfile(const Sid: String; var Path: String): Boolean; forward;
 procedure UserAddProfileRec(const User, Profile: String; var Accounts: TUserProfileList); forward;
-procedure UserAddDataRec(Rec: TUserDataRec; var List: TUserDataList); forward;
-procedure UserAddDataType(const Value: String; var Caption: String); forward;
+procedure UserAddDataItem(User, Folder, Caption: String; Local: Boolean; var List: TUserDataList); forward;
+procedure UserAddDataRec(Rec: TUserFolderRec; var List: TUserDataList); forward;
 function UserGetFolderPrefix(const Folder: String; var Prefix: String): Boolean; forward;
 procedure UserDeleteData(List: TUserDataList; const DllData: String); forward;
-function UserDataSelect(var List: TUserDataList): Boolean; forward;
-procedure UserDataCreateForm(var Form: TDataForm); forward;
+function UserDataSelect(Delete: Integer; var List: TUserDataList): Boolean; forward;
+procedure UserDataCreateForm(Delete: Integer; var Form: TDataForm); forward;
+procedure UserCheckboxClick(Sender: TObject); forward;
+function UserGetDelete: Integer; forward;
 
 
 procedure UserDataDelete;
 var
   List: TUserDataList;
   DllData: String;
-  Delete: Boolean;
+  Delete: Integer;
 
 begin
 
@@ -60,17 +80,13 @@ begin
   otherwise the dll and app dir will not be deleted}
 
   DllData := ExpandConstant('{app}\{#DllData}');
-  Delete :=  Pos('/delete', Lowercase(GetCmdTail)) <> 0;
-
-  {We haven't updated the dll to do silent installs yet}
-  if UninstallSilent then
-    Exit;
+  Delete := UserGetDelete();
 
   try
 
     List := UserDataGet(Delete);
 
-    if UserDataSelect(List) then
+    if UninstallSilent or UserDataSelect(Delete, List) then
       UserDeleteData(List, DllData);
 
   finally
@@ -81,58 +97,37 @@ begin
 end;
 
 
-function UserDataGet(Delete: Boolean): TUserDataList;
+function UserDataGet(Delete: Integer): TUserDataList;
 var
-  List: TUserDataList;
+  Rec: TUserFolderRec;
   I: Integer;
-  Index: Integer;
   
 begin
 
   {Add current user as first item}
-  SetArrayLength(List, 1);
-  List[0].User := GetUserNameString;
-  List[0].Home := ExpandConstant('{userappdata}\Composer');
-  List[0].Cache := ExpandConstant('{localappdata}\Composer');
-
+  Rec.User := GetUserNameString;
+  Rec.Home := ExpandConstant('{userappdata}\Composer');
+  Rec.Cache := ExpandConstant('{localappdata}\Composer');
+  UserAddDataRec(Rec, Result);
+  
   if IsAdminLoggedOn then
-    UserGetFolders(List);
-
-  {See if paths exist and add records to Result}
-  for I := 0 to GetArrayLength(List) - 1 do
+    UserDataGetAll(Rec.User, Result);
+    
+  for I := 0 to GetArrayLength(Result) - 1 do
   begin
     
-    if not DirExists(List[I].Home) then
-      List[I].Home := ''
-    else
-    begin      
-      
-      if DirExists(List[I].Home + '\vendor') then
-        UserAddDataType('global', List[I].Caption);
-
-      UserAddDataType('config', List[I].Caption);
-
+    case Delete of
+      DELETE_NONE: Result[I].Delete := False;
+      DELETE_LOCAL: Result[I].Delete := Result[I].Local;
+      DELETE_ALL: Result[I].Delete := True;  
     end;
-
-    if not DirExists(List[I].Cache) then
-      List[I].Cache := ''
-    else
-      UserAddDataType('cache', List[I].Caption);
-
-    if (List[I].Home = '') and (List[I].Cache = '') then
-      Continue;
-
-    List[I].Delete := Delete;
-    Index := GetArrayLength(Result);
-    SetArrayLength(Result, Index + 1);
-    Result[Index] := List[I];    
-
+    
   end;
 
 end;
 
 
-procedure UserGetFolders(var List: TUserDataList);
+procedure UserDataGetAll(const User: String; var List: TUserDataList);
 var
   HomeSuffix: String;
   CacheSuffix: String;
@@ -140,7 +135,7 @@ var
   I: Integer;
   SafeDir: String;
   SystemDir: String;
-  Rec: TUserDataRec;
+  Rec: TUserFolderRec;
 
 begin
 
@@ -168,7 +163,7 @@ begin
   begin
 
     {Ignore current user - first item in List}
-    if CompareText(List[0].User, Accounts[I].User) = 0 then
+    if CompareText(User, Accounts[I].User) = 0 then
       Continue;
 
     SafeDir := NormalizePath(Accounts[I].Profile);
@@ -323,7 +318,7 @@ begin
 end;
 
 
-procedure UserAddDataRec(Rec: TUserDataRec; var List: TUserDataList);
+procedure UserAddDataItem(User, Folder, Caption: String; Local: Boolean; var List: TUserDataList);
 var
   Index: Integer;
 
@@ -331,18 +326,41 @@ begin
 
   Index := GetArrayLength(List);
   SetArrayLength(List, Index + 1);
-  List[Index] := Rec;
+  List[Index].User := User;
+  List[Index].Folder := Folder;
+  List[Index].Caption := Caption;
+  List[Index].Local := Local;
 
 end;
 
 
-procedure UserAddDataType(const Value: String; var Caption: String);
+procedure UserAddDataRec(Rec: TUserFolderRec; var List: TUserDataList);
+var
+  User: String;
+  Caption: String;
+  Local: Boolean;
+
 begin
 
-  if Caption <> '' then
-    Caption := Caption + '\';
+  if DirExists(Rec.Cache) then
+  begin
+    User := Rec.User + ': local';
+    Caption := 'cache';
+    Local := True;
+    UserAddDataItem(User, Rec.Cache, Caption, Local, List);
+  end; 
 
-  Caption := Caption + Value;
+  if DirExists(Rec.Home) then
+  begin
+    User := Rec.User + ': roaming';
+    Caption := 'config';
+    Local := False;
+    
+    if DirExists(Rec.Home + '\vendor') then
+      Caption := Caption + ', bin';
+
+    UserAddDataItem(User, Rec.Home, Caption, Local, List);
+  end;
 
 end;
 
@@ -376,50 +394,59 @@ end;
 
 procedure UserDeleteData(List: TUserDataList; const DllData: String);
 var
-  S: String;
+  Data: String;
   I: Integer;
+  CharCount: DWord;
+  InfoList: TStringList;
 
 begin
-
-  S := '';
 
   for I := 0 to GetArrayLength(List) - 1 do
   begin
 
-    if not List[I].Delete then
-      Continue;
-
-    if List[I].Cache <> '' then
-      S := S + List[I].Cache + ';';
-
-    if List[I].Home <> '' then
-      S := S + List[I].Home + ';';
+    if List[I].Delete then
+      Data := Data + List[I].Folder + ';';
 
   end;
+    
+  if Data = '' then
+    Exit;
 
-  if S <> '' then
-  begin
+  Debug('Calling dll: ' + DllData);   
+  DeleteData(UninstallProgressForm.Handle, Data, UninstallSilent);
+  
+  CharCount := 0;
+  CharCount := GetResult(Data, CharCount);  
+  SetLength(Data, CharCount);
 
-    Debug('Calling dll: ' + DllData + ' with directory list: ' + S);
+  if GetResult(Data, CharCount) <> CharCount then
+    Exit;
 
-    if DeleteUserData(UninstallProgressForm.Handle, S) then
-      Debug('Deleted user data')
-    else
-      Debug('Failed to delete user data');
+  Data := TrimRight(Data);
+  StringChangeEx(Data, ';', #13, True);
+  
+  InfoList := TStringList.Create;
+  
+  try
+    InfoList.Text := Data;
 
-    {Update uninstall form so it repaints}
-    Sleep(10);
-    UninstallProgressForm.Update;
+    for I := 0 to InfoList.Count - 1 do
+      Debug(InfoList.Strings[I]);
 
+  finally
+    InfoList.Free;
   end;
+
+  {Update uninstall form so it repaints}
+  Sleep(10);
+  UninstallProgressForm.Update;
 
 end;
 
-function UserDataSelect(var List: TUserDataList): Boolean;
+
+function UserDataSelect(Delete: Integer; var List: TUserDataList): Boolean;
 var
-  Form: TDataForm;
-  I: Integer;  
-  UserChecked: Integer;
+  I: Integer;
   Index: Integer;
 
 begin
@@ -432,55 +459,52 @@ begin
     Exit;
   end;
 
-  Debug('User data found, showing Delete User Data form');
-
   {Create the form}
-  UserDataCreateForm(Form);
+  UserDataCreateForm(Delete, UserForm);
 
   try
 
     {Populate the listbox}    
     for I := 0 to GetArrayLength(List) - 1 do
-      Form.ListBox.AddCheckBox(List[I].User, List[I].Caption, 0, List[I].Delete, True, False, False, TObject(I));
+    begin      
+      UserForm.ListBox.AddCheckBox(List[I].User, List[I].Caption, 0,
+        List[I].Delete, True, False, False, TObject(I));
+    end;
 
     {Show the form}
-    Form.Main.ShowModal();
-
-    UserChecked := 0;
+    UserForm.Main.ShowModal();
 
     {Transfer checked items to Delete field}
-    for I := 0 to Form.ListBox.Items.Count - 1 do
+    for I := 0 to UserForm.ListBox.Items.Count - 1 do
     begin
 
-      Index := Integer(Form.ListBox.ItemObject[I]);
-      List[Index].Delete := Form.ListBox.Checked[I];
+      Index := Integer(UserForm.ListBox.ItemObject[I]);
+      List[Index].Delete := UserForm.ListBox.Checked[I];
       
-      if Form.ListBox.Checked[I] then
-        Inc(UserChecked);
+      if UserForm.ListBox.Checked[I] then
+        Result := True;
 
     end;
 
-    Result := UserChecked > 0;
-
     if Result then
-      Debug('User selected to delete ' + IntToStr(UserChecked) + ' item(s)')
+      Debug('User chose to delete data')
     else
       Debug('User chose not to delete data');
 
   finally
-    Form.Main.Free();
+    UserForm.Main.Free();
   end;
 
 end;
 
 
-procedure UserDataCreateForm(var Form: TDataForm);
+procedure UserDataCreateForm(Delete: Integer; var Form: TDataForm);
 var
   Left: Integer;
   Width: Integer;
   Text: TNewStaticText;
+  Checkbox: TNewCheckbox;
   OkButton: TButton;
-  S: String;
 
 begin
 
@@ -501,8 +525,7 @@ begin
   Text.Width := Width;
   Text.AutoSize := True;
   Text.WordWrap := True;
-  S := 'Composer saves global packages, configuration and cache data for each user.';
-  Text.Caption := S + ' Please select the data you want to delete.';
+  Text.Caption := 'Please select the user data you want to delete.';
 
   Form.ListBox := TNewCheckListBox.Create(Form.Main);
   Form.ListBox.Top := Text.Top + Text.Height + ScaleY(10);
@@ -511,14 +534,13 @@ begin
   Form.ListBox.Width := Width;
   Form.ListBox.Height := ScaleY(148);
 
-  Text := TNewStaticText.Create(Form.Main);
-  Text.Top := Form.ListBox.Top + Form.ListBox.Height + ScaleY(6);
-  Text.Parent := Form.Main;
-  Text.Left := Left;
-  Text.Width := Width;
-  Text.AutoSize := True;
-  Text.WordWrap := True;
-  Text.Caption := 'User-defined caches will not be listed.';
+  Checkbox := TNewCheckbox.Create(Form.Main);
+  Checkbox.Top := Form.ListBox.Top + Form.ListBox.Height + ScaleY(6);
+  Checkbox.Left := Left;
+  Checkbox.Parent := Form.Main;
+  Checkbox.Caption := 'Select All';
+  Checkbox.Checked := Delete = DELETE_ALL;
+  Checkbox.OnClick := @UserCheckboxClick;
 
   OkButton := TButton.Create(Form.Main);
   OkButton.Parent := Form.Main;
@@ -531,5 +553,37 @@ begin
   OKButton.Default := True;
 
   Form.Main.ActiveControl := OkButton;
+
+end;
+
+
+procedure UserCheckboxClick(Sender: TObject);
+var
+  Checkbox: TNewCheckbox;
+  I: Integer;
+
+begin
+
+  Checkbox := Sender as TNewCheckbox;
+
+  for I := 0 to UserForm.ListBox.Items.Count - 1 do
+    UserForm.ListBox.Checked[I] := Checkbox.Checked;
+
+end;
+
+
+function UserGetDelete: Integer;
+var
+  Param: String;
+
+begin
+  
+  Result := DELETE_NONE;
+  Param := ExpandConstant('{param:delete}');
+
+  if CompareText(Param, 'local') = 0 then
+    Result := DELETE_LOCAL
+  else if CompareText(Param, 'all') = 0 then
+    Result := DELETE_ALL;
 
 end;

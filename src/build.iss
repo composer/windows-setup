@@ -2,16 +2,16 @@
 
 #sub Sign
   ; sign SHA1
-  #if Exec(SignExe + " " + SignSha1 + " " + Module, "", SourcePath) != 0
-    #pragma error "Code signing failed: " + AddBackslash(SourcePath) + Module
+  #if Exec(SignExe + " " + SignSha1 + " " + Module, "", SrcDir) != 0
+    #pragma error "Code signing failed: " + AddBackslash(SrcDir) + Module
   #endif
-  #pragma message "Signed SHA1: " + AddBackslash(SourcePath) + Module
+  #pragma message "Signed SHA1: " + AddBackslash(SrcDir) + Module
 
   ; sign SHA2
-  #if Exec(SignExe + " " + SignSha2 + " " + Module, "", SourcePath) != 0
-    #pragma error "Code signing failed: " + AddBackslash(SourcePath) + Module
+  #if Exec(SignExe + " " + SignSha2 + " " + Module, "", SrcDir) != 0
+    #pragma error "Code signing failed: " + AddBackslash(SrcDir) + Module
   #endif
-  #pragma message "Signed SHA2: " + AddBackslash(SourcePath) + Module
+  #pragma message "Signed SHA2: " + AddBackslash(SrcDir) + Module
 #endsub
 
 ; release defines
@@ -24,6 +24,7 @@
 #endif
 
 ; code sign userdata.dll
+#define protected SrcDir AddBackslash(SourcePath) + "userdata"
 #define protected Module "userdata.dll"
 #expr Sign
 

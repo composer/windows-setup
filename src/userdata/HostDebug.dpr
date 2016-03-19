@@ -1,4 +1,4 @@
-program DebugDll;
+program HostDebug;
 
 uses
   Forms,

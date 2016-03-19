@@ -32,7 +32,7 @@ Notes
 
 Debugging
 ---------
-A "debug.iss" file is created each time you compile. This concatenates all the includes files so that you
+A "debug.iss" file is created each time you compile. This concatenates all the include files so that you
 can debug from a single script (because the Inno IDE only allows one script open at a time). Remember that
 changes you make will be overwritten next time you compile "composer.iss".
 

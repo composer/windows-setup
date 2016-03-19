@@ -1,7 +1,8 @@
 output/
-release*
-develop*
-debug*
+release
+debug.iss
+develop.iss
+release.iss
 *.phar
 *.tmp
 *test*

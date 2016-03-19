@@ -8,12 +8,12 @@ uses
 {$R resource\progress.res}
 {$R resource\result.res}
 
-function DeleteUserData(HParent: HWND; DirList: PChar): Boolean; stdcall;
+function DeleteData(HParent: HWND; DirList: PChar; Silent: Boolean): Boolean; stdcall;
 begin
 
   try
 
-    Main := TMain.Create;
+    Main := TMain.Create(Silent);
 
     try
       Result := Main.Execute(HParent, DirList);
@@ -27,8 +27,30 @@ begin
 
 end;
 
+function GetResult(StrBuf: PChar; BufCount: DWord): DWord; stdcall;
+var
+  Len: DWord;
+
+begin
+
+  Len := Length(LastResult);
+
+  {Always return the number of TChars the buffer needs
+  to hold including null terminator}
+  Result := Len + 1;
+
+  if (StrBuf <> nil) and (BufCount >= Result) then
+  begin
+    Move(PChar(LastResult)^, StrBuf^, Len * SizeOf(Char));
+    StrBuf[Len] := #0;
+  end;
+
+end;
+
+
 exports
-  DeleteUserData;
+  DeleteData,
+  GetResult;
 
 begin
 

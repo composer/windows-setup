@@ -84,14 +84,14 @@ Source: php\{#PhpInstaller}; Flags: dontcopy;
 Source: shims\{#CmdShell}; Flags: dontcopy;
 
 ; app files
-Source: "{#DllData}"; DestDir: "{app}"; Flags: ignoreversion;
+Source: userdata\{#DllData}; DestDir: "{app}"; Flags: ignoreversion;
 
 ; shim files
-Source: "shims\{#CmdBat}"; DestDir: {code:GetBinDir}; Flags: ignoreversion;
-Source: "{tmp}\{#CmdShell}"; DestDir: {code:GetBinDir}; Flags: external ignoreversion;
+Source: shims\{#CmdBat}; DestDir: {code:GetBinDir}; Flags: ignoreversion;
+Source: {tmp}\{#CmdShell}; DestDir: {code:GetBinDir}; Flags: external ignoreversion;
 
 ; downloaded composer.phar
-Source: "{tmp}\composer.phar"; DestDir: {code:GetBinDir}; Flags: external ignoreversion;
+Source: {tmp}\composer.phar; DestDir: {code:GetBinDir}; Flags: external ignoreversion;
 
 
 [UninstallDelete]
@@ -221,7 +221,7 @@ type
 
 type
   TFlagsRec = record
-    SelectedPhp   : String;   {The php exe selected by the user}
+    LastFolder    : String;   {The last folder used in the file browser}
     SettingsError : Boolean;  {Set if we have errors, to make ShouldSkipPage work}
     DisableTls    : Boolean;  {Set if the user has chosen to disable tls}
     EnvChanged    : Boolean;  {Set if we have altered the environment}    
@@ -821,7 +821,7 @@ procedure InitCommon;
 begin
 
   {Initialize our flags - not strictly necessary}
-  Flags.SelectedPhp := '';
+  Flags.LastFolder := '';
   Flags.SettingsError := False;
   Flags.DisableTls := False;
   Flags.EnvChanged := False;
@@ -3057,8 +3057,8 @@ begin
   Filename := '';
 
   {Show last last selected directory, or Program Files}
-  if Flags.SelectedPhp <> '' then
-    Dir := ExtractFileDir(Flags.SelectedPhp)
+  if Flags.LastFolder <> '' then
+    Dir := Flags.LastFolder
   else if IsWin64 then
     Dir := ExpandConstant('{pf64}')
   else 
@@ -3069,7 +3069,7 @@ begin
   
   if GetOpenFileName('', Filename, Dir, Filter, Extension) then
   begin
-    Flags.SelectedPhp := Filename;
+    Flags.LastFolder := ExtractFileDir(Filename);
     SettingsComboAdd(Filename);
   end;
 
