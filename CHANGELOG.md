@@ -1,15 +1,17 @@
 ## Unreleased
 
-* Added unattended/silent install and uninstall functionality.
-* Changed Settings page to display a list of existing php installations. Only common locations are searched, starting with the system drive
-(usually C:) for the following directories: `\php*`, `php\php*`, `bin\php*`, `bin\php\php*`. It then repeats the process for the User profile directory, then looks for specific (xampp, wamp, PhpEd) locations.
-* Simpler error handling introduced, which displays all php output received.
+* Updated *userdata.dll* to handle silent uninstalls and removed the dialog cancel button, as it implied rollback functionality. File deletion can always be stopped using the close icon.
+* Added `/PHP=path\to\php.ex` and `/PROXY=http_proxy url` params for installation, which can additionally be saved using `/SAFEINF`
+and loaded with `/LOADINF`. For uninstall `/DELETE=local` will remove only local data, while `/DELETE=all` will remove all user data.
+* Added unattended/silent install and uninstall functionality, with `/SILENT`, `/VERYSILENT` and `/SUPPRESSMSGBOXES` params, as per
+Inno Setup documentation.
+* Changed Settings page to display a list of existing php installations. The following system drive and user profile directories are searched: `\php*`, `php\php*`, `bin\php*`, `bin\php\php*`. Finally it looks for specific (xampp, wamp, PhpEd) locations.
+* Simpler error handling introduced, which recognizes common PHP errors and displays all php output received.
 * Added a Proxy page for the user to enter an `http_proxy` value, with a value pre-entered if a proxy is found in any registry Internet
-Settings. The variable is then set in the User environment (but not deleted on Uninstall). The Proxy page is also shown if an `http_proxy` is already set or passed in as a param.
+Settings. The variable is then set in the User environment (but not deleted on Uninstall). The Proxy page is also shown if `http_proxy` is already set or passed in as a param.
 * Added a Security page for when openssl is disabled, with the option to not use it. Sets `disable-tls` flag for installer script
-* Added installation logging, stored in the users temp directory `AppData\Local\Temp` as `Setup Log YYYY-MM-DD #nnn.txt`. The log is deleted
-on reboot (Admin installs only).
-* Removed Shell Menus feature to simplify the setup.
+* Added installation logging, stored as `Setup Log YYYY-MM-DD #nnn.txt` in the users temp directory. For admin installs, the log is deleted on reboot.
+* Removed Shell Menus feature to simplify the setup and further development.
 
 
 ## v3.0

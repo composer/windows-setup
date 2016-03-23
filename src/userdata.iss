@@ -266,7 +266,7 @@ begin
 
   SubKey := 'Software\Microsoft\Windows NT\CurrentVersion\ProfileList'
 
-  if not RegGetSubkeyNames(HKEY_LOCAL_MACHINE, SubKey, Sids) then
+  if not RegGetSubkeyNames(HKLM, SubKey, Sids) then
     Exit;
 
   for I := 0 to GetArrayLength(Sids) - 1 do
@@ -298,7 +298,7 @@ begin
 
   SubKey := 'Software\Microsoft\Windows NT\CurrentVersion\ProfileList\' + Sid;
 
-  if RegQueryStringValue(HKEY_LOCAL_MACHINE, SubKey, 'ProfileImagePath', Path) then
+  if RegQueryStringValue(HKLM, SubKey, 'ProfileImagePath', Path) then
     Result := True;
 
 end;

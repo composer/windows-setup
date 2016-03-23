@@ -186,7 +186,8 @@ type
     Check     : String;
     Install   : String;
     Composer  : String;
-    Output    : String;
+    StdOut    : String;
+    StdErr    : String;
   end;
 
 type
@@ -286,6 +287,7 @@ var
 const
   SEP_PATH = ';';
   LF = #13#10;
+  LF2 = LF + LF;
   TAB = #32#32#32#32#32#32;
   
   PHP_CHECK = '{#PhpCheck}';
@@ -326,18 +328,19 @@ procedure InitSetData(); forward;
 {Common functions}
 procedure AddPhpParam(const Value: String; var Params: String); forward;
 procedure AddLine(var Existing: String; const Value: String); forward;
+procedure AddPara(var Existing: String; const Value: String); forward;
+procedure AddStr(var Existing: String; const Value: String); forward;
 function ConfigRecInit(const Exe: String): TConfigRec; forward;
 procedure ConfigRecReset(var Config: TConfigRec); forward;
 procedure Debug(const Message: String); forward;
 procedure DebugExecBegin(const Exe, Params: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 function ExecPhp(const Script, Args: String; var Config: TConfigRec): Boolean; forward;
-function FormatError(const Error, Filename, Extra: String): String; forward;
+function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
-function GetCmdError(StatusCode: Integer; var Config: TConfigRec): String; forward;
+function GetCmdError(StatusCode: Integer; Config: TConfigRec): String; forward;
 function GetExecParams(const PhpExe, Script, Args: String): String; forward;
 function GetRegHive: Integer; forward;
-function GetInstallerArgs(Config: TConfigRec): String; forward;
 function GetStatusText(Status: Integer): String; forward;
 procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
 procedure ShowErrorIfSilent; forward;
@@ -399,10 +402,20 @@ function SetProxyStatus: Boolean; forward;
 function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
 function CheckPhpOutput(var Config: TConfigRec): Boolean; forward;
+procedure GetCommonErrors(var Message: String; Config: TConfigRec); forward;
+function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean; forward;
+function GetErrorCgi(var Message: String; Config: TConfigRec): Boolean; forward;
+function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean; forward;
+function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetPhpDetails(Start: Integer; var Line: String; var Config: TConfigRec): Boolean; forward;
+function GetPhpError(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
+function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
+function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean; forward;
 
 {Composer installer functions}
+function GetInstallerArgs(Config: TConfigRec): String; forward;
+function GetInstallerError(Config: TConfigRec): String; forward;
 procedure RunInstaller(var Config: TConfigRec); forward;
 procedure ParseInstallerOutput(StatusCode: Integer; var Config: TConfigRec); forward;
 
@@ -458,7 +471,8 @@ begin
   {Set full filenames}
   TmpFile.Install := TmpDir + '\' + PHP_INSTALLER;
   TmpFile.Composer := TmpDir + '\' + CMD_SHELL;
-  TmpFile.Output := TmpDir + '\output.txt';
+  TmpFile.StdOut := TmpDir + '\stdout.txt';
+  TmpFile.StdErr := TmpDir + '\stderr.txt';
 
   {PHP_CHECK must not have a path, otherwise it masks errors caused by
   registry settings that force command.exe to open in a particular directory,
@@ -739,7 +753,7 @@ begin
 
     {Remove composer from path}
     PathChange(GetRegHive(), ENV_REMOVE, GetBinDir(''), False);
-		PathChange(HKEY_CURRENT_USER, ENV_REMOVE, GetVendorBinDir(), False);
+		PathChange(HKCU, ENV_REMOVE, GetVendorBinDir(), False);
 
     if EnvMakeChanges(EnvChanges, Error) = ENV_FAILED then
       ShowErrorMessage(Error);      
@@ -838,19 +852,18 @@ end;
 
 procedure InitError(const Error, Info: String);
 var
-  S: String;
+  Msg: String;
 
 begin
 
-  AddLine(S, Error);
-  AddLine(S, '');
-
+  AddLine(Msg, Error);
+  
   if Info <> '' then
-    AddLine(S, Info)
+    AddPara(Msg, Info)
   else
-    AddLine(S, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
+    AddPara(Msg, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
 
-  ShowErrorMessage(S);
+  ShowErrorMessage(Msg);
 
 end;
 
@@ -957,8 +970,25 @@ begin
   if Existing <> '' then
     Existing := Existing + LF;
 
-  Existing := Existing + Value;
+  AddStr(Existing, Value);
 
+end;
+
+
+procedure AddPara(var Existing: String; const Value: String);
+begin
+
+  if Existing <> '' then
+    Existing := Existing + LF2;
+
+  AddStr(Existing, Value);
+
+end;
+
+
+procedure AddStr(var Existing: String; const Value: String);
+begin
+  Existing := Existing + Value;
 end;
 
 
@@ -1022,9 +1052,9 @@ var
   Params: String;
 
 begin
-
-  if FileExists(TmpFile.Output) then
-    DeleteFile(TmpFile.Output);
+  
+  DeleteFile(TmpFile.StdOut);
+  DeleteFile(TmpFile.StdErr);
 
   if Script <> PHP_CHECK then
     ConfigRecReset(Config);
@@ -1041,19 +1071,14 @@ begin
     Exit;
   end;
 
-  LoadStringsFromFile(TmpFile.Output, Config.Output);
+  LoadStringsFromFile(TmpFile.StdOut, Config.Output);
   
 end;
 
 
-function FormatError(const Error, Filename, Extra: String): String;
+function FormatError(const Error, Filename: String): String;
 begin
-  
-  if Filename = '' then
-    Result := Format('%s:%s%s', [Error, LF + LF, Extra])
-  else
-    Result := Format('%s:%s%s%s%s', [Error, LF, Filename, LF + LF, Extra]);
-
+  Result := Format('%s:%s%s', [Error, LF, Filename]);
 end;
 
 
@@ -1066,7 +1091,7 @@ begin
 end;
 
 
-function GetCmdError(StatusCode: Integer; var Config: TConfigRec): String;
+function GetCmdError(StatusCode: Integer; Config: TConfigRec): String;
 var
   Filename: String;
   Prog: String;
@@ -1092,24 +1117,26 @@ begin
   if StringChangeEx(SysError, '%1', '%s', True) = 1 then
     SysError := Format(SysError, [Filename]);
 
-  Result := FormatError(Error, Filename, SysError);
+  Result := FormatError(Error, Filename);
+  AddPara(Result, SysError);
 
 end;
 
 
 function GetExecParams(const PhpExe, Script, Args: String): String;
-begin
+var
+  Params: String;
 
-  if Args = '' then
-  begin
-    Result := Format('/c "%s %s > %s"', [AddQuotes(PhpExe), AddQuotes(Script),
-      AddQuotes(TmpFile.Output)]);
-  end
-  else
-  begin
-    Result := Format('/c "%s %s %s > %s"', [AddQuotes(PhpExe), AddQuotes(Script),
-      Args, AddQuotes(TmpFile.Output)]);
-  end;
+begin
+  
+  Params := Format('%s %s', [AddQuotes(PhpExe), AddQuotes(Script)]);
+
+  if Args <> '' then
+    AddStr(Params, #32 + Args);
+
+  AddStr(Params, Format(' > %s 2> %s', [AddQuotes(TmpFile.StdOut), AddQuotes(TmpFile.StdErr)]));
+
+  Result := Format('/c "%s"', [Params]);
   
 end;
 
@@ -1118,23 +1145,10 @@ function GetRegHive: Integer;
 begin
 
   if IsAdminLoggedOn then
-    Result := HKEY_LOCAL_MACHINE
+    Result := HKLM
   else
-    Result := HKEY_CURRENT_USER;
+    Result := HKCU;
 
-end;
-
-
-function GetInstallerArgs(Config: TConfigRec): String;
-begin
-
-  AddPhpParam('no-ansi', Result);
-  AddPhpParam('quiet', Result);
-    
-  {Important to check both these values}
-  if not Config.PhpSecure and Flags.DisableTls then
-    AddPhpParam('disable-tls', Result);
-  
 end;
 
 
@@ -1171,43 +1185,39 @@ begin
     ERR_EXE_PHP,
     ERR_EXE_CMD: Message := GetCmdError(StatusCode, Config);
 
-    ERR_CHECK_PHP:
+    ERR_CHECK_PHP: Message := GetPhpError(Config);
+    {
     begin
 
       Message := 'The PHP exe file you specified did not run correctly';
       FormatExitCode(Message, Config);
       
-      Message := FormatError(Message, Config.PhpExe, Config.Extra);
+      Message := FormatError(Message, Config.PhpExe);
       
       // this needs working on re when to show it
       if Config.PhpDetails then
-        AddLine(Message, LF + GetPhpIni(Config, False));
-    end;
+        AddPara(Message, GetPhpIni(Config, False));
+            
+      if FileExists(ExtractFilePath(Config.PhpExe) + 'php-cli.exe') then
+      begin
+        
+        AddPara(Message, 'Your PHP is very old and must be upgraded to a modern version before you can use Composer.');
+        
+        
+        //AddLine(Message, '[Output]:');
+                
+      end;
+
+      AddStr(Message, ' Program output:');
+      AddPara(Message, Config.Extra);
+
+    end;}
 
     ERR_CHECK_PATH: Message := Config.Extra;
     
     ERR_INSTALL_WARNINGS,
-    ERR_INSTALL_ERRORS: Message := Config.Extra;
-        
-    ERR_INSTALL_OUTPUT:
-    begin
-      
-      Message := 'The Composer installer script did not run correctly';
-      FormatExitCode(Message, Config);
-
-      if Config.ExitCode = 0 then
-        Message := Message + ' because composer.phar was not downloaded.'
-      else
-      begin
-        if Config.Extra <> '' then
-          Message := FormatError(Message, '', Config.Extra)
-        else if Config.ExitCode = 1 then 
-          Message := Message + ' because no output was returned.'
-        else 
-          Message := Message + ' and no output was returned.';
-      end;
-
-    end;
+    ERR_INSTALL_ERRORS: Message := Config.Extra;        
+    ERR_INSTALL_OUTPUT: Message := GetInstallerError(Config);    
 
   end;
 
@@ -1220,16 +1230,16 @@ end;
 
 procedure ShowErrorIfSilent;
 var
-  S: String;
+  Msg: String;
 
 begin
 
   if WizardSilent then
   begin
-    S := Format('%s is unable to continue.%s', ['{#AppInstallName}', LF + LF]);
-    S := Format('%sPlease run setup interactively for more details,', [S]); 
-    S := Format('%s or view the log file: %s', [S, ExpandConstant('{log}')]);
-    ShowErrorMessage(S);
+    AddLine(Msg, '{#AppInstallName} is unable to continue.');
+    AddPara(Msg, 'Please run setup interactively for more details, or view the log file: ');
+    AddStr(Msg, ExpandConstant('{log}')); 
+    ShowErrorMessage(Msg);
     WizardForm.NextButton.Enabled := False;
   end;
 
@@ -1531,8 +1541,8 @@ var
 begin
 
   {To save continually iterating the paths, we use a hash comparison system}
-  GetRawPath(HKEY_LOCAL_MACHINE, SystemPath);
-  GetRawPath(HKEY_CURRENT_USER, UserPath);
+  GetRawPath(HKLM, SystemPath);
+  GetRawPath(HKCU, UserPath);
   Hash := GetPathHash(SystemPath, UserPath);
 
   Result := CompareText(Rec.List.Hash, Hash) <> 0;
@@ -1548,8 +1558,8 @@ begin
     SetArrayLength(Rec.List.Items, 0);
 
     {Set safe path list}
-    SetPathList(HKEY_LOCAL_MACHINE, SystemPath, Rec.List);
-    SetPathList(HKEY_CURRENT_USER, UserPath, Rec.List);
+    SetPathList(HKLM, SystemPath, Rec.List);
+    SetPathList(HKCU, UserPath, Rec.List);
 
     {Flag records as not checked}
     Rec.Php.Checked := False;
@@ -1625,11 +1635,11 @@ begin
   if not Paths.Php.Checked then
   begin
 
-    Paths.Php.Data.System := SearchPath(Paths.List, HKEY_LOCAL_MACHINE, '{#CmdPhp}');
+    Paths.Php.Data.System := SearchPath(Paths.List, HKLM, '{#CmdPhp}');
 
     {Only check User if we have no System entry}
     if IsUser and (Paths.Php.Data.System = '') then
-      Paths.Php.Data.User := SearchPath(Paths.List, HKEY_CURRENT_USER, '{#CmdPhp}');
+      Paths.Php.Data.User := SearchPath(Paths.List, HKCU, '{#CmdPhp}');
 
     UpdatePathStatus(Paths.Php);
 
@@ -1638,11 +1648,11 @@ begin
   if Full and not Paths.Bin.Checked then
   begin
 
-    Paths.Bin.Data.System := SearchPathBin(HKEY_LOCAL_MACHINE);
+    Paths.Bin.Data.System := SearchPathBin(HKLM);
 
     {Only check User if we have no System entry}
     if IsUser and (Paths.Bin.Data.System = '') then
-      Paths.Bin.Data.User := SearchPathBin(HKEY_CURRENT_USER);
+      Paths.Bin.Data.User := SearchPathBin(HKCU);
 
     UpdatePathStatus(Paths.Bin);
 
@@ -1656,7 +1666,7 @@ begin
     {We only check user path because it gets too messy if the value is
     found in the system path. More importantly, UpdatePathStatus will
     not work correctly with a system value for this type of usage}
-    if DirectoryInPath(VendorBin, Paths.List, HKEY_CURRENT_USER) then
+    if DirectoryInPath(VendorBin, Paths.List, HKCU) then
       Paths.VendorBin.Data.User := VendorBin;
 
     UpdatePathStatus(Paths.VendorBin);
@@ -1733,7 +1743,7 @@ begin
   end;
 
   if Paths.VendorBin.Status = PATH_NONE then
-    PathChange(HKEY_CURRENT_USER, ENV_ADD, GetVendorBinDir(), False);
+    PathChange(HKCU, ENV_ADD, GetVendorBinDir(), False);
 
   Result := True;
 
@@ -1770,8 +1780,7 @@ begin
   {If we have got here, then we have an error}
   AddLine(Error, 'Composer is already installed in the following directory:');
   AddLine(Error, Rec.Data.Path);
-  AddLine(Error, '');
-  AddLine(Error, 'You must remove it first, if you want to continue this installation.');
+  AddPara(Error, 'You must remove it first, if you want to continue this installation.');
 
   Result := False;
 
@@ -1788,8 +1797,8 @@ begin
   Debug('Checking PathExt values');
 
   {User PathExt values replace any system ones}
-  if not GetPathExt(HKEY_CURRENT_USER, PathExt) then
-    GetPathExt(HKEY_LOCAL_MACHINE, PathExt);
+  if not GetPathExt(HKCU, PathExt) then
+    GetPathExt(HKLM, PathExt);
 
   PathExt := Uppercase(PathExt  + ';');
 
@@ -1895,7 +1904,7 @@ begin
   for I := 0 to GetArrayLength(List) - 1 do
   begin
     if List[I].Show then 
-      Result := Result + LF + LF + EnvChangeToString(List[I], Spacing);
+      Result := Result + LF2 + EnvChangeToString(List[I], Spacing);
   end;
 
 end;
@@ -2033,7 +2042,7 @@ begin
   end;
 
   if Action = ENV_ADD then
-    EnvRegisterChange(HKEY_CURRENT_USER, Action, PROXY_KEY, Value, True)
+    EnvRegisterChange(HKCU, Action, PROXY_KEY, Value, True)
   else if Found then
   begin
     {Remove proxy}
@@ -2156,13 +2165,13 @@ var
 
 begin
 
-  if ProxyInEnvironment(HKEY_CURRENT_USER, Proxy) then
+  if ProxyInEnvironment(HKCU, Proxy) then
   begin
     Proxy.Status := PROXY_ENV;    
     Exit;
   end;
 
-  if ProxyInEnvironment(HKEY_LOCAL_MACHINE, Proxy) then
+  if ProxyInEnvironment(HKLM, Proxy) then
   begin
     Proxy.Status := PROXY_ENV;    
     Exit;
@@ -2170,21 +2179,13 @@ begin
   
   Key := 'Software\Microsoft\Windows\CurrentVersion\Internet Settings';
    
-  if ProxyInRegistry(HKEY_CURRENT_USER, Key, Servers) then
+  if ProxyInRegistry(HKCU, Key, Servers) then
   begin
     SetProxyFromReg(Servers, Proxy);        
     Exit;
   end;
 
-  if ProxyInRegistry(HKEY_LOCAL_MACHINE, Key, Servers) then
-  begin
-    SetProxyFromReg(Servers, Proxy);    
-    Exit;
-  end;
-
-  Key := 'Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Internet Settings';
-
-  if ProxyInRegistry(HKEY_LOCAL_MACHINE, Key, Servers) then
+  if ProxyInRegistry(HKLM, Key, Servers) then
   begin
     SetProxyFromReg(Servers, Proxy);    
     Exit;
@@ -2360,6 +2361,13 @@ begin
   FoundIndex := -1;
   Count := GetArrayLength(Config.Output);
   
+  if Count = 0 then
+  begin
+    LoadStringsFromFile(TmpFile.StdErr, Config.Output);
+    Count := GetArrayLength(Config.Output);
+    FoundIndex := -2;
+  end;
+     
   SetArrayLength(Tmp, Count);
   NextIndex := 0;
 
@@ -2400,6 +2408,92 @@ begin
 end;
 
 
+procedure GetCommonErrors(var Message: String; Config: TConfigRec);
+begin
+
+  if GetErrorExtDirectory(Message, Config) then
+    Exit;
+
+  if GetErrorExtDuplicate(Message, Config) then
+    Exit;
+
+  if GetErrorAutorun(Message, Config) then
+    Exit;
+
+  if GetErrorCgi(Message, Config) then
+    Exit;
+
+end;
+
+
+function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean;
+var
+  Key: String;
+  Autorun: String;
+
+begin
+
+  {Autorun entries in the registry can start cmd.exe in the wrong directory}
+
+  if Pos('input file', Config.Extra) = 0 then
+    Exit;
+
+  if not GetRegistryAutorun(Key, Autorun) then
+    Exit;
+ 
+  AddPara(Message, 'A setting in your registry could be causing the problem.');
+  AddStr(Message, ' Check this value and remove it if necessary:');
+  AddPara(Message, Format('%s = %s', [Key, Autorun]));
+
+  Result := True;
+
+end;
+
+
+function GetErrorCgi(var Message: String; Config: TConfigRec): Boolean;
+begin
+
+  {In very old versions, the cli was a different exe}
+
+  if FileExists(ExtractFilePath(Config.PhpExe) + 'php-cli.exe') then
+  begin
+    AddPara(Message, 'Your PHP is very old and must be upgraded to a recent version.');
+    Result := True;
+  end;
+
+end;
+
+
+function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean;
+begin
+
+  {The old wrong extension_dir problem}
+
+  if Pos('load dynamic library', Config.Extra) = 0 then
+    Exit;
+
+  AddPara(Message, 'A setting in your php.ini could be causing the problem:');
+  AddStr(Message, Format(' Either the %sextension_dir%s value is incorrect', [#39, #39])); 
+  AddStr(Message, ' or the dll does not exist.');  
+  Result := True;
+
+end;
+
+
+function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean;
+begin
+
+  {We need to check this or it could muddle the logic with installer output}
+
+  if Pos('already loaded', Config.Extra) = 0 then
+    Exit;
+
+  AddPara(Message, 'A duplicate setting in your php.ini could be causing the problem.');
+  Result := True;
+
+end;
+
+
 function GetPhpDetails(Start: Integer; var Line: String; var Config: TConfigRec): Boolean;
 var
   Details: String;
@@ -2435,6 +2529,30 @@ begin
 end;
 
 
+function GetPhpError(Config: TConfigRec): String;
+begin
+      
+  Result := 'The PHP exe file you specified did not run correctly';
+  FormatExitCode(Result, Config);  
+  Result := FormatError(Result, Config.PhpExe);
+
+  if Config.PhpDetails then
+    AddPara(Result, GetPhpIni(Config, False));
+        
+  GetCommonErrors(Result, Config);
+
+  {Unlikely we should have no output}
+  if Config.Extra = '' then
+    AddPara(Result, 'No output was returned.')
+  else
+  begin
+    AddPara(Result, 'Program Output:');  
+    AddLine(Result, Config.Extra);
+  end;
+
+end;
+
+
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String;
 var
   Spacing: String;
@@ -2446,7 +2564,7 @@ begin
   else
   begin
     if Indent then
-      Spacing := LF + LF + TAB
+      Spacing := LF2 + TAB
     else
       Spacing := #32;
 
@@ -2456,7 +2574,80 @@ begin
 end;
 
 
+function GetRegistryAutorun(var Name, Value: String): Boolean;
+begin
+  
+  if QueryRegistryAutorun(HKCU, Name, Value) then
+     Result := True
+  else
+    Result := QueryRegistryAutorun(HKLM, Name, Value);
+
+end;
+
+
+function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean;
+var
+  Key: String;
+
+begin
+  
+  Key := 'Software\Microsoft\Command Processor';
+
+  if not RegQueryStringValue(Hive, Key, 'AutoRun', Value) then
+    Exit;
+
+  if Value <> '' then
+  begin
+    Name := Format('%s\%s\AutoRun', [GetHiveName(Hive), Key]);
+    Result := True;
+  end;
+
+end;
+
+
 {*************** Composer installer functions ***************}
+
+function GetInstallerArgs(Config: TConfigRec): String;
+begin
+
+  AddPhpParam('no-ansi', Result);
+  AddPhpParam('quiet', Result);
+    
+  {Important to check both these values}
+  if not Config.PhpSecure and Flags.DisableTls then
+    AddPhpParam('disable-tls', Result);
+  
+end;
+
+
+function GetInstallerError(Config: TConfigRec): String;
+begin
+
+  Result := 'The Composer installer script did not run correctly';
+  FormatExitCode(Result, Config);
+
+  {This error is set in the unlikely event that the phar is missing}
+  if Config.ExitCode = 0 then
+  begin
+    AddStr(Result, ' because composer.phar was not downloaded.');
+    Exit;
+  end;
+  
+  {In theory we should always have output to show}
+  if Config.Extra <> '' then
+  begin
+    AddStr(Result, ':');
+    AddPara(Result, Config.Extra);
+    Exit; 
+  end;
+  
+  if Config.ExitCode = 1 then 
+    AddStr(Result, ' because no output was returned.')
+  else 
+    AddStr(Result, ' and no output was returned.');  
+
+end;
+
 
 procedure RunInstaller(var Config: TConfigRec);
 var
@@ -2553,7 +2744,7 @@ begin
   end;
 
   Config.Extra := Trim(Config.Extra);
-  AddLine(Config.Extra, '');
+  AddStr(Config.Extra, LF);
   
 end;
 
@@ -2588,9 +2779,8 @@ begin
   Text.Parent := Result.Surface;
   
   S := 'Setup has changed your environment, but not all running programs will be aware of this. ';
-  S := S + 'To use Composer for the first time, you will have to do one of the following:';
-  AddLine(S, '');
-  AddLine(S, TAB + '- Open a new command window.');
+  AddStr(S, 'To use Composer for the first time, you will have to do one of the following:');
+  AddPara(S, TAB + '- Open a new command window.');
   AddLine(S, TAB + '- Close all File Explorer windows, then open a new command window.');
   AddLine(S, TAB + '- Logoff and Logon again, then open a new command window.');
 

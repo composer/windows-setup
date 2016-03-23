@@ -257,11 +257,11 @@ begin
     Exit;
   end;
 
-  if (NewPath = '') and (Hive = HKEY_CURRENT_USER) then
+  if (NewPath = '') and (Hive = HKCU) then
     {We have an empty User PATH, so we can delete the subkey}
     Res := RegDeleteValue(Hive, Key, ENV_KEY_PATH)
   else
-    {Write the new path (could be empty for HKEY_LOCAL_MACHINE)}
+    {Write the new path (could be empty for HKLM)}
     Res := RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, NewPath);
 
   if Res then
@@ -333,7 +333,7 @@ end;
 function GetPathKeyForHive(Hive: Integer): String;
 begin
 
-  if Hive = HKEY_LOCAL_MACHINE then
+  if Hive = HKLM then
     Result := 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
   else
     Result := 'Environment';
@@ -344,7 +344,7 @@ end;
 function GetHiveName(Hive: Integer): String;
 begin
 
-  if Hive = HKEY_LOCAL_MACHINE then
+  if Hive = HKLM then
     Result := 'HKLM'
   else
     Result := 'HKCU';
@@ -355,7 +355,7 @@ end;
 function GetHiveFriendlyName(Hive: Integer): String;
 begin
   
-  if Hive = HKEY_LOCAL_MACHINE then
+  if Hive = HKLM then
     Result := 'System'
   else
     Result := 'User';
@@ -635,13 +635,13 @@ begin
   Result := False;
   Cmd := 'git.exe';
 
-  Hive := HKEY_LOCAL_MACHINE;
+  Hive := HKLM;
   SafeList := GetSafePathList(Hive);
   GitExe := SearchPath(SafeList, Hive, Cmd);
 
   if GitExe = '' then
   begin
-    Hive := HKEY_CURRENT_USER;
+    Hive := HKCU;
     SafeList := GetSafePathList(Hive);
     GitExe := SearchPath(SafeList, Hive, Cmd);
   end;

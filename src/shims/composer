@@ -1,16 +1,10 @@
 #!/bin/sh
 
-dir=$(d=$(dirname "$0"); cd "$d" && pwd)
+dir=$(cd "${0%/*}" && pwd)
 
-# see if we are running in cygwin
-if [[ $dir == /cygdrive/* ]]; then
-
-    # translate to windows format if we are using windows PHP
-	if [[ $(which php) == /cygdrive/* ]]; then
-  		dir=$(cygpath -m $dir);
-  	fi
+if [[ $dir == /cygdrive/* && $(which php) == /cygdrive/* ]]; then    
+    # cygwin paths for windows PHP must be translated
+    dir=$(cygpath -m "$dir");    
 fi
 
-# escape any spaces
-dir=$(echo $dir | sed 's/ /\ /g')
-php "${dir}/composer.phar" $*
+php "${dir}/composer.phar" "$@"
