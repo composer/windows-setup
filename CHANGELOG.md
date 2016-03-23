@@ -1,5 +1,7 @@
-## Unreleased
+## v4.1
+2016-03-28
 
+* Major version pushed to v4, reflecting ShellMenus removal which requires to uninstalling.
 * Updated *userdata.dll* to handle silent uninstalls and removed the dialog cancel button, as it implied rollback functionality. File deletion can always be stopped using the close icon.
 * Added `/PHP=path\to\php.ex` and `/PROXY=http_proxy url` params for installation, which can additionally be saved using `/SAFEINF`
 and loaded with `/LOADINF`. For uninstall `/DELETE=local` will remove only local data, while `/DELETE=all` will remove all user data.

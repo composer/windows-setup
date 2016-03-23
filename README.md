@@ -48,7 +48,7 @@ The installation directories depends on whether you are an Administrator or not 
 After you have reviewed and accepted your settings, the installer will download Composer and set everything up. Full usage documentation can be found at [https://getcomposer.org][composer] and a repository of packages can be browsed at [Packagist][packagist].
 
 ### Troubleshooting
-If you encounter any issues running Composer-Setup, it may help to review the log file it creates. This is stored in your temp directory `AppData\Local\Temp` with a formatted filename: `Setup Log YYYY-MM-DD #nnn.txt`. Note that for Admin installs the log will be deleted on the next reboot.
+Composer-Setup creates a log file, which may be useful to review if you experience any issues. This is stored in your temp directory `AppData\Local\Temp` with a formatted filename: `Setup Log YYYY-MM-DD #nnn.txt`. Note that for Admin installs the log will be deleted on the next reboot.
 
 <a name="Uninstalling"></a>
 ## Uninstalling
@@ -74,6 +74,6 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
 
 
   [composer]:   https://getcomposer.org/
-  [download]:   https://github.com/johnstevenson/composer-setup/releases/
+  [download]:   https://getcomposer.org/Composer-Setup.exe
   [inno]:       http://www.jrsoftware.org/isinfo.php
   [packagist]:  https://packagist.org/
