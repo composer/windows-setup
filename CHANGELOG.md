@@ -1,3 +1,9 @@
+## v4.3.0
+2016-03-24
+
+* Improves path handling for existing user path in admin installs (introduced in v4.2.0) and for adding `Composer\vendor\bin` to the user path.
+
+
 ## v4.2.0
 2016-03-24
 

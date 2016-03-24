@@ -141,6 +141,7 @@ type
     System  : String;
     User    : String;
     Cmd     : String;
+    Hive    : Integer;
     Path    : String;
   end;
 
@@ -1610,13 +1611,21 @@ end;
 
 procedure SetPathDataRec(var Rec: TPathRec; Cmd: String);
 begin
-    {A helper function for UpdatePathStatus}
-    Rec.Cmd := Cmd;
+  
+  {A helper function for UpdatePathStatus}
+  Rec.Cmd := Cmd;
 
-    if Cmd = '' then
-      Rec.Path := ''
-    else
-      Rec.Path := ExtractFileDir(Cmd);
+  if Cmd = '' then
+    Rec.Path := ''
+  else
+    Rec.Path := ExtractFileDir(Cmd);
+
+  if Rec.System <> '' then
+    Rec.Hive := HKLM
+  else if Rec.User <> '' then
+    Rec.Hive := HKCU
+  else
+    Rec.Hive := 0;
 
 end;
 
@@ -1637,7 +1646,7 @@ begin
 
     Paths.Php.Data.System := SearchPath(Paths.List, HKLM, '{#CmdPhp}');
 
-    {Only check User if we have no System entry}    
+    {Only check user path if we have no system entry, even if we are an admin}    
     if Paths.Php.Data.System = '' then
       Paths.Php.Data.User := SearchPath(Paths.List, HKCU, '{#CmdPhp}');
 
@@ -1650,7 +1659,7 @@ begin
 
     Paths.Bin.Data.System := SearchPathBin(HKLM);
 
-    {Only check User if we have no System entry}
+    {Only check user path if we are a User and have no system entry}
     if IsUser and (Paths.Bin.Data.System = '') then
       Paths.Bin.Data.User := SearchPathBin(HKCU);
 
@@ -1663,12 +1672,16 @@ begin
 
     VendorBin := GetVendorBinDir();
 
-    {We only check user path because it gets too messy if the value is
-    found in the system path. More importantly, UpdatePathStatus will
-    not work correctly with a system value for this type of usage}
+    {We check both system and user paths, even though it is unlikely
+    to find an entry in the system path. We only add this path
+    if the status is PATH_NONE}
+
+    if DirectoryInPath(VendorBin, Paths.List, HKLM) then
+      Paths.VendorBin.Data.System := VendorBin;
+
     if DirectoryInPath(VendorBin, Paths.List, HKCU) then
       Paths.VendorBin.Data.User := VendorBin;
-
+    
     UpdatePathStatus(Paths.VendorBin);
 
   end;
@@ -1815,20 +1828,20 @@ end;
 procedure CheckPathPhp(Rec: TPathStatus; Config: TConfigRec);
 var
   PhpPath: String;
-  Hive: Integer;
+  FixedHive: Integer;
 
 begin
 
   Debug('Checking php path');
 
   PhpPath := ExtractFileDir(Config.PhpExe);
-  Hive := GetRegHive();
+  FixedHive := GetRegHive();
 
   if Rec.Status = PATH_NONE then
   begin
 
     {Path empty, so add PhpPath}
-    PathChange(Hive, ENV_ADD, PhpPath, True);
+    PathChange(FixedHive, ENV_ADD, PhpPath, True);
 
   end
   else if Rec.Status = PATH_OK then
@@ -1838,8 +1851,11 @@ begin
     the new one and remove the existing one}
     if CompareText(Rec.Data.Path, PhpPath) <> 0 then
     begin
-      PathChange(Hive, ENV_ADD, PhpPath, True);
-      PathChange(Hive, ENV_REMOVE, Rec.Data.Path, True);
+      PathChange(FixedHive, ENV_ADD, PhpPath, True);
+      
+      {We might need to remove an existing user path in an admin
+      install, so we use the specific hive}
+      PathChange(Rec.Data.Hive, ENV_REMOVE, Rec.Data.Path, True);
     end;
 
   end;

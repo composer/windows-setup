@@ -63,10 +63,10 @@ The installer will modify your system path for Admin installs, or your user path
 
 In addition the installer will add the following to the user environment:
 
-* the `COMPOSER_BIN` directory to your path
+* the `C:\Users\<user>\AppData\Roaming\Composer\vendor\bin` directory to your path
 * an `http_proxy` value, if specified in the installer
 
-The uninstaller will only remove the path to the installation bin directory and the `COMPOSER_BIN` path, leaving the PHP path and any `http_proxy` value intact.
+The uninstaller will only remove the path to the installation bin directory and the `Composer\vendor\bin` path, leaving the PHP path and any `http_proxy` value intact.
 
 <a name="License"></a>
 ## License
