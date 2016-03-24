@@ -12,7 +12,7 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 <a name="About"></a>
 ## About
 
-Composer-Setup downloads and installs [Composer][composer] so you can use it easily from the command line.
+Composer-Setup downloads and installs Composer so you can use it easily from the command line.
 
 * it looks for PHP on your computer
 * it adds PHP to the path
@@ -46,7 +46,7 @@ The installation directories depends on whether you are an Administrator or not 
 * `C:\Users\<user>\AppData\Local\ComposerSetup\bin`
 
 
-After you have reviewed and accepted your settings, the installer will download Composer and set everything up. Full usage documentation can be found at [https://getcomposer.org][composer] and a repository of packages can be browsed at [Packagist][packagist].
+After you have reviewed and accepted your settings, the installer will download Composer and set everything up. If your environment has been changed, it is important to close your current terminal and open a new one so that the changes get loaded. The installer will remind you if this is the case.
 
 ### Troubleshooting
 Composer-Setup creates a log file, which may be useful to review if you experience any issues. This is stored in your temp directory `AppData\Local\Temp` with a formatted filename: `Setup Log YYYY-MM-DD #nnn.txt`. Note that for Admin installs the log will be deleted on the next reboot.
@@ -75,6 +75,5 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
 
 
   [composer]:   https://getcomposer.org/
-  [download]:   https://github.com/johnstevenson/composer-setup/releases/
+  [download]:   https://github.com/johnstevenson/composer-setup/releases/latest
   [inno]:       http://www.jrsoftware.org/isinfo.php
-  [packagist]:  https://packagist.org/
