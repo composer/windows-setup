@@ -2,7 +2,7 @@ program HostDebug;
 
 uses
   Forms,
-  DebugForm in 'DebugForm.pas' {Form1};
+  HostDebugForm in 'HostDebugForm.pas' {Form1};
 
 {$R *.res}
 

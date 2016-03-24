@@ -354,7 +354,6 @@ begin
   EnterCriticalSection(FCSection);
 
   try
-    SetText('Cancelling...');
     FCancelled := True;
   finally
     LeaveCriticalSection(FCSection);

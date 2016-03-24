@@ -1,13 +1,13 @@
-## v4.1
-2016-03-28
+## v4.1.0
+2016-03-24
 
-* Major version pushed to v4, reflecting ShellMenus removal which requires to uninstalling.
-* Updated *userdata.dll* to handle silent uninstalls and removed the dialog cancel button, as it implied rollback functionality. File deletion can always be stopped using the close icon.
+* Major version pushed to v4, reflecting ShellMenus removal which requires uninstalling.
+* Updated *userdata.dll* to handle silent uninstalls and removed the dialog cancel button, as it implied rollback functionality. File deletion can always be stopped using the dialog close icon.
 * Added `/PHP=path\to\php.ex` and `/PROXY=http_proxy url` params for installation, which can additionally be saved using `/SAFEINF`
 and loaded with `/LOADINF`. For uninstall `/DELETE=local` will remove only local data, while `/DELETE=all` will remove all user data.
 * Added unattended/silent install and uninstall functionality, with `/SILENT`, `/VERYSILENT` and `/SUPPRESSMSGBOXES` params, as per
 Inno Setup documentation.
-* Changed Settings page to display a list of existing php installations. The following system drive and user profile directories are searched: `\php*`, `php\php*`, `bin\php*`, `bin\php\php*`. Finally it looks for specific (xampp, wamp, PhpEd) locations.
+* Changed Settings page to display a list of existing php installations. The following system drive and user profile directories are searched first: `\php*`, `php\php*`, `bin\php*`, `bin\php\php*`. Then it looks for specific (xampp, wamp, PhpEd) locations.
 * Simpler error handling introduced, which recognizes common PHP errors and displays all php output received.
 * Added a Proxy page for the user to enter an `http_proxy` value, with a value pre-entered if a proxy is found in any registry Internet
 Settings. The variable is then set in the User environment (but not deleted on Uninstall). The Proxy page is also shown if `http_proxy` is already set or passed in as a param.

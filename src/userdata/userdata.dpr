@@ -33,16 +33,23 @@ var
 
 begin
 
-  Len := Length(LastResult);
+  try
 
-  {Always return the number of TChars the buffer needs
-  to hold including null terminator}
-  Result := Len + 1;
+    Len := Length(LastResult);
 
-  if (StrBuf <> nil) and (BufCount >= Result) then
-  begin
-    Move(PChar(LastResult)^, StrBuf^, Len * SizeOf(Char));
-    StrBuf[Len] := #0;
+    {Return the number of TChars the buffer needs
+    to hold including null terminator}
+    Result := Len + 1;
+
+    if (StrBuf <> nil) and (BufCount >= Result) then
+    begin
+      Move(PChar(LastResult)^, StrBuf^, Len * SizeOf(Char));
+      StrBuf[Len] := #0;
+    end;
+
+  except
+    {Return 0 to indicate an error}
+    Result := 0;
   end;
 
 end;

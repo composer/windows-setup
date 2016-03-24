@@ -40,7 +40,8 @@ begin
       Exit;
 
     // allow the dialog to show Please wait
-    Sleep(250);
+    if not Manager.Silent then
+      Sleep(250);
 
     // DeleteDirectories checks if the user has cancelled
     DeleteDirectories(DirList);

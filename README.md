@@ -14,10 +14,11 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 
 Composer-Setup downloads and installs [Composer][composer] so you can use it easily from the command line.
 
+* it looks for PHP on your computer
 * it adds PHP to the path
 * it installs Composer globally - just type `composer` from any location to use it
-* it can be run from Command Prompt, Git Bash, Msys, Msys2 and Cygwin (including cygwin php)
-* it can be installed silently for unattended installations
+* it lets you use the Command Prompt, Git Bash, Msys, Msys2 and Cygwin (including cygwin php)
+* it can be deployed unattended for silent installs/uninstalls
 
 [Download][download] and run the latest release and in the majority of cases this is all you need to do. The install process is described in more detail below.
 
@@ -74,6 +75,6 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
 
 
   [composer]:   https://getcomposer.org/
-  [download]:   https://getcomposer.org/Composer-Setup.exe
+  [download]:   https://github.com/johnstevenson/composer-setup/releases/
   [inno]:       http://www.jrsoftware.org/isinfo.php
   [packagist]:  https://packagist.org/
