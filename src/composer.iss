@@ -1637,8 +1637,8 @@ begin
 
     Paths.Php.Data.System := SearchPath(Paths.List, HKLM, '{#CmdPhp}');
 
-    {Only check User if we have no System entry}
-    if IsUser and (Paths.Php.Data.System = '') then
+    {Only check User if we have no System entry}    
+    if Paths.Php.Data.System = '' then
       Paths.Php.Data.User := SearchPath(Paths.List, HKCU, '{#CmdPhp}');
 
     UpdatePathStatus(Paths.Php);

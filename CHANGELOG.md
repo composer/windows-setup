@@ -1,3 +1,9 @@
+## v4.2.0
+2016-03-24
+
+* Allow an existing user path to be found and used in admin installs. The path is left intact but all other admin-specific locations will be used.
+
+
 ## v4.1.0
 2016-03-24
 
@@ -7,7 +13,7 @@
 and loaded with `/LOADINF`. For uninstall `/DELETE=local` will remove only local data, while `/DELETE=all` will remove all user data.
 * Added unattended/silent install and uninstall functionality, with `/SILENT`, `/VERYSILENT` and `/SUPPRESSMSGBOXES` params, as per
 Inno Setup documentation.
-* Changed Settings page to display a list of existing php installations. The following system drive and user profile directories are searched first: `\php*`, `php\php*`, `bin\php*`, `bin\php\php*`. Then it looks for specific (xampp, wamp, PhpEd) locations.
+* Changed Settings page to display a list of existing php installations. The following system drive and user profile directories are searched first: `\php*`, `\php\php*`, `\bin\php*`, `\bin\php\php*`. Then it looks for specific (xampp, wamp, PhpEd) locations.
 * Simpler error handling introduced, which recognizes common PHP errors and displays all php output received.
 * Added a Proxy page for the user to enter an `http_proxy` value, with a value pre-entered if a proxy is found in any registry Internet
 Settings. The variable is then set in the User environment (but not deleted on Uninstall). The Proxy page is also shown if `http_proxy` is already set or passed in as a param.
