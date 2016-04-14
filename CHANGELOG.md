@@ -1,3 +1,11 @@
+## v4.4.0
+2016-04-14
+
+* Improved search for existing php installations, including Program Files folders.
+* Updated installer to use channels.
+* Fixed PATHEXT handling bug [issue 54](https://github.com/composer/windows-setup/issues/54).
+
+
 ## v4.3.0
 2016-03-24
 

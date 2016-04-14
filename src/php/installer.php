@@ -19,17 +19,18 @@ process(is_array($argv) ? $argv : array());
 */
 function process($argv)
 {
+    // Determine ANSI output from --ansi and --no-ansi flags
+    setUseAnsi($argv);
+
     if (in_array('--help', $argv)) {
         displayHelp();
         exit(0);
     }
 
-    // Determine ANSI output from --ansi and --no-ansi flags
-    setUseAnsi($argv);
-
     $check      = in_array('--check', $argv);
     $force      = in_array('--force', $argv);
     $quiet      = in_array('--quiet', $argv);
+    $channel    = in_array('--snapshot', $argv) ? 'snapshot' : (in_array('--preview', $argv) ? 'preview' : 'stable');
     $disableTls = in_array('--disable-tls', $argv);
     $installDir = getOptValue('--install-dir', $argv, false);
     $version    = getOptValue('--version', $argv, false);
@@ -53,8 +54,8 @@ function process($argv)
     }
 
     if ($ok || $force) {
-        $installer = new Installer($quiet, $disableTls);
-        if ($installer->run($version, $installDir, $filename, $cafile)) {
+        $installer = new Installer($quiet, $disableTls, $cafile);
+        if ($installer->run($version, $installDir, $filename, $channel)) {
             showWarnings($warnings);
             showSecurityWarning($disableTls);
             exit(0);
@@ -81,7 +82,9 @@ Options
 --quiet              do not output unimportant messages
 --disable-tls        disable SSL/TLS security for file downloads
 --install-dir="..."  accepts a target installation directory
---version="..."      accepts a specific version to install instead of the latest
+--preview            install the latest version from the preview (alpha/beta/rc) channel instead of stable
+--snapshot           install the latest version from the snapshot (dev builds) channel instead of stable
+--version="..."      accepts a specific version to install instead of stable
 --filename="..."     accepts a target filename (default: composer.phar)
 --cafile="..."       accepts a path to a Certificate Authority (CA) certificate file for SSL/TLS verification
 
@@ -518,29 +521,31 @@ class Installer
 {
     protected $quiet;
     protected $disableTls;
+    protected $cafile;
     protected $installPath;
     protected $target;
     protected $tmpFile;
-    protected $homeUrl;
-    protected $sigUrl;
-    protected $cafile;
+    protected $baseUrl;
     protected $algo;
-    protected $pubKeyId;
     protected $errHandler;
+    protected $httpClient;
+    protected $pubKeys = array();
     protected $installs = array();
 
     /**
-    * Constructor
+    * Constructor - must not do anything that throws an exception
     *
     * @param bool $quiet Quiet mode
     * @param bool $disableTls Bypass tls
+    * @param mixed $cafile Path to CA bundle, or false
     */
-    public function __construct($quiet, $disableTls)
+    public function __construct($quiet, $disableTls, $caFile)
     {
         if (($this->quiet = $quiet)) {
             ob_start();
         }
         $this->disableTls = $disableTls;
+        $this->cafile = $caFile;
         $this->errHandler = new ErrorHandler();
     }
 
@@ -550,17 +555,18 @@ class Installer
     * @param mixed $version Specific version to install, or false
     * @param mixed $installDir Specific installation directory, or false
     * @param string $filename Specific filename to save to, or composer.phar
-    * @param mixed $cafile Path to CA bundle, or false
+    * @param string $channel Specific version channel to use
     * @throws Exception If anything other than a RuntimeException is caught
     *
     * @return bool If the installation succeeded
     */
-    public function run($version, $installDir, $filename, $cafile)
+    public function run($version, $installDir, $filename, $channel)
     {
         try {
-            $this->setTargetAndUrl($version, $installDir, $filename);
-            $this->setKeysAndTls($version, $cafile);
-            $result = $this->install();
+            $this->initTargets($installDir, $filename);
+            $this->initTls();
+            $this->httpClient = new HttpClient($this->disableTls, $this->cafile);
+            $result = $this->install($version, $channel);
         } catch (Exception $e) {
             $result = false;
         }
@@ -579,14 +585,13 @@ class Installer
     }
 
     /**
-    * Initialization methods to set the filenames and urls required
+    * Initialization methods to set the required filenames and composer url
     *
-    * @param mixed $version Specific version to install, or false
     * @param mixed $installDir Specific installation directory, or false
     * @param string $filename Specific filename to save to, or composer.phar
     * @throws RuntimeException If the installation directory is not writable
     */
-    protected function setTargetAndUrl($version, $installDir, $filename)
+    protected function initTargets($installDir, $filename)
     {
         $this->installPath = (is_dir($installDir) ? rtrim($installDir, '/').'/' : '').$filename;
         $installDir = realpath($installDir) ? realpath($installDir) : getcwd();
@@ -599,30 +604,33 @@ class Installer
         $this->tmpFile = $installDir.DIRECTORY_SEPARATOR.basename($this->target, '.phar').'-temp.phar';
 
         $uriScheme = $this->disableTls ? 'http' : 'https';
-        $urlPath   = ($version ? "/download/{$version}" : '').'/composer.phar';
-        $this->homeUrl = "{$uriScheme}://getcomposer.org{$urlPath}";
-        $this->sigUrl = $this->homeUrl.'.sig';
+        $this->baseUrl = $uriScheme.'://getcomposer.org';
     }
 
     /**
-    * A wrapper around methods to write public keys and set tls values
-    *
-    * @param mixed $version Specific version to install, or false
-    * @param mixed $cafile Path to CA bundle, or false
+    * A wrapper around methods to check tls and write public keys
+    * @throws RuntimeException If SHA384 is not supported
     */
-    protected function setKeysAndTls($version, $cafile)
+    protected function initTls()
     {
+        if ($this->disableTls) {
+            return;
+        }
+
+        if (!in_array('SHA384', openssl_get_md_methods())) {
+            throw new RuntimeException('SHA384 is not supported by your openssl extension');
+        }
+
+        $this->algo = defined('OPENSSL_ALGO_SHA384') ? OPENSSL_ALGO_SHA384 : 'SHA384';
         $home = $this->getComposerHome();
-        $devKey = $this->installKey(self::getDevPubKey(), $home, 'keys.dev.pub');
-        $tagsKey = $this->installKey(self::getTagsPubKey(), $home, 'keys.tags.pub');
 
-        if (!$this->disableTls) {
-            $this->setTlsValues($version ? $tagsKey : $devKey);
+        $this->pubKeys = array(
+            'dev' => $this->installKey(self::getPKDev(), $home, 'keys.dev.pub'),
+            'tags' => $this->installKey(self::getPKTags(), $home, 'keys.tags.pub')
+        );
 
-            if (empty($cafile) && !HttpClient::getSystemCaRootBundlePath()) {
-                $cafile = $this->installKey(HttpClient::getPackagedCaFile(), $home, 'cacert.pem');
-            }
-            $this->cafile = $cafile;
+        if (empty($this->cafile) && !HttpClient::getSystemCaRootBundlePath()) {
+            $this->cafile = $this->installKey(HttpClient::getPackagedCaFile(), $home, 'cacert.pem');
         }
     }
 
@@ -687,11 +695,13 @@ class Installer
     /**
     * The main install function
     *
+    * @param mixed $version Specific version to install, or false
+    * @param string $channel Version channel to use
+    *
     * @return bool If the installation succeeded
     */
-    protected function install()
+    protected function install($version, $channel)
     {
-        $httpClient = new HttpClient($this->disableTls, $this->cafile);
         $retries = 3;
         $result = false;
         $infoMsg = 'Downloading...';
@@ -704,12 +714,17 @@ class Installer
                 $infoType = 'error';
             }
 
-            if (!$this->downloadToTmp($httpClient, $signature, $error)) {
+            if (!$this->getVersion($channel, $version, $url, $error)) {
                 out($error, 'error');
                 continue;
             }
 
-            if (!$this->verifyAndSave($signature, $error)) {
+            if (!$this->downloadToTmp($url, $signature, $error)) {
+                out($error, 'error');
+                continue;
+            }
+
+            if (!$this->verifyAndSave($version, $signature, $error)) {
                 out($error, 'error');
                 continue;
             }
@@ -720,7 +735,7 @@ class Installer
 
         if (!$this->quiet) {
             if ($result) {
-                out(PHP_EOL."Composer successfully installed to: {$this->target}", 'success');
+                out(PHP_EOL."Composer (version {$version}) successfully installed to: {$this->target}", 'success');
                 out("Use it: php {$this->installPath}", 'info');
                 out('');
             } else {
@@ -731,28 +746,68 @@ class Installer
     }
 
     /**
+    * Sets the version url, downloading version data if required
+    *
+    * @param string $channel Version channel to use
+    * @param false|string $version Version to install, or set by method
+    * @param null|string $url The versioned url, set by method
+    * @param null|string $error Set by method on failure
+    *
+    * @return bool If the operation succeeded
+    */
+    protected function getVersion($channel, &$version, &$url, &$error)
+    {
+        $error = '';
+
+        if ($version) {
+            if (empty($url)) {
+                $url = $this->baseUrl."/download/{$version}/composer.phar";
+            }
+            return true;
+        }
+
+        $errFmt = 'The "%s" file could not be %s: %s';
+        $verUrl = $this->baseUrl.'/versions';
+        $this->errHandler->start();
+
+        if (!$json = $this->httpClient->get($verUrl)) {
+            $error = sprintf($errFmt, $verUrl, 'downloaded', $this->errHandler->message);
+
+        } elseif (!$data = json_decode($json, true)) {
+            $error = sprintf($errFmt, $verUrl, 'json-decoded', $this->getJsonError());
+
+        } else {
+            $this->parseVersionData($data, $channel, $version, $url);
+        }
+
+        $this->errHandler->stop();
+        return empty($error);
+    }
+
+    /**
     * A wrapper around the methods needed to download and save the phar
     *
-    * @param HttpClient $httpClient
+    * @param string $url The versioned download url
     * @param null|string $signature Set by method on successful download
     * @param null|string $error Set by method on failure
     *
     * @return bool If the operation succeeded
     */
-    protected function downloadToTmp($httpClient, &$signature, &$error)
+    protected function downloadToTmp($url, &$signature, &$error)
     {
         $error = '';
         $errFmt = 'The "%s" file could not be downloaded: %s';
+        $sigUrl = $url.'.sig';
         $this->errHandler->start();
 
         if (!$fh = fopen($this->tmpFile, 'w')) {
             $error = sprintf('Could not create file "%s": %s', $this->tmpFile, $this->errHandler->message);
 
-        } elseif (!$this->getSignature($httpClient, $this->sigUrl, $signature)) {
-            $error = sprintf($errFmt, $this->sigUrl, $this->errHandler->message);
+        } elseif (!$this->getSignature($sigUrl, $signature)) {
+            $error = sprintf($errFmt, $sigUrl, $this->errHandler->message);
 
-        } elseif (!fwrite($fh, $httpClient->get($this->homeUrl))) {
-            $error = sprintf($errFmt, $this->homeUrl, $this->errHandler->message);
+        } elseif (!fwrite($fh, $this->httpClient->get($url))) {
+            $error = sprintf($errFmt, $url, $this->errHandler->message);
         }
 
         if (is_resource($fh)) {
@@ -765,19 +820,20 @@ class Installer
     /**
     * Verifies the downloaded file and saves it to the target location
     *
+    * @param string $version The composer version downloaded
     * @param string $signature The digital signature to check
     * @param null|string $error Set by method on failure
     *
     * @return bool If the operation succeeded
     */
-    protected function verifyAndSave($signature, &$error)
+    protected function verifyAndSave($version, $signature, &$error)
     {
         $error = '';
 
         if (!$this->validatePhar($this->tmpFile, $pharError)) {
             $error = 'The download is corrupt: '.$pharError;
 
-        } elseif (!$this->verifySignature($this->tmpFile, $signature)) {
+        } elseif (!$this->verifySignature($version, $signature, $this->tmpFile)) {
             $error = 'Signature mismatch, could not verify the phar file integrity';
 
         } else {
@@ -794,34 +850,40 @@ class Installer
     }
 
     /**
-    * Sets the signature algo and public key resource
+    * Parses an array of version data to match the required channel
     *
-    * @param string $keyFile The path to the public key
-    * @throws RuntimeException If SHA384 is not supported
+    * @param array $data Downloaded version data
+    * @param mixed $channel Version channel to use
+    * @param false|string $version Set by method
+    * @param mixed $url The versioned url, set by method
     */
-    protected function setTlsValues($keyFile)
+    protected function parseVersionData(array $data, $channel, &$version, &$url)
     {
-        if (!in_array('SHA384', openssl_get_md_methods())) {
-            throw new RuntimeException('SHA384 is not supported by your openssl extension');
+        foreach ($data[$channel] as $candidate) {
+            if ($candidate['min-php'] <= PHP_VERSION_ID) {
+                $version = $candidate['version'];
+                $url = $this->baseUrl.$candidate['path'];
+                break;
+            }
         }
 
-        $this->algo = defined('OPENSSL_ALGO_SHA384') ? OPENSSL_ALGO_SHA384 : 'SHA384';
-        $this->pubKeyId = openssl_pkey_get_public('file://'.$keyFile);
+        if (!$version) {
+            throw new RuntimeException('There is no version of Composer available for your PHP version ('.PHP_VERSION.')');
+        }
     }
 
     /**
     * Downloads the digital signature of required phar file
     *
-    * @param HttpClient $httpClient
     * @param string $url The signature url
     * @param null|string $signature Set by method on success
     *
     * @return bool If the download succeeded
     */
-    protected function getSignature($httpClient, $url, &$signature)
+    protected function getSignature($url, &$signature)
     {
         if (!$result = $this->disableTls) {
-            $signature = $httpClient->get($url);
+            $signature = $this->httpClient->get($url);
 
             if ($signature) {
                 $signature = json_decode($signature, true);
@@ -836,20 +898,26 @@ class Installer
     /**
     * Verifies the signature of the downloaded phar
     *
-    * @param string $file The temp phar file
+    * @param string $version The composer versione
     * @param string $signature The downloaded digital signature
+    * @param string $file The temp phar file
     *
     * @return bool If the operation succeeded
     */
-    protected function verifySignature($file, $signature)
+    protected function verifySignature($version, $signature, $file)
     {
         if (!$result = $this->disableTls) {
+            $path = preg_match('{^[0-9a-f]{40}$}', $version) ? $this->pubKeys['dev'] : $this->pubKeys['tags'];
+            $pubkeyid = openssl_pkey_get_public('file://'.$path);
+
             $result = 1 === openssl_verify(
                 file_get_contents($file),
                 $signature,
-                $this->pubKeyId,
+                $pubkeyid,
                 $this->algo
             );
+
+            openssl_free_key($pubkeyid);
         }
 
         return $result;
@@ -887,16 +955,26 @@ class Installer
     }
 
     /**
+    * Returns a string representation of the last json error
+    *
+    * @return string The error string or code
+    */
+    protected function getJsonError()
+    {
+        if (function_exists('json_last_error_msg')) {
+            return json_last_error_msg();
+        } else {
+            return 'json_last_error = '.json_last_error();
+        }
+    }
+
+    /**
     * Cleans up resources at the end of the installation
     *
     * @param bool $result If the installation succeeded
     */
     protected function cleanUp($result)
     {
-        if (!$this->disableTls && is_resource($this->pubKeyId)) {
-            openssl_free_key($this->pubKeyId);
-        }
-
         if (!$result) {
             // Output buffered errors
             if ($this->quiet) {
@@ -939,9 +1017,9 @@ class Installer
         }
     }
 
-    public static function getDevPubKey()
+    public static function getPKDev()
     {
-        return <<<DEVPUBKEY
+        return <<<PKDEV
 -----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAnBDHjZS6e0ZMoK3xTD7f
 FNCzlXjX/Aie2dit8QXA03pSrOTbaMnxON3hUL47Lz3g1SC6YJEMVHr0zYq4elWi
@@ -956,12 +1034,12 @@ pMV6cVqnSa+wOc0D7pC9a6bne0bvLcm3S+w6I5iDB3lZsb3A9UtRiSP7aGSo7D72
 r/TU7BQQIzsZgAiqOGXvVklIgAMiV0iucgf3rNBLjjeNEwNSTTG9F0CtQ+7JLwaE
 wSEuAuRm+pRqi8BRnQ/GKUcCAwEAAQ==
 -----END PUBLIC KEY-----
-DEVPUBKEY;
+PKDEV;
     }
 
-    public static function getTagsPubKey()
+    public static function getPKTags()
     {
-        return <<<TAGSPUBKEY
+        return <<<PKTAGS
 -----BEGIN PUBLIC KEY-----
 MIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA0Vi/2K6apCVj76nCnCl2
 MQUPdK+A9eqkYBacXo2wQBYmyVlXm2/n/ZsX6pCLYPQTHyr5jXbkQzBw8SKqPdlh
@@ -976,7 +1054,7 @@ tl2IxiEnejnOmAzGVivE1YGduYBjN+mjxDVy8KGBrjnz1JPgAvgdwJ2dYw4Rsc/e
 TzCFWGk/HM6a4f0IzBWbJ5ot0PIi4amk07IotBXDWwqDiQTwyuGCym5EqWQ2BD95
 RGv89BPD+2DLnJysngsvVaUCAwEAAQ==
 -----END PUBLIC KEY-----
-TAGSPUBKEY;
+PKTAGS;
     }
 }
 

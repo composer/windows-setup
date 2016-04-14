@@ -84,7 +84,7 @@ Source: php\{#PhpInstaller}; Flags: dontcopy;
 Source: shims\{#CmdShell}; Flags: dontcopy;
 
 ; app files
-Source: userdata\{#DllData}; DestDir: "{app}"; Flags: ignoreversion;
+Source: userdata\{#DllData}; DestDir: "{app}"; Flags: ignoreversion signonce;
 
 ; shim files
 Source: shims\{#CmdBat}; DestDir: {code:GetBinDir}; Flags: ignoreversion;
@@ -351,7 +351,6 @@ function StrToVer(Version: String): Integer; forward;
 {Find PHP functions}
 procedure CheckLocation(Path: String; ResultList: TStringList); forward;
 procedure CheckWildcardLocation(Path: String; ResultList: TStringList); forward;
-function FindPhp(Locations, ResultList: TStringList): Boolean; forward;
 procedure GetCommonLocations(List: TStringList); forward;
 procedure SetPhpLocations; forward;
 
@@ -1323,8 +1322,12 @@ begin
     begin      
       
       repeat        
-        if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY = FILE_ATTRIBUTE_DIRECTORY then
-          CheckLocation(BasePath + FindRec.Name, ResultList);
+        
+        if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
+        begin
+          if (FindRec.Name <> '.') and (FindRec.Name <> '..') then 
+            CheckLocation(BasePath + FindRec.Name, ResultList);
+        end;
  
       until not FindNext(FindRec);             
     end;
@@ -1336,51 +1339,57 @@ begin
 end;
 
 
-function FindPhp(Locations, ResultList: TStringList): Boolean;
-var
-  I: Integer;
-  Path: String;
-
-begin
-  
-  for I := 0 to Locations.Count - 1 do
-  begin
-    Path := Locations.Strings[I];
-     
-    if Pos('*', Path) = 0 then
-      CheckLocation(Path, ResultList)      
-    else
-      CheckWildcardLocation(Path, ResultList);
-
-  end;
-
-  Result := ResultList.Count <> 0;
-
-end;
-
-
 procedure GetCommonLocations(List: TStringList);
 var
+  RootFolder: String;
+  PhpFolder: String;
   System: String;
   SystemBin: String;
+  User: String;
   UserBin: String;
+  Pf32: String;
+  Pf64: String;
 
 begin
+
+  RootFolder := '\php*';
+  PhpFolder := '\php\*';
 
   {System php}
   System := ExpandConstant('{sd}');
-  List.Add(System + '\php*');
-  List.Add(System + '\php\php*');
+  List.Add(System + RootFolder);
+  List.Add(System + PhpFolder);
 
   SystemBin := System + '\bin';
-  List.Add(SystemBin + '\php*');
-  List.Add(SystemBin + '\php\php*');
+  List.Add(SystemBin + RootFolder);
+  List.Add(SystemBin + PhpFolder);
  
   {User php}
+  User := GetEnv('USERPROFILE');
+  List.Add(User + RootFolder);
+  List.Add(User + PhpFolder);  
   
-  UserBin := AddBackslash(GetEnv('USERPROFILE')) + 'bin';
-  List.Add(UserBin + '\php*');
-  List.Add(UserBin + '\php\php*');
+  UserBin := User + '\bin';
+  List.Add(UserBin + RootFolder);
+  List.Add(UserBin + PhpFolder);
+
+  {Program Files}
+  if not IsWin64 then
+    Pf32 := ExpandConstant('{pf}')    
+  else
+  begin
+    Pf32 := ExpandConstant('{pf32}');
+    Pf64 := ExpandConstant('{pf64}');
+  end;
+
+  List.Add(Pf32 + RootFolder);
+  List.Add(Pf32 + PhpFolder);
+
+  if IsWin64 then
+  begin
+    List.Add(Pf64 + RootFolder);
+    List.Add(Pf64 + PhpFolder);
+  end;
 
   {Xampp}
   List.Add('C:\xampp\php');
@@ -1390,13 +1399,10 @@ begin
   List.Add('C:\wamp\bin\php\php*');
 
   {Nusphere}
-  if not IsWin64 then
-    List.Add(ExpandConstant('{pf}') + '\NuSphere\PhpEd\php*')
-  else
-  begin
-    List.Add(ExpandConstant('{pf32}') + '\NuSphere\PhpEd\php*');
-    List.Add(ExpandConstant('{pf64}') + '\NuSphere\PhpEd\php*');
-  end;
+  List.Add(Pf32 + '\NuSphere\PhpEd\php*');
+  
+  if IsWin64 then
+    List.Add(Pf64 + '\NuSphere\PhpEd\php*');  
 
 end;
 
@@ -1803,17 +1809,22 @@ end;
 function CheckPathExt(var Error: String): Boolean;
 var
   PathExt: String;
+  PathExtUser: String;
 
 begin
 
   Result := True;
-  Debug('Checking PathExt values');
+  Debug('Checking PathExt values for .BAT');
+
+  GetPathExt(HKLM, PathExt);
 
   {User PathExt values replace any system ones}
-  if not GetPathExt(HKCU, PathExt) then
-    GetPathExt(HKLM, PathExt);
-
-  PathExt := Uppercase(PathExt  + ';');
+  if GetPathExt(HKCU, PathExtUser) then
+  begin
+    {We cannot call ExpandEnvironmentStrings as it will return the user value}
+    StringChangeEx(PathExtUser, '%PATHEXT%', PathExt, True);
+    PathExt := PathExtUser; 
+  end;
 
   if Pos('.BAT;', PathExt) = 0 then
   begin
@@ -1871,7 +1882,16 @@ begin
 
   Value := '';
   Key := GetPathKeyForHive(Hive);
-  Result := RegQueryStringValue(Hive, Key, 'PathExt', Value);
+
+  Result := RegQueryStringValue(Hive, Key, 'PATHEXT', Value);
+
+  if Result then
+  begin
+    Value := Uppercase(Value);
+
+    if Value[Length(Value)] <> ';' then
+      Value := Value + ';';
+  end;
 
 end;
 
