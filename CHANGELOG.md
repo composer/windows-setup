@@ -1,3 +1,9 @@
+## v4.5.0
+2016-04-14
+
+* Improve welcome page logo.
+
+
 ## v4.4.0
 2016-04-14
 
