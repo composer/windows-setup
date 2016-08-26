@@ -1,7 +1,7 @@
 # Composer-Setup development
 
 ## Tools
-You will need to install the latest unicode version of Inno Setup Compiler. Make sure you include Inno Setup Preprocessor when you run the installer.
+You will need to [download](http://www.jrsoftware.org/download.php/is-unicode.exe) and install the latest unicode version of Inno Setup Compiler. Make sure you include Inno Setup Preprocessor when you run the installer.
 
 ## Compiling
 To compile the main `composer.iss` script you must create a file named `develop.iss` in the same directory, defining *SetupVersion*. For example:
@@ -12,7 +12,7 @@ To compile the main `composer.iss` script you must create a file named `develop.
 
 Composer-Setup will be compiled with the following settings:
 
-* output filename:    /Output/setup.exe
+* output filename:    /Output/mysetup.exe
 * exe version info:   as defined in SetupVersion
 
 If you want to save the exe to a different directory, or give it a different name, you can use standard Inno Setup syntax:
@@ -46,10 +46,12 @@ Because the Inno IDE only allows one script open at a time, it is only possible 
 
 
 ## Code Signing
-The following instructions relate to Certum CA, who provide cheap open source certificates.
+The following instructions relate to [Certum CA](https://en.sklep.certum.pl), who provide cheap Open Source Code Signing certificates. Their SHA2 certificate lets you sign code with both SHA256 and SHA1 (for older OSs that do not understand SHA256).
 
-Use Firefox to renew/create a certificate because it allows you to backup and save your complete certificate (ie private and public keys).
+Use Firefox to create your certificate because it allows you to backup and save your complete certificate (ie private and public keys). When your certificate has been activated:
 
-Use the *Install Online* button from the Certum certificate management page on the website (the other options only download the public key) then go to *Options/Advanced/Certificates* in Firefox. Backup with a `.p12` extension then click on the backup to import the certificate into the Windows Certificate Store - save it as the Current User, otherwise you will have to compile as an admin. Adding it to the certificate store allows you to use the `/a` option in signtool, which finds the most suitable certificate (rather than specifying a file and password in the command params).
+* Go to the Certum certificate management page and click the *Install Online* button (the other options only download the public key).
+* Go to *Options/Advanced/Certificates* in Firefox, select your certificate and click *Backup*, saving it with a `.p12` extension.
+* Click on the backup file to import the certificate into the Windows Certificate Store - save it as the Current User, otherwise you will have to compile as an admin.
 
-Renewing: unless Certum offer SHA1 and SHA2 certs for a single price, it will be necessary to drop support for any old OSs that cannot read SHA1.
+Adding it to the certificate store enables the use of the `/a` option in signtool, which finds the most suitable certificate (rather than specifying a file and password in the command params).
