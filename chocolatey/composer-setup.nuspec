@@ -20,16 +20,18 @@
     <description>
 Composer-Setup downloads and installs [Composer](https://getcomposer.org), the PHP Dependency Manager, so you can use it easily from the command line.
 
-* it looks for PHP on your computer
+* it looks for PHP on your computer (you need to have this installed)
 * it adds PHP to the path
+* it offers solutions to common PHP configuration problems
 * it installs Composer globally - just type `composer` from any location to use it
 * it lets you use the Command Prompt, Git Bash, Msys, Msys2 and Cygwin (including cygwin php)
 
-Note: To update Composer after it has been installed, run `composer selfupdate`    
+Note: To keep Composer updated, run `composer selfupdate` from your terminal.    
     </description>
-    <releaseNotes>https://github.com/composer/windows-setup/releases</releaseNotes>
+    <releaseNotes>https://github.com/composer/windows-setup/releases</releaseNotes>  
   </metadata>
   <files>
     <file src="tools\**" target="tools" />
+    <file src="..\src\release\Composer-Setup.4.5.0.exe" target="tools" /> 
   </files>
 </package>

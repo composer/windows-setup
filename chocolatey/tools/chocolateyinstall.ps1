@@ -1,46 +1,26 @@
 $ErrorActionPreference = 'Stop';
 
-$packageName= 'Composer-Setup'
-$url        = 'https://getcomposer.org/Composer-Setup.exe'
+$toolsDir = "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)"
+Import-Module (Join-Path $toolsDir 'common.ps1')
+$data = Get-ComposerPackageData($toolsDir)
 
 $packageArgs = @{
-  packageName   = $packageName
+  packageName   = $data.packageName
   fileType      = 'EXE'
-  url           = $url   
-  silentArgs   = '/VERYSILENT /SUPPRESSMSGBOXES'
+  file          = $data.fileLocation  
+  silentArgs    = '/VERYSILENT /SUPPRESSMSGBOXES'
   validExitCodes= @(0)
 }
 
 try {
-  Install-ChocolateyPackage @packageArgs
+  Install-ChocolateyInstallPackage @packageArgs
 } catch {
   
   if ($env:ChocolateyExitCode -eq '1') {
     Write-Host ""
+    Write-Host "*** IMPORTANT ***"
     Write-Host "The installation failed. Your PHP or other settings are incorrect."
     Write-Host "  Use the --notsilent option to run the installer interactively."
     Write-Host ""
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
