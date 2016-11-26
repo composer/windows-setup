@@ -3,7 +3,7 @@
   <metadata>
     <id>composer-setup</id>
     <title>Composer-Setup</title>
-    <version>4.5.0</version>
+    <version>{{Version}}</version>
     <packageSourceUrl>https://github.com/composer/windows-setup</packageSourceUrl>
     <owners>John Stevenson</owners>        
     <authors>Nils Adermann, Jordi Boggiano and community contributors</authors>    
@@ -32,6 +32,6 @@ Note: To keep Composer updated, run `composer selfupdate` from your terminal.
   </metadata>
   <files>
     <file src="tools\**" target="tools" />
-    <file src="..\src\release\Composer-Setup.4.5.0.exe" target="tools" /> 
+    <file src="{{ReleaseExe}}" target="tools" /> 
   </files>
 </package>
