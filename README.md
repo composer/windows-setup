@@ -33,18 +33,19 @@ The installer will then check that PHP and your path are set up correctly. If it
 
 Next, the installer will ask if you need a proxy server to connect to the internet. If it finds any values in your *Internet Settings* or your environment, then the proxy url will be displayed.
 
-The installation directories depends on whether you are an Administrator or not and are non-negotiable.
+The installation directories are pre-determined and depend on whether you are an Administrator or not.
 
-*Admin install for all users:*
+**Admin install for all users:**
 
 * `C:\<Program Files>\ComposerSetup`
 * `C:\ProgramData\ComposerSetup\bin`
 
-*User install:*
+**User install:**
 
 * `C:\Users\<user>\AppData\Local\ComposerSetup`
 * `C:\Users\<user>\AppData\Local\ComposerSetup\bin`
 
+*Note:* These locations are fixed because Composer needs a guaranteed writeable location to perform its upgrades.
 
 After you have reviewed and accepted your settings, the installer will download Composer and set everything up. If your environment has been changed, it is important to close your current terminal and open a new one so that the changes get loaded. The installer will remind you if this is the case.
 
@@ -59,7 +60,10 @@ The uninstall program is available from the Control Panel. Go to Programs and Fe
 <a name="Environment"></a>
 ## Environment Variables
 
-The installer will modify your system path for Admin installs, or your user path for User installs. The installer will add the path to PHP if required and the path to the installation bin directory.
+The installer will modify your system path for Admin installs, or your user path for User installs:
+
+* the path to PHP will be added or replaced as required
+* the path to the installation bin directory will be added
 
 In addition the installer will add the following to the user environment:
 

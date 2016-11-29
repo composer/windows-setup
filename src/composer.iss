@@ -214,14 +214,6 @@ type
   end;
 
 type
-  TVersionInfo = record
-    Existing    : Integer;
-    Setup       : Integer;
-    Installed   : Boolean;
-    Mixed       : Boolean;
-  end;
-
-type
   TFlagsRec = record
     LastFolder    : String;   {The last folder used in the file browser}
     SettingsError : Boolean;  {Set if we have errors, to make ShouldSkipPage work}
@@ -319,11 +311,9 @@ function SetEnvironmentVariable (Name: String; Value: String): LongBool;
   external 'SetEnvironmentVariableW@kernel32.dll stdcall delayload';
 
 {Init functions}
-function InitCheckVersion: Boolean; forward;
+function InitCheckExisting: Boolean; forward;
 procedure InitCommon; forward;
-procedure InitError(const Error, Info: String); forward;
 function InitGetParams: TParamsRec; forward;
-function InitGetVersion: TVersionInfo; forward;
 procedure InitSetData(); forward;
 
 {Common functions}
@@ -347,7 +337,8 @@ function GetStatusText(Status: Integer): String; forward;
 procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
 procedure ShowErrorIfSilent; forward;
 procedure ShowErrorMessage(const Message: String); forward;
-function StrToVer(Version: String): Integer; forward;
+function StrToVer(Version: String): DWord; forward;
+function VersionMatchMajor(Ver1, Ver2: String): Boolean; forward;
 
 {Find PHP functions}
 procedure CheckLocation(Path: String; ResultList: TStringList); forward;
@@ -359,7 +350,6 @@ procedure SetPhpLocations; forward;
 function CheckPermisions: Boolean; forward;
 function GetAppDir(Param: String): String; forward;
 function GetBinDir(Param: String): String; forward;
-function GetUninstaller(const Path: String; var Filename: String): Boolean; forward;
 function GetVendorBinDir(): String; forward;
 function UnixifyShellFile(const Filename: String; var Error: String): Boolean; forward;
 
@@ -457,8 +447,8 @@ begin
   {This must be the first call}
   InitCommon();
 
-  {Check if an existing install is ok}
-  if not InitCheckVersion() then
+  {Check if an existing version is ok to uninstall}
+  if not InitCheckExisting() then
     Exit;
 
   CmdExe := ExpandConstant('{cmd}');
@@ -757,9 +747,9 @@ begin
   if CurUninstallStep = usUninstall then
   begin
 
-    {Remove composer from path}
+    {Remove composer from paths}
     PathChange(GetRegHive(), ENV_REMOVE, GetBinDir(''), False);
-        PathChange(HKCU, ENV_REMOVE, GetVendorBinDir(), False);
+    PathChange(HKCU, ENV_REMOVE, GetVendorBinDir(), False);
 
     if EnvMakeChanges(EnvChanges, Error) = ENV_FAILED then
       ShowErrorMessage(Error);
@@ -780,59 +770,60 @@ end;
 
 {*************** Init functions ***************}
 
-function InitCheckVersion: Boolean;
+{Returns true if there is not an existing version, or if an existing version
+can be safeley overwritten by Setup}
+function InitCheckExisting: Boolean;
 var
-  Version: TVersionInfo;
-  Error: String;
-  Info: String;
-  User: String;
+  Msg: String;
+  Prev: String;
+  Key: String;
+  Hive: Integer;
+  Found: Boolean;
+
 
 begin
 
-  Result := False;
-  Version := InitGetVersion();
+  {We started using an AppId in v3.0, which is the regsitry key that Inno
+  uses, so older versions will not be found.}
+  Prev := GetPreviousData('{#PrevDataVersion}', '');
+  Found := Prev <> '';
 
-  if Version.Mixed then
+  if not Found then
   begin
+    Hive := GetRegHive();
+    Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Composer_is1';
 
-    {Mixed is set if there is an existing All Users installation if we are a user,
-    or if an admin has already has a user installation}
+    if RegKeyExists(Hive, Key) then
+    begin
+      Found := True;
+      {We started storing version info with v2.7, so this could be empty}
+      RegQueryStringValue(Hive, Key, 'Inno Setup CodeFile: {#PrevDataVersion}', Prev);
+    end;
+  end;
 
-    Error := 'Composer is already installed on this computer for %s.';
-    Info := 'If you wish to continue, uninstall it from the Control Panel first.';
+  Msg := 'Initializing {#AppInstallName} {#SetupVersion}';
 
-    if not IsAdminLoggedOn then
-      User := 'All Users'
-    else
-      User := 'user ' + GetUserNameString;
-
-    InitError(Format(Error, [User]), Info);
+  if not Found then
+  begin
+    Debug(Msg);
+    Result := True;
     Exit;
-
   end;
 
-  if Version.Installed then
+  {Check that the major versions match}
+  Result := VersionMatchMajor('{#SetupVersion}', Prev);
+
+  if Result then
   begin
-
-    Error := 'Sorry, but this installer is %s the one used for the current installation.';
-
-    {Check if we are installing over a version lower then 4.0}
-    if Version.Existing < StrToVer('4.0') then
-    begin
-      InitError(Format(Error, ['not compatible with']), Info);
-      Exit;
-    end;
-
-    {Check if we are installing a lower version}
-    if Version.Setup < Version.Existing then
-    begin
-      InitError(Format(Error, ['older than']), Info);
-      Exit;
-    end;
-
+    Debug(Format('%s - will install over existing version %s', [Msg, Prev]));
+    Exit;
   end;
 
-  Result := True;
+  Debug(Format('%s - cannot install over existing version %s', [Msg, Prev]));
+
+  Msg := 'Sorry, but this installer is not compatible with the one used for the current installation.';
+  AddPara(Msg, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
+  ShowErrorMessage(Msg);
 
 end;
 
@@ -852,24 +843,6 @@ begin
   BaseDir.AdminData := ExpandConstant('{commonappdata}');
   BaseDir.UserApp := ExpandConstant('{localappdata}');
   BaseDir.UserData := ExpandConstant('{localappdata}');
-
-end;
-
-
-procedure InitError(const Error, Info: String);
-var
-  Msg: String;
-
-begin
-
-  AddLine(Msg, Error);
-
-  if Info <> '' then
-    AddPara(Msg, Info)
-  else
-    AddPara(Msg, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
-
-  ShowErrorMessage(Msg);
 
 end;
 
@@ -895,53 +868,6 @@ begin
     if Result.Proxy = '' then
       Result.Proxy := GetIniString('{#IniSection}', '{#ParamProxy}', '', LoadInf);
   end;
-
-end;
-
-
-function InitGetVersion: TVersionInfo;
-var
-  OldAdmin: String;
-  OldUser: String;
-  OldPath: String;
-  Path: String;
-  Exe: String;
-
-begin
-
-  Result.Existing := StrToVer(GetPreviousData('{#PrevDataVersion}', ''));
-  Result.Setup := StrToVer('{#SetupVersion}');
-
-  {We started storing version info with v2.7}
-  Result.Installed := Result.Existing >= StrToVer('2.7');
-
-  OldAdmin := ExpandConstant('{commonappdata}\Composer\bin');
-  OldUser := ExpandConstant('{userappdata}\Composer\bin');
-
-  if not Result.Installed then
-  begin
-
-    if IsAdminLoggedOn then
-      Result.Installed := GetUninstaller(OldAdmin, Exe)
-    else
-      {The user data was upgraded with v2.7 so we only have to check old location}
-      Result.Installed := GetUninstaller(OldUser, Exe);
-
-  end;
-
-  {Check for a mismatch}
-  if IsAdminLoggedOn then
-  begin
-    OldPath := OldUser;
-    Path := GetAppDir('user');
-  end
-  else
-  begin
-    OldPath := OldAdmin;
-    Path := GetAppDir('admin');
-  end;
-
-  Result.Mixed := (GetUninstaller(OldPath, Exe) or GetUninstaller(Path, Exe));
 
 end;
 
@@ -1289,7 +1215,9 @@ begin
 end;
 
 
-function StrToVer(Version: String): Integer;
+{Returns the components of a version string packed into a 32bit unsigned
+integer, or zero if the string contains non-digits or an overflowing value.}
+function StrToVer(Version: String): DWord;
 var
   List: TStringList;
   I: Integer;
@@ -1307,7 +1235,7 @@ begin
     begin
       Part := StrToIntDef(List.Strings[I], -1);
 
-      if Part = -1 then
+      if (Part < 0) or (Part > 255) then
       begin
         Result := 0;
         Exit;
@@ -1325,6 +1253,22 @@ begin
   finally
     List.Free;
   end;
+
+end;
+
+
+{Returns true if the major version of each version string are equal}
+function VersionMatchMajor(Ver1, Ver2: String): Boolean;
+var
+  Major1: Integer;
+  Major2: Integer;
+
+begin
+
+  Major1 := (StrToVer(Ver1) shr 24) and $ff;
+  Major2 := (StrToVer(Ver2) shr 24) and $ff;
+
+  Result := Major1 = Major2;
 
 end;
 
@@ -1523,13 +1467,6 @@ begin
 
   Result := Result + '\{#AppInstallName}\bin';
 
-end;
-
-
-function GetUninstaller(const Path: String; var Filename: String): Boolean;
-begin
-  Filename := Path + '\unins000.exe';
-  Result := FileExists(Filename);
 end;
 
 
