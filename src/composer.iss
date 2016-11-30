@@ -1373,17 +1373,20 @@ begin
   end;
 
   {Xampp}
-  List.Add('C:\xampp\php');
+  List.Add(System + '\xampp\php');
 
   {Wamp Server}
-  List.Add('C:\wamp64\bin\php\php*');
-  List.Add('C:\wamp\bin\php\php*');
+  List.Add(System + '\wamp64\bin\php\php*');
+  List.Add(System + '\wamp\bin\php\php*');
 
   {Nusphere}
   List.Add(Pf32 + '\NuSphere\PhpEd\php*');
 
   if IsWin64 then
     List.Add(Pf64 + '\NuSphere\PhpEd\php*');
+
+  {Chocolatey}
+  List.Add(System + '\tools\php');
 
 end;
 

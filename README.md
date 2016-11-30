@@ -45,7 +45,7 @@ The installation directories are pre-determined and depend on whether you are an
 * `C:\Users\<user>\AppData\Local\ComposerSetup`
 * `C:\Users\<user>\AppData\Local\ComposerSetup\bin`
 
-*Note:* These locations are fixed because Composer needs a guaranteed writeable location to perform its upgrades.
+*Note:* These locations are fixed because Composer needs a guaranteed, persistent, writable location to perform its upgrades.
 
 After you have reviewed and accepted your settings, the installer will download Composer and set everything up. If your environment has been changed, it is important to close your current terminal and open a new one so that the changes get loaded. The installer will remind you if this is the case.
 
