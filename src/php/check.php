@@ -11,9 +11,12 @@
 
 $PHP_CHECK_ID = '<ComposerSetup:>';
 
-$tls = (int) extension_loaded('openssl');
-$ini = php_ini_loaded_file();
 $version = PHP_VERSION;
+$ini = php_ini_loaded_file();
+$tls = (int) extension_loaded('openssl');
+$compat = $tls ? (int) ini_get('allow_url_fopen') : 0;
 
-printf('%s%d|%s|%s%s', $PHP_CHECK_ID, $tls, $ini, $version, PHP_EOL);
+$data = array($version, $ini, $tls, $compat);
+printf('%s%s%s', $PHP_CHECK_ID, implode('|', $data), PHP_EOL);
+
 exit(0);

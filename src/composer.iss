@@ -14,6 +14,7 @@
 
 #define PhpCheck "check.php"
 #define PhpInstaller "installer.php"
+#define PhpIni "ini.php"
 
 #define PrevDataApp "AppDir"
 #define PrevDataBin "BinDir"
@@ -81,6 +82,7 @@ Name: {code:GetBinDir}; Permissions: users-modify; Check: CheckPermisions;
 ; files to extract must be first
 Source: php\{#PhpCheck}; Flags: dontcopy;
 Source: php\{#PhpInstaller}; Flags: dontcopy;
+Source: php\{#PhpIni}; Flags: dontcopy;
 Source: shims\{#CmdShell}; Flags: dontcopy;
 
 ; app files
@@ -118,10 +120,10 @@ FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a comman
 type
   TConfigRec = record
     PhpExe      : String;
-    PhpDetails  : Boolean;
-    PhpSecure   : Boolean;
-    PhpIni      : String;
     PhpVersion  : String;
+    PhpIni      : String;
+    PhpSecure   : Boolean;
+    PhpCompat   : Boolean;
     ExitCode    : Integer;
     StatusCode  : Integer;
     Output      : TArrayOfString;
@@ -184,11 +186,11 @@ type
 
 type
   TTmpFile = record
-    Check     : String;
-    Install   : String;
     Composer  : String;
     StdOut    : String;
     StdErr    : String;
+    ModIni    : String;
+    OrigIni   : String;
   end;
 
 type
@@ -204,6 +206,21 @@ type
 
 type
   TEnvChangeList = Array of TEnvChangeRec;
+
+type
+  TModIniRec = record
+    Active      : Boolean;
+    InUse       : Boolean;
+    New         : Boolean;
+    Backup      : String;
+    File        : String;
+    Secure      : Boolean;
+    Compat      : Boolean;
+    OldFile     : String;
+    OldSecure   : Boolean;
+    OldCompat   : Boolean;
+    UpdateError : String;
+  end;
 
 type
   TDirectoryRec = record
@@ -227,6 +244,7 @@ type
     Settings          : TWizardPage;
     ProgressSettings  : TOutputProgressWizardPage;
     ErrorSettings     : TWizardPage;
+    Ini               : TWizardPage;
     Security          : TWizardPage;
     Proxy             : TWizardPage;
     ProgressInstaller : TOutputProgressWizardPage;
@@ -241,6 +259,13 @@ type
     Browse    : TNewButton;
     Info      : TNewStaticText;
 end;
+
+type
+  TIniPageRec = record
+    Text      : TNewStaticText;
+    Checkbox  : TNewCheckbox;
+    Info      : TNewStaticText;
+  end;
 
 type
   TSecurityPageRec = record
@@ -264,14 +289,16 @@ var
   TmpFile: TTmpFile;              {contains full pathname of temp files}
   TmpDir: String;                 {the temp directory that setup/uninstall uses}
   ConfigRec: TConfigRec;          {contains path/selected php.exe data and any error}
-  ParamsRec: TParamsRec;          {contains any params from the command line or ini file}
+  ParamsRec: TParamsRec;          {contains any params from the command line or inf file}
   Paths: TPathInfo;               {contains latest path info}
   PhpList: TStringList;           {contains found PHP locations}
   ProxyInfo: TProxyRec;           {contains latest proxy info}
   CmdExe: String;                 {full pathname to system cmd}
   EnvChanges: TEnvChangeList;     {list of environment changes to make, or made}
+  ModIniRec: TModIniRec;          {contains data for a new/modified php ini}
   Flags: TFlagsRec;               {contains global flags that won't go anywhere else}
   Pages: TCustomPagesRec;         {group of custom pages}
+  IniPage: TIniPageRec;           {contains Ini page controls}
   SettingsPage: TSettingsPageRec; {contains Settings page controls}
   SecurityPage: TSecurityPageRec; {contains Security page controls}
   ProxyPage: TProxyPageRec;       {contains Proxy page controls}
@@ -285,6 +312,7 @@ const
 
   PHP_CHECK = '{#PhpCheck}';
   PHP_CHECK_ID = '{#PHP_CHECK_ID}';
+  PHP_INI = '{#PhpIni}';
   PHP_INSTALLER = '{#PhpInstaller}';
   CMD_SHELL = '{#CmdShell}';
 
@@ -321,17 +349,17 @@ procedure AddPhpParam(const Value: String; var Params: String); forward;
 procedure AddLine(var Existing: String; const Value: String); forward;
 procedure AddPara(var Existing: String; const Value: String); forward;
 procedure AddStr(var Existing: String; const Value: String); forward;
-function ConfigRecInit(const Exe: String): TConfigRec; forward;
-procedure ConfigRecReset(var Config: TConfigRec); forward;
+function ConfigInit(Exe: String): TConfigRec; forward;
+procedure ConfigResetOutput(var Config: TConfigRec); forward;
 procedure Debug(const Message: String); forward;
 procedure DebugExecBegin(const Exe, Params: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 procedure DebugPageName(Id: Integer); forward;
-function ExecPhp(const Script, Args: String; var Config: TConfigRec): Boolean; forward;
+function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean; forward;
 function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
 function GetCmdError(StatusCode: Integer; Config: TConfigRec): String; forward;
-function GetExecParams(const PhpExe, Script, Args: String): String; forward;
+function GetExecParams(Config: TConfigRec; Script, Args, Ini: String): String; forward;
 function GetRegHive: Integer; forward;
 function GetStatusText(Status: Integer): String; forward;
 procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
@@ -393,16 +421,27 @@ function SetProxyStatus: Boolean; forward;
 function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
 function CheckPhpOutput(var Config: TConfigRec): Boolean; forward;
+function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean; forward;
 procedure GetCommonErrors(var Message: String; Config: TConfigRec); forward;
 function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorCgi(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean; forward;
-function GetPhpDetails(Start: Integer; var Line: String; var Config: TConfigRec): Boolean; forward;
+function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean; forward;
 function GetPhpError(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
+procedure GetPhpOutput(var Details: String; var Config: TConfigRec); forward;
 function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
 function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean; forward;
+
+{Ini file functions}
+function IniCheckOutput(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
+function IniCheckTmp(Existing: Boolean): Boolean; forward;
+function IniFileRestore: Boolean; forward;
+function IniFileSave: Boolean; forward;
+function IniFileUpdate(Save: Boolean): Boolean; forward;
+function IniNeedsMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
+procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec); forward;
 
 {Composer installer functions}
 function GetInstallerArgs(Config: TConfigRec): String; forward;
@@ -415,6 +454,8 @@ function EnvironmentPageCreate(Id: Integer; Caption, Description: String): TWiza
 procedure ErrorInstallerUpdate; forward;
 procedure ErrorSettingsUpdate; forward;
 function GetBase(Control: TWinControl): Integer; forward;
+function IniPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+procedure IniPageUpdate; forward;
 function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
 function ProgressPageInstaller: Boolean; forward;
 procedure ProgressPageSettings(const Filename: String); forward;
@@ -457,18 +498,18 @@ begin
   {Extract our temp files to installer directory}
   ExtractTemporaryFile(PHP_CHECK);
   ExtractTemporaryFile(PHP_INSTALLER);
+  ExtractTemporaryFile(PHP_INI);
   ExtractTemporaryFile(CMD_SHELL);
 
-  {Set full filenames}
-  TmpFile.Install := TmpDir + '\' + PHP_INSTALLER;
+  {Set full filenames, but not for php scripts that we run because it breaks
+  cygwin php. Also, the PHP_CHECK script must not have a path, otherwise it
+  masks errors caused by autorun registry settings that force cmd.exe to open
+  in a particular directory}
   TmpFile.Composer := TmpDir + '\' + CMD_SHELL;
   TmpFile.StdOut := TmpDir + '\stdout.txt';
   TmpFile.StdErr := TmpDir + '\stderr.txt';
-
-  {PHP_CHECK must not have a path, otherwise it masks errors caused by
-  registry settings that force command.exe to open in a particular directory,
-  rather than the cwd. It would also break cygwin php}
-  TmpFile.Check := PHP_CHECK;
+  TmpFile.ModIni := TmpDir + '\php.ini-mod';
+  TmpFile.OrigIni := TmpDir + '\php.ini-orig';
 
   {Set our initial data}
   InitSetData();
@@ -482,7 +523,12 @@ procedure DeinitializeSetup();
 begin
 
   if not Flags.Completed then
+  begin
+
     EnvRevokeChanges(EnvChanges);
+    IniFileRestore();
+
+  end;
 
   if PhpList <> nil then
     PhpList.Free;
@@ -504,7 +550,10 @@ begin
   Pages.ErrorSettings := MessagePageCreate(Pages.Settings.ID,
     '', '', 'Please review and fix the issues listed below, then click Back and try again');
 
-  Pages.Security := SecurityPageCreate(Pages.ErrorSettings.ID,
+  Pages.Ini := IniPageCreate(Pages.ErrorSettings.ID,
+    'PHP Configuration Error', 'Your php.ini file is missing. Setup can create one for you.');
+
+  Pages.Security := SecurityPageCreate(Pages.Ini.ID,
     'Composer Security Warning', 'Please choose one of the following options.');
 
   Pages.Proxy := ProxyPageCreate(Pages.Security.ID,
@@ -555,6 +604,13 @@ begin
     ShowErrorIfSilent();
 
   end
+  else if CurPageID = Pages.Ini.ID then
+  begin
+
+    IniPageUpdate();
+    WizardForm.ActiveControl := nil;
+
+  end
   else if CurPageID = Pages.Proxy.ID then
   begin
 
@@ -589,12 +645,30 @@ begin
 
   if PageID = Pages.ErrorSettings.ID then
     Result := not Flags.SettingsError
+  else if PageID = Pages.Ini.ID then
+    Result := not ModIniRec.Active
   else if PageID = Pages.Security.ID then
     Result := ConfigRec.PhpSecure
   else if PageID = Pages.ErrorInstaller.ID then
     Result := ConfigRec.StatusCode = ERR_SUCCESS
   else if PageID = Pages.Environment.ID then
     Result := not Flags.EnvChanged;
+
+end;
+
+
+function BackButtonClick(CurPageID: Integer): Boolean;
+begin
+
+  Result := True;
+
+  if CurPageID = Pages.Ini.ID then
+  begin
+
+    {Delete/replace the ini file}
+    Result := IniFileUpdate(False);
+
+  end
 
 end;
 
@@ -614,6 +688,13 @@ begin
       {Show the progress page which calls the check function}
       ProgressPageSettings(SettingsPage.Combo.Text);
     end;
+
+  end
+  else if CurPageID = Pages.Ini.ID then
+  begin
+
+    {Create/delete/replace the ini file}
+    Result := IniFileUpdate(IniPage.Checkbox.Checked);
 
   end
   else if CurPageID = Pages.Proxy.ID then
@@ -924,21 +1005,25 @@ begin
 end;
 
 
-function ConfigRecInit(const Exe: String): TConfigRec;
+function ConfigInit(Exe: String): TConfigRec;
+var
+  ModIni: TModIniRec;
+
 begin
 
   Result.PhpExe := Exe;
-  Result.PhpDetails := False;
-  Result.PhpSecure := False;
-  Result.PhpIni := '';
   Result.PhpVersion := '';
+  Result.PhpIni := '';
+  Result.PhpSecure := False;
+  Result.PhpCompat := False;
 
-  ConfigRecReset(Result);
+  ConfigResetOutput(Result);
+  ModIniRec := ModIni;
 
 end;
 
 
-procedure ConfigRecReset(var Config: TConfigRec);
+procedure ConfigResetOutput(var Config: TConfigRec);
 begin
 
   Config.ExitCode := 0;
@@ -995,6 +1080,7 @@ begin
     Pages.Settings.ID:          Name := 'Settings Check';
     Pages.ProgressSettings.ID:  Name := 'Running Settings Check';
     Pages.ErrorSettings.ID:     Name := 'Settings Errors';
+    Pages.Ini.ID:               Name := 'PHP Configuration Error';
     Pages.Security.ID:          Name := 'Security Warning';
     Pages.Proxy.ID:             Name := 'Proxy Settings';
     Pages.ProgressInstaller.ID: Name := 'Running Composer Install';
@@ -1010,7 +1096,7 @@ begin
 end;
 
 
-function ExecPhp(const Script, Args: String; var Config: TConfigRec): Boolean;
+function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean;
 var
   Params: String;
 
@@ -1018,11 +1104,9 @@ begin
 
   DeleteFile(TmpFile.StdOut);
   DeleteFile(TmpFile.StdErr);
+  ConfigResetOutput(Config);
 
-  if Script <> PHP_CHECK then
-    ConfigRecReset(Config);
-
-  Params := GetExecParams(Config.PhpExe, Script, Args);
+  Params := GetExecParams(Config, Script, Args, Ini);
   DebugExecBegin(CmdExe, Params);
 
   Result := Exec(CmdExe, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
@@ -1086,13 +1170,18 @@ begin
 end;
 
 
-function GetExecParams(const PhpExe, Script, Args: String): String;
+function GetExecParams(Config: TConfigRec; Script, Args, Ini: String): String;
 var
   Params: String;
 
 begin
 
-  Params := Format('%s %s', [AddQuotes(PhpExe), AddQuotes(Script)]);
+  if Ini = '' then
+    Params := AddQuotes(Config.PhpExe)
+  else
+    Params := Format('%s -c %s', [AddQuotes(Config.PhpExe), AddQuotes(Ini)]);
+
+  Params := Format('%s %s', [Params, AddQuotes(Script)]);
 
   if Args <> '' then
     AddStr(Params, #32 + Args);
@@ -1147,35 +1236,7 @@ begin
   case StatusCode of
     ERR_EXE_PHP,
     ERR_EXE_CMD: Message := GetCmdError(StatusCode, Config);
-
     ERR_CHECK_PHP: Message := GetPhpError(Config);
-    {
-    begin
-
-      Message := 'The PHP exe file you specified did not run correctly';
-      FormatExitCode(Message, Config);
-
-      Message := FormatError(Message, Config.PhpExe);
-
-      // this needs working on re when to show it
-      if Config.PhpDetails then
-        AddPara(Message, GetPhpIni(Config, False));
-
-      if FileExists(ExtractFilePath(Config.PhpExe) + 'php-cli.exe') then
-      begin
-
-        AddPara(Message, 'Your PHP is very old and must be upgraded to a modern version before you can use Composer.');
-
-
-        //AddLine(Message, '[Output]:');
-
-      end;
-
-      AddStr(Message, ' Program output:');
-      AddPara(Message, Config.Extra);
-
-    end;}
-
     ERR_CHECK_PATH: Message := Config.Extra;
 
     ERR_INSTALL_WARNINGS,
@@ -1378,6 +1439,10 @@ begin
   {Wamp Server}
   List.Add(System + '\wamp64\bin\php\php*');
   List.Add(System + '\wamp\bin\php\php*');
+
+  {Cygwin}
+  List.Add(System + '\cygwin64\bin');
+  List.Add(System + '\cygwin\bin');
 
   {Nusphere}
   List.Add(Pf32 + '\NuSphere\PhpEd\php*');
@@ -2298,37 +2363,37 @@ end;
 
 function CheckPhp(const Filename: String): Boolean;
 var
-  Script: String;
-  Args: String;
+  ModIni: TModIniRec;
 
 begin
 
-  Result := False;
-
-  ConfigRec := ConfigRecInit(Filename);
+  ConfigRec := ConfigInit(Filename);
   Debug('Checking selected php: ' + Filename);
 
   {Make sure whatever we've been given can execute}
   if not CheckPhpExe(ConfigRec) then
-    Exit;
-
-  Script := PHP_CHECK;
-  Args := '';
-
-  {ExecPhp should only fail calling cmd.exe}
-  if not ExecPhp(Script, Args, ConfigRec) then
-    Exit;
-
-  {CheckPhpOutput will fail if we have unexpected output}
-  if not CheckPhpOutput(ConfigRec) then
   begin
-    SetError(ERR_CHECK_PHP, ConfigRec);
+    Result := False;
     Exit;
   end;
 
-  {Everthing ok}
-  Debug(Format('Details: version %s, tls = %d, ini = %s', [ConfigRec.PhpVersion,
-    ConfigRec.PhpSecure, ConfigRec.PhpIni]));
+  {Run php to check everything is okay}
+  if not CheckPhpSetup(ConfigRec, '') then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  {See if we need to modify the ini}
+  if IniNeedsMod(ModIni, ConfigRec) then
+  begin
+    ModIni.Active := True;
+    ModIni.OldFile := ConfigRec.PhpIni;
+    ModIni.OldSecure := ConfigRec.PhpSecure;
+    ModIni.OldCompat := ConfigRec.PhpCompat;
+
+    ModIniRec := ModIni;
+  end;
 
   Result := True;
 
@@ -2360,65 +2425,51 @@ end;
 
 function CheckPhpOutput(var Config: TConfigRec): Boolean;
 var
-  FoundIndex: Integer;
-  Count: Integer;
-  Tmp: TArrayOfString;
-  NextIndex: Integer;
-  I: Integer;
-  Item: String;
-  Lines: String;
-  StartPos: Integer;
+  Details: String;
 
 begin
 
-  FoundIndex := -1;
-  Count := GetArrayLength(Config.Output);
+  Result := False;
 
-  if Count = 0 then
+  {GetPhpOutput strips out the details line}
+  GetPhpOutput(Details, Config);
+
+  if Details = '' then
+    Exit;
+
+  if not GetPhpDetails(Details, Config) then
   begin
-    {If we haven't got any output then something has gone very wrong, so
-    we report any output from stderr}
-    LoadStringsFromFile(TmpFile.StdErr, Config.Output);
-    Count := GetArrayLength(Config.Output);
-    FoundIndex := -2;
+    Debug('Invalid details: ' + Details);
+    Exit;
   end;
 
-  SetArrayLength(Tmp, Count);
-  NextIndex := 0;
+  {ConfigExtra will contain output other than the details line}
+  Result := (Config.Extra = '') and (Config.ExitCode = 0);
 
-  for I := 0 to Count - 1 do
+end;
+
+
+function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean;
+begin
+
+  Result := False;
+
+  {ExecPhp should only fail calling cmd.exe}
+  if not ExecPhp(PHP_CHECK, '', Ini, Config) then
+    Exit;
+
+  {CheckPhpOutput will fail if we have unexpected output}
+  if not CheckPhpOutput(Config) then
   begin
-
-    Item := Config.Output[I];
-
-    if FoundIndex = -1 then
-    begin
-      StartPos := Pos(PHP_CHECK_ID, Item);
-
-      if StartPos <> 0 then
-      begin
-
-        FoundIndex := I;
-        Config.PhpDetails := GetPhpDetails(StartPos, Item, Config);
-
-        {Skip adding the line if details are okay and there no is preceeding data}
-        if Config.PhpDetails and (Item = '') then
-          Continue;
-      end;
-
-    end;
-
-    AddLine(Lines, Item);
-    Tmp[NextIndex] := Item;
-    Inc(NextIndex);
-
+    SetError(ERR_CHECK_PHP, Config);
+    Exit;
   end;
 
-  Config.Extra := Trim(Lines);
-  SetArrayLength(Tmp, NextIndex);
-  Config.Output := Tmp;
+  {Everthing ok}
+  Debug(Format('Details: version=%s, ini=%s, tls=%d, compat=%d', [Config.PhpVersion,
+    Config.PhpIni, Config.PhpSecure, Config.PhpCompat]));
 
-  Result := Config.PhpDetails and (Config.ExitCode = 0) and (FoundIndex = 0);
+  Result := True;
 
 end;
 
@@ -2509,31 +2560,26 @@ begin
 end;
 
 
-function GetPhpDetails(Start: Integer; var Line: String; var Config: TConfigRec): Boolean;
+
+function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean;
 var
-  Details: String;
   List: TStringList;
 
 begin
 
-  Result := False;
-
-  Details := Trim(Copy(Line, Start + Length(PHP_CHECK_ID), MaxInt));
   StringChangeEx(Details, '|', #13, True);
-
-  {Save any data preceeding the check id}
-  Line := Trim(Copy(Line, 1, Start - 1));
-
   List := TStringList.Create;
 
   try
     List.Text := Details;
 
-    if List.Count = 3 then
+    if List.Count = 4 then
     begin
-      Config.PhpSecure := Boolean(StrToIntDef(List.Strings[0], 0));
+      Config.PhpVersion := List.Strings[0];
       Config.PhpIni := List.Strings[1];
-      Config.PhpVersion := List.Strings[2];
+      Config.PhpSecure := Boolean(StrToIntDef(List.Strings[2], 0));
+      Config.PhpCompat := Boolean(StrToIntDef(List.Strings[3], 0));
+
       Result := True;
     end;
 
@@ -2551,7 +2597,8 @@ begin
   FormatExitCode(Result, Config);
   Result := FormatError(Result, Config.PhpExe);
 
-  if Config.PhpDetails then
+  {Version will not be empty if we got the check data}
+  if Config.PhpVersion <> '' then
     AddPara(Result, GetPhpIni(Config, False));
 
   GetCommonErrors(Result, Config);
@@ -2589,6 +2636,78 @@ begin
 end;
 
 
+{Program output should contain a single details line, or error messages if
+something is not set up correctly. If the details line is found it is removed
+from the output array. Additionally the output lines are placed in a string}
+procedure GetPhpOutput(var Details: String; var Config: TConfigRec);
+var
+  Found: Boolean;
+  Count: Integer;
+  Stripped: TArrayOfString;
+  NextIndex: Integer;
+  I: Integer;
+  Line: String;
+  Content: String;
+  StartPos: Integer;
+
+begin
+
+  Found := False;
+  Count := GetArrayLength(Config.Output);
+
+  if Count = 0 then
+  begin
+    {If we haven't got any output then something has gone wrong, so we report
+    any output from stderr}
+    LoadStringsFromFile(TmpFile.StdErr, Config.Output);
+    Count := GetArrayLength(Config.Output);
+    Found := True;
+  end;
+
+  SetArrayLength(Stripped, Count);
+  NextIndex := 0;
+
+  for I := 0 to Count - 1 do
+  begin
+
+    Line := Config.Output[I];
+
+    if not Found then
+    begin
+      StartPos := Pos(PHP_CHECK_ID, Line);
+
+      if StartPos <> 0 then
+      begin
+
+        Found := True;
+        Details := Trim(Copy(Line, StartPos + Length(PHP_CHECK_ID), MaxInt));
+
+        {Save any data preceeding the check id}
+        Line := Trim(Copy(Line, 1, StartPos - 1));
+
+        {Skip adding the line if it is now empty}
+        if Line = '' then
+          Continue;
+      end;
+
+    end;
+
+    AddLine(Content, Line);
+    Stripped[NextIndex] := Line;
+    Inc(NextIndex);
+
+  end;
+
+  {Copy the stripped output back to the main record}
+  SetArrayLength(Stripped, NextIndex);
+  Config.Output := Stripped;
+
+  {Set the stripped output as a single string}
+  Config.Extra := Trim(Content);
+
+end;
+
+
 function GetRegistryAutorun(var Name, Value: String): Boolean;
 begin
 
@@ -2616,6 +2735,248 @@ begin
     Name := Format('%s\%s\AutoRun', [GetHiveName(Hive), Key]);
     Result := True;
   end;
+
+end;
+
+
+{*************** Ini file functions ***************}
+
+function IniCheckOutput(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
+var
+  Details: String;
+
+begin
+
+  Result := False;
+
+  GetPhpOutput(Details, Config);
+
+  if Details <> '' then
+    Debug(Details);
+
+  {The script exits 0 if the ini needs modifying/creating}
+  if Config.ExitCode <> 0 then
+    Exit;
+
+  {Check tmp files have been written}
+  if not IniCheckTmp(not ModIni.New) then
+    Exit;
+
+  Debug('Checking tmp ini with selected php');
+  Config := ConfigInit(Config.PhpExe);
+
+  if CheckPhpSetup(Config, TmpFile.ModIni) then
+  begin
+    ModIni.Secure := Config.PhpSecure;
+    ModIni.Compat := Config.PhpCompat;
+    Result := Config.PhpCompat;
+  end;
+
+end;
+
+
+function IniCheckTmp(Existing: Boolean): Boolean;
+var
+  Error: String;
+
+begin
+
+  Result := False;
+  Error := Format('Error: script %s did not create ', [PHP_INI]);
+
+  if not FileExists(TmpFile.ModIni) then
+  begin
+    Debug(Error + ExtractFileName(TmpFile.ModIni));
+    Exit;
+  end;
+
+  if Existing and not FileExists(TmpFile.OrigIni) then
+  begin
+    Debug(Error + ExtractFileName(TmpFile.OrigIni));
+    Exit;
+  end;
+
+  Result := True;
+
+end;
+
+
+function IniFileRestore: Boolean;
+var
+  Ini: String;
+
+begin
+
+  Ini := ModIniRec.File;
+
+  {Return true if the new/modified ini is not in use}
+  if not ModIniRec.InUse then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  if ModIniRec.New then
+  begin
+    DelayDeleteFile(Ini, 2);
+    Result := not FileExists(Ini);
+  end
+  else
+    Result := FileCopy(TmpFile.OrigIni, Ini, False);
+
+  IniSetMessage(Result, False, ModIniRec);
+
+  if Result then
+  begin
+    ConfigRec.PhpIni := ModIniRec.OldFile;
+    ConfigRec.PhpSecure := ModIniRec.OldSecure;
+    ConfigRec.PhpCompat := ModIniRec.OldCompat;
+    ModIniRec.InUse := False;
+  end;
+
+end;
+
+
+function IniFileSave: Boolean;
+var
+  Ini: String;
+
+begin
+
+  Ini := ModIniRec.File;
+
+  {Return true if the new/modified ini is in use}
+  if ModIniRec.InUse then
+  begin
+    Result := True;
+    Exit;
+  end;
+
+  Result := FileCopy(TmpFile.ModIni, Ini, False);
+  IniSetMessage(Result, True, ModIniRec);
+
+  if Result then
+  begin
+    ConfigRec.PhpIni := Ini;
+    ConfigRec.PhpSecure := ModIniRec.Secure;
+    ConfigRec.PhpCompat := ModIniRec.Compat;
+    ModIniRec.InUse := True;
+  end;
+
+end;
+
+
+function IniFileUpdate(Save: Boolean): Boolean;
+begin
+
+  if Save then
+    Result := IniFileSave()
+  else
+    Result := IniFileRestore();
+
+  if not Result then
+    ShowErrorMessage(ModIniRec.UpdateError);
+
+end;
+
+
+function IniNeedsMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
+var
+  Args: String;
+
+begin
+
+  Result := False;
+  ModIni.New := Config.PhpIni = '';
+
+  if ModIni.New then
+  begin
+    ModIni.File := ExtractFilePath(Config.PhpExe) + 'php.ini';
+    Debug(Format('Checking if ini can be created: %s', [ModIni.File]));
+  end
+  else
+  begin
+    ModIni.File := Config.PhpIni;
+    ModIni.Backup := Config.PhpIni + '~orig';
+    Debug(Format('Checking if ini needs updating: %s', [Config.PhpIni]));
+  end;
+
+  {Get a new config rec}
+  Config := ConfigInit(Config.PhpExe);
+
+  {We must delete any existing tmp inis}
+  DeleteFile(TmpFile.ModIni);
+  DeleteFile(TmpFile.OrigIni);
+
+  Args := AddQuotes(ExtractFileDir(Config.PhpExe));
+  AddStr(Args, #32 + AddQuotes(TmpDir));
+
+  {ExecPhp should only fail calling cmd.exe}
+  if not ExecPhp(PHP_INI, Args, '', Config) then
+    Exit;
+
+  if IniCheckOutput(ModIni, Config) then
+  begin
+
+    if ModIni.New then
+      Result := True
+    else
+      Result := FileCopy(ModIni.File, ModIni.Backup, False);
+  end;
+
+end;
+
+
+procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec);
+var
+  Msg: String;
+
+begin
+
+  if Success then
+  begin
+
+    if Save then
+    begin
+      if Rec.New then
+        Msg := 'Created new'
+      else
+        Msg := 'Updated';
+    end
+    else
+    begin
+      if Rec.New then
+        Msg := 'Deleted new'
+      else
+        Msg := 'Restored original';
+    end;
+
+    Rec.UpdateError := '';
+
+  end
+  else
+  begin
+
+    if Save then
+    begin
+      if Rec.New then
+        Msg := 'Failed to create new'
+      else
+        Msg := 'Failed to update';
+    end
+    else
+    begin
+      if Rec.New then
+        Msg := 'Failed to delete new'
+      else
+        Msg := 'Failed to restore original';
+    end;
+
+    Rec.UpdateError := Format('%s ini file at this time. Please try again.', [Msg]);
+
+  end;
+
+  Debug(Format('%s ini : %s', [Msg, Rec.File]));
 
 end;
 
@@ -2680,7 +3041,7 @@ begin
   Args := GetInstallerArgs(Config);
 
   {ExecPhp should only fail calling cmd.exe, which has already been checked.}
-  if not ExecPhp(Script, Args, Config) then
+  if not ExecPhp(Script, Args, '', Config) then
     Exit;
 
   ProxyEnvClear();
@@ -2873,6 +3234,99 @@ begin
 end;
 
 
+function IniPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
+var
+  Base: Integer;
+
+begin
+
+  Result := CreateCustomPage(Id, Caption, Description);
+
+  IniPage.Text := TNewStaticText.Create(Result);
+  IniPage.Text.Width := Result.SurfaceWidth;
+  IniPage.Text.WordWrap := True;
+  IniPage.Text.AutoSize := True;
+  IniPage.Text.Caption := '';
+  IniPage.Text.Parent := Result.Surface;
+
+  Base := GetBase(IniPage.Text);
+
+  IniPage.Checkbox := TNewCheckbox.Create(Result);
+  IniPage.Checkbox.Top := Base + ScaleY(60);
+  IniPage.Checkbox.Width := Result.SurfaceWidth;
+  IniPage.Checkbox.Caption := '';
+  IniPage.Checkbox.Enabled := True;
+  IniPage.Checkbox.Checked := True;
+  IniPage.Checkbox.Parent := Result.Surface;
+
+  Base := GetBase(IniPage.Checkbox);
+
+  IniPage.Info := TNewStaticText.Create(Result);
+  IniPage.Info.Top := Base + ScaleY(5);
+  IniPage.Info.Width := Result.SurfaceWidth;
+  IniPage.Info.WordWrap := True;
+  IniPage.Info.AutoSize := True;
+  IniPage.Info.Caption := '';
+  IniPage.Info.Parent := Result.Surface;
+
+end;
+
+
+procedure IniPageUpdate;
+var
+  S: String;
+
+begin
+
+  {Page description}
+  if ModIniRec.New then
+    S := 'Your php.ini file is missing. Setup can create one for you.'
+  else
+    S := 'Your php.ini file needs updating. Setup can do this for you.';
+
+  Pages.Ini.Description := S;
+
+  {Main text caption}
+  S := 'Composer expects PHP to be configured with some basic settings,';
+
+  if ModIniRec.New then
+  begin
+    S := S + ' but this requires a php.ini file.';
+    S := S + ' Setup can create one at the following location:';
+  end
+  else
+  begin
+    S := S + ' but not all of these are enabled.';
+    S := S + ' The php.ini used by your command-line PHP is:';
+  end;
+
+  S := S + LF2 + TAB + ModIniRec.File;
+  IniPage.Text.Caption := S;
+
+  {Checkbox caption}
+  if ModIniRec.New then
+    IniPage.Checkbox.Caption := 'Create a php.ini file'
+  else
+    IniPage.Checkbox.Caption := 'Update this php.ini';
+
+  {Info text caption}
+  if ModIniRec.New then
+  begin
+    S := 'This will be a copy of your php.ini-production file,';
+    S := S + ' with the minimum settings enabled.';
+  end
+  else
+  begin
+    S := 'Your existing php.ini will be modified.';
+    S := S + ' A back-up has been saved to:' + LF2 + TAB;
+    S := S + ModIniRec.Backup;
+  end;
+
+  IniPage.Info.Caption := S;
+
+end;
+
+
 function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage;
 var
   StaticText: TNewStaticText;
@@ -2924,7 +3378,7 @@ begin
 
   {This function is called from NextButtonClick on the wpReady and
   ErrorInstaller pages and returns true if we can move to the next page,
-  which is the ErrorInstaller page or wpPreparing respecitvely}
+  which is the ErrorInstaller page or wpPreparing respectively}
 
   ProgressShow(Pages.ProgressInstaller);
 
@@ -3223,7 +3677,7 @@ begin
   SecurityPage.Info.AutoSize := True;
   S := 'Your computer could be vulnerable to MITM attacks which may result';
   S := S + ' in the installation or execution of arbitrary code.';
-  S := S + #13#13
+  S := S + LF2
   S := S + 'You will have to modify a config file before you can use Composer.';
   SecurityPage.Info.Caption := S;
   SecurityPage.Info.Visible := False;
@@ -3245,7 +3699,8 @@ begin
   SecurityPage.Checkbox.Checked := Flags.DisableTls;
 
   {Report action for logging when silent}
-  Debug(Format('Error: openssl is not enabled for %s.', [ConfigRec.PhpExe]));
+  if WizardSilent then
+    Debug(Format('Error: openssl is not enabled for %s.', [ConfigRec.PhpExe]));
 
 end;
 
