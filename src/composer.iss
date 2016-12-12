@@ -19,6 +19,7 @@
 #define PrevDataApp "AppDir"
 #define PrevDataBin "BinDir"
 #define PrevDataVersion "Version"
+#define ParamDev "dev"
 #define ParamPhp "php"
 #define ParamProxy "proxy"
 #define IniSection "params"
@@ -37,7 +38,7 @@ Compression=lzma
 SolidCompression=yes
 
 ; runtime directives
-DisableWelcomePage=no
+DisableWelcomePage=yes
 MinVersion=5.1
 PrivilegesRequired=none
 AllowCancelDuringInstall=false
@@ -45,8 +46,8 @@ CloseApplications=no
 SetupLogging=yes
 
 ; directory stuff
-DefaultDirName={code:GetAppDir}
-DisableDirPage=yes
+DefaultDirName={code:GetDefaultDir}
+DisableDirPage=no
 AppendDefaultDirName=no
 DirExistsWarning=no
 UsePreviousAppDir=no
@@ -59,7 +60,7 @@ VersionInfoVersion={#SetupVersion}
 VersionInfoProductName={#AppDescription}
 
 ; uninstall
-Uninstallable=yes
+Uninstallable=IncludeUninstaller
 UninstallDisplayName={#AppDescription}
 UninstallDisplayIcon={app}\unins.ico
 
@@ -86,7 +87,7 @@ Source: php\{#PhpIni}; Flags: dontcopy;
 Source: shims\{#CmdShell}; Flags: dontcopy;
 
 ; app files
-Source: userdata\{#DllData}; DestDir: "{app}"; Flags: ignoreversion signonce;
+Source: userdata\{#DllData}; DestDir: "{app}"; Flags: ignoreversion signonce; Check: IncludeUninstaller;
 
 ; shim files
 Source: shims\{#CmdBat}; DestDir: {code:GetBinDir}; Flags: ignoreversion;
@@ -132,7 +133,15 @@ type
   end;
 
 type
+  TExistingRec = record
+    Installed   : Boolean;
+    Version     : String;
+    Conflict    : Boolean;
+  end;
+
+type
   TParamsRec = record
+    Dev     : String;
     Php     : String;
     Proxy   : String;
     SaveInf : String;
@@ -232,6 +241,8 @@ type
 
 type
   TFlagsRec = record
+    DevInstall    : Boolean;  {Set if a dev mode install is being used}
+    LastDevDir    : String;   {The last destination selected in dev mode}
     LastFolder    : String;   {The last folder used in the file browser}
     SettingsError : Boolean;  {Set if we have errors, to make ShouldSkipPage work}
     DisableTls    : Boolean;  {Set if the user has chosen to disable tls}
@@ -241,6 +252,7 @@ type
 
 type
   TCustomPagesRec = record
+    Options           : TWizardPage;
     Settings          : TWizardPage;
     ProgressSettings  : TOutputProgressWizardPage;
     ErrorSettings     : TWizardPage;
@@ -250,6 +262,14 @@ type
     ProgressInstaller : TOutputProgressWizardPage;
     ErrorInstaller    : TWizardPage;
     Environment       : TWizardPage;
+end;
+
+type
+  TOptionsPageRec = record
+    Text        : TNewStaticText;
+    Checkbox    : TNewCheckbox;
+    DevText     : TNewStaticText;
+    DevInfo     : TNewStaticText;
 end;
 
 type
@@ -289,6 +309,7 @@ var
   TmpFile: TTmpFile;              {contains full pathname of temp files}
   TmpDir: String;                 {the temp directory that setup/uninstall uses}
   ConfigRec: TConfigRec;          {contains path/selected php.exe data and any error}
+  ExistingRec: TExistingRec;      {contains data about any existing version}
   ParamsRec: TParamsRec;          {contains any params from the command line or inf file}
   Paths: TPathInfo;               {contains latest path info}
   PhpList: TStringList;           {contains found PHP locations}
@@ -298,6 +319,7 @@ var
   ModIniRec: TModIniRec;          {contains data for a new/modified php ini}
   Flags: TFlagsRec;               {contains global flags that won't go anywhere else}
   Pages: TCustomPagesRec;         {group of custom pages}
+  OptionsPage: TOptionsPageRec;   {contains Options page controls}
   IniPage: TIniPageRec;           {contains Ini page controls}
   SettingsPage: TSettingsPageRec; {contains Settings page controls}
   SecurityPage: TSecurityPageRec; {contains Security page controls}
@@ -339,8 +361,8 @@ function SetEnvironmentVariable (Name: String; Value: String): LongBool;
   external 'SetEnvironmentVariableW@kernel32.dll stdcall delayload';
 
 {Init functions}
-function InitCheckExisting: Boolean; forward;
 procedure InitCommon; forward;
+function InitGetExisting: TExistingRec; forward;
 function InitGetParams: TParamsRec; forward;
 procedure InitSetData(); forward;
 
@@ -376,9 +398,10 @@ procedure SetPhpLocations; forward;
 
 {Misc functions}
 function CheckPermisions: Boolean; forward;
-function GetAppDir(Param: String): String; forward;
 function GetBinDir(Param: String): String; forward;
+function GetDefaultDir(Param: String): String; forward;
 function GetVendorBinDir(): String; forward;
+function IncludeUninstaller: Boolean; forward;
 function UnixifyShellFile(const Filename: String; var Error: String): Boolean; forward;
 
 {Path retrieve functions}
@@ -457,6 +480,11 @@ function GetBase(Control: TWinControl): Integer; forward;
 function IniPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure IniPageUpdate; forward;
 function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
+procedure OptionsCheckboxClick(Sender: TObject); forward;
+function OptionsCheckExisting(Rec: TExistingRec): Boolean; forward;
+function OptionsPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+procedure OptionsPageInit; forward;
+procedure OptionsPageUpdate; forward;
 function ProgressPageInstaller: Boolean; forward;
 procedure ProgressPageSettings(const Filename: String); forward;
 procedure ProgressShow(Page: TOutputProgressWizardPage); forward;
@@ -487,10 +515,6 @@ begin
 
   {This must be the first call}
   InitCommon();
-
-  {Check if an existing version is ok to uninstall}
-  if not InitCheckExisting() then
-    Exit;
 
   CmdExe := ExpandConstant('{cmd}');
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
@@ -542,7 +566,10 @@ end;
 procedure InitializeWizard;
 begin
 
-  Pages.Settings := SettingsPageCreate(wpWelcome,
+  Pages.Options := OptionsPageCreate(wpWelcome,
+    'Installation Options', 'Choose your installation type.');
+
+  Pages.Settings := SettingsPageCreate(wpSelectDir,
     'Settings Check', 'We need to check your PHP and other settings.');
 
   Pages.ProgressSettings := CreateOutputProgressPage('Checking your settings', 'Please wait');
@@ -551,10 +578,10 @@ begin
     '', '', 'Please review and fix the issues listed below, then click Back and try again');
 
   Pages.Ini := IniPageCreate(Pages.ErrorSettings.ID,
-    'PHP Configuration Error', 'Your php.ini file is missing. Setup can create one for you.');
+    'PHP Configuration Error', '');
 
   Pages.Security := SecurityPageCreate(Pages.Ini.ID,
-    'Composer Security Warning', 'Please choose one of the following options.');
+    'Composer Security Warning', 'Choose one of the following options.');
 
   Pages.Proxy := ProxyPageCreate(Pages.Security.ID,
     'Proxy Settings', 'Choose if you need to use a proxy.');
@@ -643,7 +670,9 @@ begin
 
   Result := False;
 
-  if PageID = Pages.ErrorSettings.ID then
+  if PageID = wpSelectDir then
+    Result := not Flags.DevInstall
+  else if PageID = Pages.ErrorSettings.ID then
     Result := not Flags.SettingsError
   else if PageID = Pages.Ini.ID then
     Result := not ModIniRec.Active
@@ -678,7 +707,13 @@ begin
 
   Result := True;
 
-  if CurPageID = Pages.Settings.ID then
+  if CurPageID = Pages.Options.ID then
+  begin
+
+    Result := OptionsCheckExisting(ExistingRec);
+
+  end
+  else if CurPageID = Pages.Settings.ID then
   begin
 
     if not SettingsCheckSelected() then
@@ -744,16 +779,14 @@ end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
-var
-  S: String;
-
 begin
 
-  S := 'PHP version ' + ConfigRec.PhpVersion;
-  S := S + NewLine + Space + ConfigRec.PhpExe;
-  S := S + EnvListChanges(EnvChanges);
+  if Flags.DevInstall then
+    AddStr(Result, MemoDirInfo + NewLine + NewLine);
 
-  Result := S;
+  AddStr(Result, 'PHP version ' + ConfigRec.PhpVersion);
+  AddStr(Result, NewLine + Space + ConfigRec.PhpExe);
+  AddStr(Result, EnvListChanges(EnvChanges));
 
 end;
 
@@ -798,7 +831,7 @@ end;
 procedure RegisterPreviousData(PreviousDataKey: Integer);
 begin
 
-  SetPreviousData(PreviousDataKey, '{#PrevDataApp}', GetAppDir(''));
+  SetPreviousData(PreviousDataKey, '{#PrevDataApp}', GetDefaultDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataBin}', GetBinDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataVersion}', '{#SetupVersion}');
 
@@ -851,68 +884,11 @@ end;
 
 {*************** Init functions ***************}
 
-{Returns true if there is not an existing version, or if an existing version
-can be safeley overwritten by Setup}
-function InitCheckExisting: Boolean;
-var
-  Msg: String;
-  Prev: String;
-  Key: String;
-  Hive: Integer;
-  Found: Boolean;
-
-
-begin
-
-  {We started using an AppId in v3.0, which is the regsitry key that Inno
-  uses, so older versions will not be found.}
-  Prev := GetPreviousData('{#PrevDataVersion}', '');
-  Found := Prev <> '';
-
-  if not Found then
-  begin
-    Hive := GetRegHive();
-    Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Composer_is1';
-
-    if RegKeyExists(Hive, Key) then
-    begin
-      Found := True;
-      {We started storing version info with v2.7, so this could be empty}
-      RegQueryStringValue(Hive, Key, 'Inno Setup CodeFile: {#PrevDataVersion}', Prev);
-    end;
-  end;
-
-  Msg := 'Initializing {#AppInstallName} {#SetupVersion}';
-
-  if not Found then
-  begin
-    Debug(Msg);
-    Result := True;
-    Exit;
-  end;
-
-  {Check that the major versions match}
-  Result := VersionMatchMajor('{#SetupVersion}', Prev);
-
-  if Result then
-  begin
-    Debug(Format('%s - will install over existing version %s', [Msg, Prev]));
-    Exit;
-  end;
-
-  Debug(Format('%s - cannot install over existing version %s', [Msg, Prev]));
-
-  Msg := 'Sorry, but this installer is not compatible with the one used for the current installation.';
-  AddPara(Msg, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
-  ShowErrorMessage(Msg);
-
-end;
-
-
 procedure InitCommon;
 begin
 
   {Initialize our flags - not strictly necessary}
+  Flags.DevInstall := False;
   Flags.LastFolder := '';
   Flags.SettingsError := False;
   Flags.DisableTls := False;
@@ -928,6 +904,41 @@ begin
 end;
 
 
+function InitGetExisting: TExistingRec;
+var
+  Key: String;
+  Hive: Integer;
+
+begin
+
+  {We started using an AppId in v3.0, which is the regsitry key that Inno
+  uses, so older versions will not be found.}
+  Result.Version := GetPreviousData('{#PrevDataVersion}', '');
+  Result.Installed := Result.Version <> '';
+  Result.Conflict := False;
+
+  if not Result.Installed then
+  begin
+    Hive := GetRegHive();
+    Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Composer_is1';
+
+    if RegKeyExists(Hive, Key) then
+    begin
+      Result.Installed := True;
+      {We started storing version info with v2.7, so this could be empty}
+      RegQueryStringValue(Hive, Key, 'Inno Setup CodeFile: {#PrevDataVersion}', Result.Version);
+    end;
+  end;
+
+  if not Result.Installed then
+    Exit;
+
+  {Check that the major versions match}
+  Result.Conflict := not VersionMatchMajor('{#SetupVersion}', Result.Version);
+
+end;
+
+
 function InitGetParams: TParamsRec;
 var
   LoadInf: String;
@@ -935,6 +946,7 @@ var
 begin
 
   {Get any command line values, making sure we expand any relative paths}
+  Result.Dev := ExpandConstant('{param:{#ParamDev}}');
   Result.Php := ExpandConstant('{param:{#ParamPhp}}');
   Result.Proxy := ExpandConstant('{param:{#ParamProxy}}');
   Result.SaveInf := ExpandFilename(ExpandConstant('{param:saveinf}'));
@@ -942,7 +954,11 @@ begin
 
   if LoadInf <> '' then
   begin
+
     {Command line values take precedence}
+    if Result.Dev = '' then
+      Result.Dev := GetIniString('{#IniSection}', '{#ParamDev}', '', LoadInf);
+
     if Result.Php = '' then
       Result.Php := GetIniString('{#IniSection}', '{#ParamPhp}', '', LoadInf);
 
@@ -956,6 +972,9 @@ end;
 procedure InitSetData();
 begin
 
+  Debug('Initializing {#AppInstallName} {#SetupVersion}');
+
+  ExistingRec := InitGetExisting();
   ParamsRec := InitGetParams();
   SetPathInfo(False);
   SetProxyStatus();
@@ -1071,21 +1090,23 @@ begin
 
   case Id of
     {Inno built-in pages}
-    wpWelcome:                  Name := 'Welcome';
-    wpReady:                    Name := 'Ready to Install';
-    wpPreparing:                Name := 'Preparing to Install';
-    wpInstalling:               Name := 'Installing';
-    wpFinished:                 Name := 'Setup Completed';
+    wpWelcome                 : Name := 'Welcome';
+    wpSelectDir               : Name := 'Select Destination Location';
+    wpReady                   : Name := 'Ready to Install';
+    wpPreparing               : Name := 'Preparing to Install';
+    wpInstalling              : Name := 'Installing';
+    wpFinished                : Name := 'Setup Completed';
     {Custom pages}
-    Pages.Settings.ID:          Name := 'Settings Check';
-    Pages.ProgressSettings.ID:  Name := 'Running Settings Check';
-    Pages.ErrorSettings.ID:     Name := 'Settings Errors';
-    Pages.Ini.ID:               Name := 'PHP Configuration Error';
-    Pages.Security.ID:          Name := 'Security Warning';
-    Pages.Proxy.ID:             Name := 'Proxy Settings';
+    Pages.Options.ID          : Name := 'Installation Options';
+    Pages.Settings.ID         : Name := 'Settings Check';
+    Pages.ProgressSettings.ID : Name := 'Running Settings Check';
+    Pages.ErrorSettings.ID    : Name := 'Settings Errors';
+    Pages.Ini.ID              : Name := 'PHP Configuration Error';
+    Pages.Security.ID         : Name := 'Security Warning';
+    Pages.Proxy.ID            : Name := 'Proxy Settings';
     Pages.ProgressInstaller.ID: Name := 'Running Composer Install';
-    Pages.ErrorInstaller.ID:    Name := 'Composer Install Errors';
-    Pages.Environment.ID:       Name := 'Information';
+    Pages.ErrorInstaller.ID   : Name := 'Composer Install Errors';
+    Pages.Environment.ID      : Name := 'Information';
 
   else
     Name := 'Unknown';
@@ -1498,42 +1519,50 @@ end;
 function CheckPermisions: Boolean;
 begin
   {Dirs check function}
-  Result := isAdminLoggedOn;
-end;
-
-
-function GetAppDir(Param: String): String;
-begin
-
-  {Code-constant function for DefaultDirName}
-  if Param = 'admin' then
-    Result := BaseDir.AdminApp
-  else if Param = 'user' then
-    Result := BaseDir.UserApp
-  else if IsAdminLoggedOn then
-    Result := BaseDir.AdminApp
-  else
-    Result := BaseDir.UserApp;
-
-  Result := Result + '\{#AppInstallName}';
-
+  Result := isAdminLoggedOn and not Flags.DevInstall;
 end;
 
 
 function GetBinDir(Param: String): String;
+var
+  Path: String;
+
 begin
 
   {Code-constant function for data directory}
-  if Param = 'admin' then
-    Result := BaseDir.AdminData
-  else if Param = 'user' then
-    Result := BaseDir.UserData
-  else if IsAdminLoggedOn then
-    Result := BaseDir.AdminData
-  else
-    Result := BaseDir.UserData;
+  if not IsUninstaller and Flags.DevInstall then
+  begin
+    Result := ExpandConstant('{app}');
+    Exit;
+  end;
 
-  Result := Result + '\{#AppInstallName}\bin';
+  if IsAdminLoggedOn then
+    Path := BaseDir.AdminData
+  else
+    Path := BaseDir.UserData;
+
+  Result := Path + '\{#AppInstallName}\bin';
+
+end;
+
+
+{This is a code constant function that is called by Inno at start-up, before
+InitializeWizard is called, to populate DefaultDirName. It is also called
+if we change between dev mode and a standard installation.}
+function GetDefaultDir(Param: String): String;
+var
+  Path: String;
+
+begin
+
+  if IsAdminLoggedOn then
+    Path := BaseDir.AdminApp
+  else
+    Path := BaseDir.UserApp;
+
+  Result := Path + '\{#AppInstallName}';
+
+  Exit;
 
 end;
 
@@ -1541,6 +1570,13 @@ end;
 function GetVendorBinDir(): String;
 begin
   Result := ExpandConstant('{userappdata}') + '\Composer\vendor\bin';
+end;
+
+
+function IncludeUninstaller: Boolean;
+begin
+  {Code-constant function for Uninstallable and files Check}
+  Result := not Flags.DevInstall;
 end;
 
 
@@ -1804,7 +1840,7 @@ begin
   end;
 
   if Paths.VendorBin.Status = PATH_NONE then
-    PathChange(HKCU, ENV_ADD, GetVendorBinDir(), False);
+    PathChange(HKCU, ENV_ADD, GetVendorBinDir(), Flags.DevInstall);
 
   Result := True;
 
@@ -1825,7 +1861,7 @@ begin
   begin
 
     {Path empty, so add BinPath and exit}
-    PathChange(GetRegHive(), ENV_ADD, BinPath, False);
+    PathChange(GetRegHive(), ENV_ADD, BinPath, Flags.DevInstall);
     Exit;
 
   end
@@ -1835,6 +1871,13 @@ begin
     {Existing path. If it matches BinPath we are okay to exit}
     if CompareText(Rec.Data.Path, BinPath) = 0 then
       Exit;
+
+    if Flags.DevInstall then
+    begin
+      PathChange(GetRegHive(), ENV_ADD, BinPath, True);
+      PathChange(Rec.Data.Hive, ENV_REMOVE, Rec.Data.Path, True);
+      Exit;
+    end;
 
   end;
 
@@ -3354,6 +3397,172 @@ begin
   Memo.ReadOnly := True;
   Memo.Parent := Result.Surface;
   Memo.Text := '';
+
+end;
+
+
+procedure OptionsCheckboxClick(Sender: TObject);
+begin
+  OptionsPageUpdate();
+end;
+
+
+function OptionsCheckExisting(Rec: TExistingRec): Boolean;
+var
+  DebugMsg: String;
+  S: String;
+
+begin
+
+  {Deal with Dev mode first as it always succeeds}
+  if Flags.DevInstall then
+  begin
+    Result := True;
+    DebugMsg := 'Setup will install {#SetupVersion} in Developer Mode';
+
+    if not ExistingRec.Installed then
+      Debug(DebugMsg)
+    else
+      Debug(Format('%s alongside existing version %s', [DebugMsg, Rec.Version]));
+
+    Exit;
+  end;
+
+  Result := not Rec.Conflict;
+  DebugMsg := 'Setup %s install {#SetupVersion} over existing version %s';
+
+  if not Result then
+  begin
+    Debug(Format(DebugMsg, ['cannot', Rec.Version]));
+
+    S := 'Sorry, but this installer is not compatible with the one used for the current installation.';
+    AddPara(S, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
+    ShowErrorMessage(S);
+  end
+  else
+  begin
+
+    if ExistingRec.Installed then
+      Debug(Format(DebugMsg, ['will', Rec.Version]));
+
+  end;
+
+end;
+
+
+function OptionsPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
+var
+  Base: Integer;
+  S: String;
+  Users: String;
+
+begin
+
+  Result := CreateCustomPage(Id, Caption, Description);
+
+  OptionsPage.Text := TNewStaticText.Create(Result);
+  OptionsPage.Text.Width := Result.SurfaceWidth;
+  OptionsPage.Text.AutoSize := True;
+  OptionsPage.Text.WordWrap := True;
+
+  if IsAdminLoggedOn then
+    Users := 'all users'
+  else
+    Users := 'the current user';
+
+  S := Format('Setup will download and install Composer to a fixed location for %s.', [Users]);
+  S := S + ' This includes a Control Panel uninstaller and is the recommended option.';
+  S := S + ' Click Next to use it.';
+
+  OptionsPage.Text.Caption := S;
+  OptionsPage.Text.Parent := Result.Surface;
+
+  Base := GetBase(OptionsPage.Text);
+
+  OptionsPage.Checkbox := TNewCheckbox.Create(Result);
+  OptionsPage.Checkbox.Top := Base + ScaleY(30);
+  OptionsPage.Checkbox.Width := Result.SurfaceWidth;
+  OptionsPage.Checkbox.Caption := 'Developer mode';
+  OptionsPage.Checkbox.Checked := False;
+  OptionsPage.Checkbox.OnClick := @OptionsCheckboxClick;
+  OptionsPage.Checkbox.Parent := Result.Surface;
+
+  Base := GetBase(OptionsPage.Checkbox);
+
+  OptionsPage.DevText := TNewStaticText.Create(Result);
+  OptionsPage.DevText.Top := Base + ScaleY(3);
+  OptionsPage.DevText.Width := Result.SurfaceWidth;
+  OptionsPage.DevText.AutoSize := True;
+  OptionsPage.DevText.WordWrap := True;
+
+  S := 'Take control and just install Composer. An uninstaller will not be included.';
+
+  OptionsPage.DevText.Caption := S;
+  OptionsPage.DevText.Parent := Result.Surface;
+
+  Base := GetBase(OptionsPage.DevText);
+
+  OptionsPage.DevInfo := TNewStaticText.Create(Result);
+  OptionsPage.DevInfo.Top := Base + ScaleY(8);
+  OptionsPage.DevInfo.Width := Result.SurfaceWidth;
+  OptionsPage.DevInfo.AutoSize := True;
+  OptionsPage.DevInfo.WordWrap := True;
+
+  if ExistingRec.Installed then
+  begin
+    S := 'Warning: Composer is already installed. You should uninstall it from the';
+    S := S + ' Control Panel first, or you may break one of these installations.';
+    OptionsPage.DevInfo.Caption := S;
+  end;
+
+  OptionsPage.DevInfo.Parent := Result.Surface;
+
+  OptionsPageInit();
+
+end;
+
+
+procedure OptionsPageInit;
+begin
+
+  {Set LastDevDir to the default value}
+  if ParamsRec.Dev <> '' then
+    Flags.LastDevDir := ParamsRec.Dev
+  else
+  begin
+
+    if IsAdminLoggedOn then
+      Flags.LastDevDir := ExpandConstant('{sd}') + '\composer'
+    else
+      Flags.LastDevDir := GetEnv('USERPROFILE') + '\composer';
+
+  end;
+
+  {Important to populate wpSelectDir first because otherwise it will contain
+  the default app dir and we save its last value back as LastDevDir when
+  the checkbox is clicked}
+  WizardForm.DirEdit.Text := Flags.LastDevDir;
+
+  {Set checkbox and simulate click}
+  OptionsPage.Checkbox.Checked := ParamsRec.Dev <> '';
+  OptionsCheckboxClick(OptionsPage.Checkbox);
+
+end;
+
+
+procedure OptionsPageUpdate;
+begin
+
+  Flags.DevInstall := OptionsPage.Checkbox.Checked;
+  OptionsPage.DevInfo.Visible := OptionsPage.Checkbox.Checked;
+
+  if Flags.DevInstall then
+    WizardForm.DirEdit.Text := Flags.LastDevDir
+  else
+  begin
+    Flags.LastDevDir := WizardForm.DirEdit.Text;
+    WizardForm.DirEdit.Text := GetDefaultDir('');
+  end;
 
 end;
 
