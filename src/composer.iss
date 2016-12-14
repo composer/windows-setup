@@ -402,6 +402,7 @@ function GetBinDir(Param: String): String; forward;
 function GetDefaultDir(Param: String): String; forward;
 function GetVendorBinDir(): String; forward;
 function IncludeUninstaller: Boolean; forward;
+procedure SaveInfData; forward;
 function UnixifyShellFile(const Filename: String; var Error: String): Boolean; forward;
 
 {Path retrieve functions}
@@ -822,6 +823,12 @@ begin
   end
   else if CurStep = ssPostInstall then
   begin
+
+    {We need to call this here since the data will not get saved
+    in RegisterPreviousData event without an uninstaller.}
+    if Flags.DevInstall then
+      SaveInfData();
+
     Flags.Completed := True;
   end;
 
@@ -834,12 +841,7 @@ begin
   SetPreviousData(PreviousDataKey, '{#PrevDataApp}', GetDefaultDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataBin}', GetBinDir(''));
   SetPreviousData(PreviousDataKey, '{#PrevDataVersion}', '{#SetupVersion}');
-
-  if ParamsRec.SaveInf <> '' then
-  begin
-    SetIniString('{#IniSection}', '{#ParamPhp}', ConfigRec.PhpExe, ParamsRec.SaveInf);
-    SetIniString('{#IniSection}', '{#ParamProxy}', ProxyInfo.UserUrl, ParamsRec.SaveInf);
-  end;
+  SaveInfData();
 
 end;
 
@@ -1577,6 +1579,25 @@ function IncludeUninstaller: Boolean;
 begin
   {Code-constant function for Uninstallable and files Check}
   Result := not Flags.DevInstall;
+end;
+
+
+procedure SaveInfData;
+var
+  DevModeDir: String;
+
+begin
+
+  if ParamsRec.SaveInf = '' then
+    Exit;
+
+  if Flags.DevInstall then
+    DevModeDir := ExpandConstant('{app}');
+
+  SetIniString('{#IniSection}', '{#ParamDev}', DevModeDir, ParamsRec.SaveInf);
+  SetIniString('{#IniSection}', '{#ParamPhp}', ConfigRec.PhpExe, ParamsRec.SaveInf);
+  SetIniString('{#IniSection}', '{#ParamProxy}', ProxyInfo.UserUrl, ParamsRec.SaveInf);
+
 end;
 
 
