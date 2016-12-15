@@ -410,7 +410,7 @@ function GetPathData(var Rec: TPathInfo): Boolean; forward;
 function GetPathHash(const SystemPath, UserPath: String): String; forward;
 function SearchPathBin(Hive: Integer): String; forward;
 procedure SetPathDataRec(var Rec: TPathRec; Cmd: String); forward;
-function SetPathInfo(Full: Boolean): Boolean; forward;
+function SetPathInfo(AllData: Boolean): Boolean; forward;
 procedure UpdatePathStatus(var Rec: TPathStatus); forward;
 
 {Path check functions}
@@ -503,8 +503,8 @@ procedure SettingsBrowseClick(Sender: TObject); forward;
 function SettingsCheckSelected: Boolean; forward;
 procedure SettingsComboChange(Sender: TObject); forward;
 procedure SettingsComboAdd(PhpExe: String); forward;
-procedure SettingsComboInit; forward;
 function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
+procedure SettingsPageInit; forward;
 procedure SettingsPageUpdate; forward;
 
 #include "environment.iss"
@@ -557,9 +557,6 @@ begin
 
   if PhpList <> nil then
     PhpList.Free;
-
-  if IsAdminLoggedOn then
-    RestartReplace(ExpandConstant('{log}'), '');
 
 end;
 
@@ -979,7 +976,6 @@ begin
   ExistingRec := InitGetExisting();
   ParamsRec := InitGetParams();
   SetPathInfo(False);
-  SetProxyStatus();
   SetPhpLocations();
 
 end;
@@ -1525,6 +1521,8 @@ begin
 end;
 
 
+{This is a code-constant function that is used by Inno to determine the data
+bin directory. It is also called when we are checking the paths.}
 function GetBinDir(Param: String): String;
 var
   Path: String;
@@ -1534,7 +1532,7 @@ begin
   {Code-constant function for data directory}
   if not IsUninstaller and Flags.DevInstall then
   begin
-    Result := ExpandConstant('{app}');
+    Result := WizardDirValue;
     Exit;
   end;
 
@@ -1638,6 +1636,7 @@ end;
 
 {*************** Path retrieve functions ***************}
 
+{Gets and processes the raw path data. Returns true if it has changed.}
 function GetPathData(var Rec: TPathInfo): Boolean;
 var
   SystemPath: String;
@@ -1735,14 +1734,14 @@ begin
 end;
 
 
-function SetPathInfo(Full: Boolean): Boolean;
+{Sets PathsInfo data and returns whether the raw data has changed.}
+function SetPathInfo(AllData: Boolean): Boolean;
 var
   IsUser: Boolean;
   VendorBin: String;
 
 begin
 
-  {Return if the path data has changed}
   Result := GetPathData(Paths);
   IsUser := not IsAdminLoggedOn;
 
@@ -1759,7 +1758,11 @@ begin
 
   end;
 
-  if Full and not Paths.Bin.Checked then
+  {Return if we haven't requested all data}
+  if not Full then
+    Exit;
+
+  if not Paths.Bin.Checked then
   begin
 
     Paths.Bin.Data.System := SearchPathBin(HKLM);
@@ -1772,7 +1775,7 @@ begin
 
   end;
 
-  if Full and not Paths.VendorBin.Checked then
+  if not Paths.VendorBin.Checked then
   begin
 
     VendorBin := GetVendorBinDir();
@@ -2394,6 +2397,7 @@ begin
 end;
 
 
+{Sets ProxyInfo data and returns true if it has changed}
 function SetProxyStatus: Boolean;
 var
   Hash: String;
@@ -3559,12 +3563,13 @@ begin
 
   end;
 
-  {Important to populate wpSelectDir first because otherwise it will contain
-  the default app dir and we save its last value back as LastDevDir when
-  the checkbox is clicked}
+  {The current value of WizardDirValue is saved to LastDevDir when toggling
+  between dev mode and the default, so we need to initialize things in dev
+  mode. The correct mode will be determined on the simulated click below.}
+  Flags.DevInstall := True;
   WizardForm.DirEdit.Text := Flags.LastDevDir;
 
-  {Set checkbox and simulate click}
+  {Set checkbox value and simulate click}
   OptionsPage.Checkbox.Checked := ParamsRec.Dev <> '';
   OptionsCheckboxClick(OptionsPage.Checkbox);
 
@@ -3743,6 +3748,8 @@ begin
   ProxyPage.Info.Caption := '';
   ProxyPage.Info.Parent := Result.Surface;
 
+  ProxyPageUpdate();
+
 end;
 
 
@@ -3807,10 +3814,7 @@ begin
 
   Proxy := ProxyPage;
 
-  Pages.Proxy.Tag := Pages.Proxy.Tag + 1;
-
-  {The Settings page will have zeroed the tag if the data has changed}
-  if Pages.Proxy.Tag > 1 then
+  if not SetProxyStatus() then
     Exit;
 
   if ProxyInfo.Status = PROXY_NONE then
@@ -4027,18 +4031,6 @@ begin
 end;
 
 
-procedure SettingsComboInit;
-begin
-
-  {Always add the path php, even if it does not
-  exist, because we need to add the PhpList data}
-  SettingsComboAdd(Paths.Php.Data.Cmd);
-
-  if ParamsRec.Php <> '' then
-    SettingsComboAdd(ParamsRec.Php);
-end;
-
-
 procedure SettingsComboChange(Sender: TObject);
 var
   Caption: String;
@@ -4104,40 +4096,36 @@ begin
   SettingsPage.Info.Caption := '';
   SettingsPage.Info.Parent := Result.Surface;
 
- end;
+  SettingsPageInit();
+
+end;
+
+
+procedure SettingsPageInit;
+begin
+
+  {Always add the php from the path, because we need to update the PhpList
+  data. It will be ignored if it doesn't exist}
+  SettingsComboAdd(Paths.Php.Data.Cmd);
+
+  if ParamsRec.Php <> '' then
+    SettingsComboAdd(ParamsRec.Php);
+end;
 
 
 procedure SettingsPageUpdate;
 begin
 
-  Pages.Settings.Tag := Pages.Settings.Tag + 1;
-
-  if Pages.Settings.Tag = 1 then
-  begin
-    {First showing, path and proxy data already obtained, but we
-    must init the combo box with all the php location data}
-    SettingsComboInit();
-  end
-  else
-  begin
-    {Update path data}
-    SetPathInfo(False);
-
-    {Update proxy data and clear page tag if it has changed}
-    if SetProxyStatus() then
-      Pages.Proxy.Tag := 0;
-
-  end;
-
   {Important to reset these}
   Flags.SettingsError := False;
   Flags.DisableTls := False;
 
+  {Update path data. Returns true if it has changed}
+  if SetPathInfo(False) then
+    SettingsComboChange(SettingsPage.Combo);
+
   SettingsPage.Combo.Enabled := Paths.Php.Status <> PATH_FIXED;
   SettingsPage.Browse.Enabled := Paths.Php.Status <> PATH_FIXED;
-
-  if Pages.Settings.Tag > 1 then
-    SettingsComboChange(SettingsPage.Combo);
 
 end;
 
