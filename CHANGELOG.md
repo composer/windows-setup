@@ -1,3 +1,10 @@
+## v4.6.0
+Not yet released
+
+* Added automatic php.ini creation/modification. A new ini will be offered if one does not already exists, based on the user `php.ini-production` file. If an existing ini is missing required settings, Setup will offer to update it, having created a back-up.
+* Added Developer mode install option that allows users to install the Composer specific files where they want to, without including an uninstaller.
+* Many code tweaks and improvements.
+
 ## v4.5.0
 2016-04-14
 

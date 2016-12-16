@@ -45,12 +45,12 @@ The installation directories are pre-determined and depend on whether you are an
 * `C:\Users\<user>\AppData\Local\ComposerSetup`
 * `C:\Users\<user>\AppData\Local\ComposerSetup\bin`
 
-*Note:* These locations are fixed because Composer needs a guaranteed, persistent, writable location to perform its upgrades.
+*Note:* These locations are fixed because Composer needs a guaranteed, persistent, writable location to perform its updates.
 
 After you have reviewed and accepted your settings, the installer will download Composer and set everything up. If your environment has been changed, it is important to close your current terminal and open a new one so that the changes get loaded. The installer will remind you if this is the case.
 
 ### Troubleshooting
-Composer-Setup creates a log file, which may be useful to review if you experience any issues. This is stored in your temp directory `AppData\Local\Temp` with a formatted filename: `Setup Log YYYY-MM-DD #nnn.txt`. Note that for Admin installs the log will be deleted on the next reboot.
+Composer-Setup creates a log file, which may be useful to review if you experience any issues. This is stored in your temp directory `AppData\Local\Temp` with a formatted filename: `Setup Log YYYY-MM-DD #nnn.txt`.
 
 <a name="Uninstalling"></a>
 ## Uninstalling

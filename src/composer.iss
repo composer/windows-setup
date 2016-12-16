@@ -2450,6 +2450,8 @@ begin
   difficult to get a true error message. Also when using cmd, a message box
   can be shown for certain error conditions in the called process}
 
+  Debug('Checking php will execute');
+
   Params := '-v';
   DebugExecBegin(Config.PhpExe, Params);
 
@@ -2492,6 +2494,7 @@ function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean;
 begin
 
   Result := False;
+  Debug('Checking php configuration');
 
   {ExecPhp should only fail calling cmd.exe}
   if not ExecPhp(PHP_CHECK, '', Ini, Config) then
@@ -3359,7 +3362,7 @@ begin
   else
   begin
     S := 'Your existing php.ini will be modified.';
-    S := S + ' A back-up has been saved to:' + LF2 + TAB;
+    S := S + ' A back-up has been made and saved to:' + LF2 + TAB;
     S := S + ModIniRec.Backup;
   end;
 
