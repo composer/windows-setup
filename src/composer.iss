@@ -187,10 +187,9 @@ type
 type
   TProxyRec = record
     Status      : Integer;  {One of PROXY_NONE, PROXY_PARAM, PROXY_ENV, PROXY_REG}
-    Http        : String;   {Any http value from the registry}
-    Https       : String;   {Any https value from the registry}
+    Http        : String;   {Any http value from the registry or environment}
+    Https       : String;   {Any https value from the registry or environment}
     UserUrl     : String;   {Controls the setting of the http_proxy environment}
-    Hash        : String;   {Hash to determine changes}
   end;
 
 type
@@ -432,14 +431,12 @@ procedure ProxyChange(const Value: String; Action: Integer); forward;
 {Proxy functions}
 function ProxyCanModify(Proxy: TProxyRec): Boolean; forward;
 procedure ProxyEnvClear; forward;
-procedure ProxyEnvSet; forward;
-function ProxyInEnvironment(Hive: Integer; var Proxy: TProxyRec): Boolean; forward;
-function ProxyInParam(var Proxy: TProxyRec): Boolean; forward;
+function ProxyEnvSet: Boolean; forward;
+function ProxyInLocalEnvironment(var Proxy: TProxyRec): Boolean; forward;
+function ProxyInRegEnvironment(Hive: Integer; var Proxy: TProxyRec): Boolean; forward;
 function ProxyInRegistry(Hive: Integer; const SettingsKey: String; var Servers: String): Boolean; forward;
-procedure SetProxyData(var Proxy: TProxyRec); forward;
-procedure SetProxyFromReg(const Servers: String; var Proxy: TProxyRec); forward;
-procedure SetProxyHash(var Proxy: TProxyRec); forward;
-function SetProxyStatus: Boolean; forward;
+procedure SetProxyData; forward;
+procedure SetProxyFromReg(Servers: String; var Proxy: TProxyRec); forward;
 
 {Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
@@ -492,8 +489,7 @@ procedure ProgressShow(Page: TOutputProgressWizardPage); forward;
 procedure ProxyCheckboxClick(Sender: TObject); forward;
 function ProxyCheckInput: Boolean; forward;
 function ProxyPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
-function ProxyPageGetEdit(var EnvName: String): String; forward;
-function ProxyPageGetInfo(EnvName: String): String; forward;
+function ProxyPageGetText(var Info: String): String; forward;
 procedure ProxyPageUpdate; forward;
 procedure ProxyPageRefresh; forward;
 procedure SecurityCheckboxClick(Sender: TObject); forward;
@@ -1759,7 +1755,7 @@ begin
   end;
 
   {Return if we haven't requested all data}
-  if not Full then
+  if not AllData then
     Exit;
 
   if not Paths.Bin.Checked then
@@ -2028,7 +2024,12 @@ begin
   else
   begin
     Env := 'environment';
-    Value := Format('%s = %s', [Rec.Name, Rec.Value]);
+
+    {Ensure we don't log or display sensitive info}
+    if not Rec.Display then
+      Value := Rec.Name
+    else
+      Value := Format('%s = %s', [Rec.Name, Rec.Value]);
   end;
 
   Action := Format('%s %s %s: ', [Action, GetHiveFriendlyName(Rec.Hive), Env]);
@@ -2149,51 +2150,41 @@ end;
 
 procedure ProxyChange(const Value: String; Action: Integer);
 var
+  TmpList: TEnvChangeList;
   Count: Integer;
   I: Integer;
   Next: Integer;
-  Found: Boolean;
-  TmpList: TEnvChangeList;
 
 begin
 
   Count := GetArrayLength(EnvChanges);
   SetArrayLength(TmpList, Count);
   Next := 0;
-  Found := False;
 
   for I := 0 to Count - 1 do
   begin
 
-    if CompareText(PROXY_KEY, EnvChanges[I].Name) = 0 then
+    if CompareText(PROXY_KEY, EnvChanges[I].Name) <> 0 then
     begin
-
-      if Action = ENV_ADD then
-      begin
-        EnvChanges[I].Value := Value;
-        Exit;
-      end
-      else
-      begin
-        Found := True;
-        Continue;
-      end;
-
+      TmpList[Next] := EnvChanges[I];
+      Inc(Next);
+    end
+    else if Action = ENV_ADD then
+    begin
+      EnvChanges[I].Value := Value;
+      Exit;
     end;
-
-    TmpList[Next] := EnvChanges[I];
-    Inc(Next);
 
   end;
 
-  if Action = ENV_ADD then
-    EnvRegisterChange(HKCU, Action, PROXY_KEY, Value, True)
-  else if Found then
+  if Count > Next then
   begin
-    {Remove proxy}
     SetArrayLength(TmpList, Next);
     EnvChanges := TmpList;
   end;
+
+  if Action = ENV_ADD then
+    EnvRegisterChange(HKCU, Action, PROXY_KEY, Value, True);
 
 end;
 
@@ -2210,29 +2201,53 @@ end;
 
 procedure ProxyEnvClear;
 begin
-
-  if ProxyCanModify(ProxyInfo) then
-  begin
-    Debug(Format('Clearing %s environment variable', [PROXY_KEY]));
-    SetEnvironmentVariable(PROXY_KEY, '');
-  end;
-
+  Debug(Format('Clearing %s local environment variable', [PROXY_KEY]));
+  SetEnvironmentVariable(PROXY_KEY, '');
 end;
 
 
-procedure ProxyEnvSet;
+{Returns true if the local http_proxy value needed to be set}
+function ProxyEnvSet: Boolean;
+var
+  Tmp: TProxyRec;
+
 begin
 
-  if ProxyCanModify(ProxyInfo) then
+  Result := (ProxyInfo.UserUrl <> '') and not ProxyInLocalEnvironment(Tmp);
+
+  if Result then
   begin
-    Debug(Format('Setting %s environment variable', [PROXY_KEY]));
+    Debug(Format('Setting %s local environment variable', [PROXY_KEY]));
     SetEnvironmentVariable(PROXY_KEY, ProxyInfo.UserUrl);
   end;
 
 end;
 
 
-function ProxyInEnvironment(Hive: Integer; var Proxy: TProxyRec): Boolean;
+function ProxyInLocalEnvironment(var Proxy: TProxyRec): Boolean;
+begin
+
+  Result := False;
+
+  Proxy.Http := GetEnv(PROXY_KEY);
+  Proxy.Https := GetEnv('https_proxy');
+
+  if Proxy.Http <> '' then
+  begin
+    Result := True;
+    Debug('Found http_proxy in local environment');
+  end;
+
+  if Proxy.Https <> '' then
+  begin
+    Result := True;
+    Debug('Found https_proxy in local environment');
+  end;
+
+end;
+
+
+function ProxyInRegEnvironment(Hive: Integer; var Proxy: TProxyRec): Boolean;
 var
   Key: String;
   Name: String;
@@ -2264,23 +2279,6 @@ begin
 end;
 
 
-function ProxyInParam(var Proxy: TProxyRec): Boolean;
-begin
-
-  Result := False;
-
-  if ProxyInfo.Status = PROXY_PARAM then
-    Result := True
-  else if ParamsRec.Proxy <> '' then
-  begin
-    ProxyInfo.Status := PROXY_PARAM;
-    ProxyInfo.UserUrl := ParamsRec.Proxy;
-    Result := True;
-  end;
-
-end;
-
-
 function ProxyInRegistry(Hive: Integer; const SettingsKey: String; var Servers: String): Boolean;
 var
   Enable: Cardinal;
@@ -2303,22 +2301,39 @@ begin
 end;
 
 
-procedure SetProxyData(var Proxy: TProxyRec);
+procedure SetProxyData;
 var
   Key: String;
   Servers: String;
 
 begin
 
-  if ProxyInEnvironment(HKCU, Proxy) then
+  {Important to reset these values}
+  ProxyInfo.Status := PROXY_NONE;
+  ProxyInfo.UserUrl := '';
+
+  {A proxy param overrides all other settings and cannot be changed}
+  if ParamsRec.Proxy <> '' then
   begin
-    Proxy.Status := PROXY_ENV;
+    ProxyInfo.Status := PROXY_PARAM;
     Exit;
   end;
 
-  if ProxyInEnvironment(HKLM, Proxy) then
+  if ProxyInRegEnvironment(HKCU, ProxyInfo) then
   begin
-    Proxy.Status := PROXY_ENV;
+    ProxyInfo.Status := PROXY_ENV;
+    Exit;
+  end;
+
+  if ProxyInRegEnvironment(HKLM, ProxyInfo) then
+  begin
+    ProxyInfo.Status := PROXY_ENV;
+    Exit;
+  end;
+
+  if ProxyInLocalEnvironment(ProxyInfo) then
+  begin
+    ProxyInfo.Status := PROXY_ENV;
     Exit;
   end;
 
@@ -2326,22 +2341,20 @@ begin
 
   if ProxyInRegistry(HKCU, Key, Servers) then
   begin
-    SetProxyFromReg(Servers, Proxy);
+    SetProxyFromReg(Servers, ProxyInfo);
     Exit;
   end;
 
   if ProxyInRegistry(HKLM, Key, Servers) then
   begin
-    SetProxyFromReg(Servers, Proxy);
+    SetProxyFromReg(Servers, ProxyInfo);
     Exit;
   end;
-
-  Proxy.Status := PROXY_NONE;
 
 end;
 
 
-procedure SetProxyFromReg(const Servers: String; var Proxy: TProxyRec);
+procedure SetProxyFromReg(Servers: String; var Proxy: TProxyRec);
 var
   Value: String;
   I: Integer;
@@ -2381,48 +2394,6 @@ begin
   finally
     List.Free;
   end;
-
-end;
-
-
-procedure SetProxyHash(var Proxy: TProxyRec);
-var
-  Text: String;
-
-begin
-
-  Text := IntToStr(Proxy.Status) + Proxy.Http + Proxy.Https;
-  Proxy.Hash := GetMD5OfUnicodeString(Text);
-
-end;
-
-
-{Sets ProxyInfo data and returns true if it has changed}
-function SetProxyStatus: Boolean;
-var
-  Hash: String;
-
-begin
-
-  {A proxy param overrides all other settings
-  and cannot be changed}
-  if ProxyInParam(ProxyInfo) then
-  begin
-    Result := False;
-    Exit;
-  end;
-
-  {Important to reset this value}
-  ProxyInfo.UserUrl := '';
-
-  Hash := ProxyInfo.Hash;
-  SetProxyData(ProxyInfo);
-  SetProxyHash(ProxyInfo);
-
-  if Hash = '' then
-    Result := True
-  else
-    Result := CompareText(ProxyInfo.Hash, Hash) <> 0;
 
 end;
 
@@ -3095,6 +3066,7 @@ end;
 
 procedure RunInstaller(var Config: TConfigRec);
 var
+  EnvSet: Boolean;
   Script: String;
   Args: String;
   Status: Integer;
@@ -3103,7 +3075,7 @@ begin
 
   Debug('Running Composer installer script');
 
-  ProxyEnvSet();
+  EnvSet := ProxyEnvSet();
 
   Script := PHP_INSTALLER;
   Args := GetInstallerArgs(Config);
@@ -3112,7 +3084,8 @@ begin
   if not ExecPhp(Script, Args, '', Config) then
     Exit;
 
-  ProxyEnvClear();
+  if EnvSet then
+    ProxyEnvClear();
 
   {Set Status depending on the ExitCode}
   case Config.ExitCode of
@@ -3130,8 +3103,8 @@ begin
       Status := ERR_INSTALL_WARNINGS;
 
     {Check in case composer.phar has not been created. Although very
-    unlikely, not trapping this would cause setup to complain about
-    not having a file to install}
+    unlikely, it has been reported and not trapping this would cause setup to
+    complain about not having a file to install}
     if not FileExists(TmpDir + '\composer.phar') then
       Status := ERR_INSTALL_OUTPUT;
 
@@ -3140,8 +3113,8 @@ begin
   if Status = ERR_INSTALL_ERRORS then
   begin
 
-    {Check in case we have no output. Although very unlikely, not
-    trapping this would leave the user with no information}
+    {Check in case we have no output. Although very unlikely, it has been
+    reported and not trapping this would leave the user with no information}
     if GetArrayLength(Config.Output) = 0 then
       Status := ERR_INSTALL_OUTPUT;
 
@@ -3716,7 +3689,7 @@ begin
 
   ProxyPage.Checkbox := TNewCheckbox.Create(Result);
   ProxyPage.Checkbox.Width := Result.SurfaceWidth;
-  ProxyPage.Checkbox.Caption := '';
+  ProxyPage.Checkbox.Caption := 'Use a proxy server to connect to internet';
   ProxyPage.Checkbox.Checked := False;
   ProxyPage.Checkbox.OnClick := @ProxyCheckboxClick;
   ProxyPage.Checkbox.Parent := Result.Surface;
@@ -3753,7 +3726,10 @@ begin
 end;
 
 
-function ProxyPageGetEdit(var EnvName: String): String;
+function ProxyPageGetText(var Info: String): String;
+var
+  EnvName: String;
+
 begin
 
   EnvName := PROXY_KEY;
@@ -3764,74 +3740,71 @@ begin
   else
     begin
 
-      if not Flags.DisableTls and (ProxyInfo.Https <> '') then
-        Result := ProxyInfo.Https
+      if not Flags.DisableTls then
+      begin
+
+        {Use https if it is available}
+        if ProxyInfo.Https <> '' then
+        begin
+          Result := ProxyInfo.Https;
+          EnvName := 'https_proxy';
+        end
+        else
+          Result := ProxyInfo.Http;
+
+      end
       else
       begin
 
         {No tls. If we haven't got an http value the installer script
-        may fail later, but it is hard to something else with it here}
+        may fail later, but it is hard to do something else with it here}
         if ProxyInfo.Http <> '' then
           Result := ProxyInfo.Http
         else
+        begin
           Result := ProxyInfo.Https;
-      end;
+          EnvName := 'https_proxy';
+        end;
 
-      if CompareText(Result, ProxyInfo.Http) <> 0 then
-        EnvName := 'https_proxy';
+      end;
 
     end;
   end;
 
-end;
-
-
-function ProxyPageGetInfo(EnvName: String): String;
-var
-  Name: String;
-  S: String;
-
-begin
-
-  Name := Format('%s%s%s environment variable', [#39, EnvName, #39]);
+  EnvName := Format('%s%s%s environment variable', [#39, EnvName, #39]);
 
   if ProxyInfo.Status = PROXY_ENV then
-    S := Format('Your %s is already set.', [Name])
+    Info := Format('Your %s is already set.', [EnvName])
   else
-    S := Format('This will set your %s.', [Name]);
+    Info := Format('This will set your %s.', [EnvName]);
 
-  Result := S + ' It is used by Composer and other programs to connect through a proxy server.';
+  Info := Info + ' It is used by Composer and other programs to connect through a proxy server.';
 
 end;
 
 
 procedure ProxyPageUpdate;
 var
-  Proxy: TProxyPageRec;
-  EnvName: String;
+  Info: String;
 
 begin
 
-  Proxy := ProxyPage;
-
-  if not SetProxyStatus() then
-    Exit;
-
-  if ProxyInfo.Status = PROXY_NONE then
-    Proxy.Text.Caption := 'Enter proxy url:'
-  else
-    Proxy.Text.Caption := 'Proxy url:';
+  SetProxyData();
 
   case ProxyInfo.Status of
-    PROXY_NONE: Proxy.Checkbox.Caption := 'Use a proxy server to connect to internet.';
-    PROXY_PARAM: Proxy.Checkbox.Caption := 'Use a proxy server - command param present.';
-    PROXY_ENV: Proxy.Checkbox.Caption := 'Use a proxy server - environment variable present.';
-    PROXY_REG: Proxy.Checkbox.Caption := 'Use a proxy server - registry settings detected.';
+    PROXY_NONE: ProxyPage.Text.Caption := 'Enter proxy url:';
+    PROXY_PARAM: ProxyPage.Text.Caption := 'Proxy url set by command param:';
+    PROXY_ENV: ProxyPage.Text.Caption := 'Proxy url set from the environment:';
+    PROXY_REG: ProxyPage.Text.Caption := 'Proxy url set from the registry:';
   end;
 
-  Proxy.Edit.Text := ProxyPageGetEdit(EnvName);
-  Proxy.Info.Caption := ProxyPageGetInfo(EnvName);
-  Proxy.Checkbox.Checked := ProxyInfo.Status <> PROXY_NONE;
+  if ProxyInfo.Status <> PROXY_NONE then
+  begin
+    ProxyPage.Checkbox.Checked := True;
+    ProxyPage.Edit.Text := ProxyPageGetText(Info);
+  end;
+
+  ProxyPage.Info.Caption := Info;
   ProxyPageRefresh();
 
 end;
