@@ -1899,7 +1899,8 @@ begin
     if CompareText(Rec.Data.Path, BinPath) = 0 then
       Exit;
 
-    if Flags.DevInstall then
+    {Allow admins and dev mode installs to change the path}
+    if IsAdminLoggedOn or Flags.DevInstall then
     begin
       PathChange(GetRegHive(), ENV_ADD, BinPath, True);
       PathChange(Rec.Data.Hive, ENV_REMOVE, Rec.Data.Path, True);
