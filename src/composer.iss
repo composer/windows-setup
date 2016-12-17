@@ -849,6 +849,7 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
+  VendorBin: String;
   Error: String;
 
 begin
@@ -856,9 +857,18 @@ begin
   if CurUninstallStep = usUninstall then
   begin
 
-    {Remove composer from paths}
+    {We must call this in usUninstall because the dll and app dir will not be
+    deleted and because we need to know if the vendor/bin folder still exists}
+    UserDataDelete();
+
+    {Remove composer from path}
     PathChange(GetRegHive(), ENV_REMOVE, GetBinDir(''), False);
-    PathChange(HKCU, ENV_REMOVE, GetVendorBinDir(), False);
+
+    {Remove user vendor/bin if they chose to delete it}
+    VendorBin := GetVendorBinDir();
+
+    if not DirExists(VendorBin) then
+      PathChange(HKCU, ENV_REMOVE, VendorBin, False);
 
     if EnvMakeChanges(EnvChanges, Error) = ENV_FAILED then
       ShowErrorMessage(Error);
@@ -868,9 +878,6 @@ begin
     This is better than calling it in usPostUninstall where the Uninstall Form
     has closed, so there is no visible indication that anything is happening}
     NotifyEnvironmentChange();
-
-    {We must call this in usUninstall, or the dll and app dir will not be deleted}
-    UserDataDelete();
 
   end;
 
