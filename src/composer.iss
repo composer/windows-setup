@@ -2786,6 +2786,7 @@ end;
 function IniCheckOutput(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
 var
   Details: String;
+  Error: string;
 
 begin
 
@@ -2798,7 +2799,17 @@ begin
 
   {The script exits 0 if the ini needs modifying/creating}
   if Config.ExitCode <> 0 then
+  begin
+
+    if Config.ExitCode <> 1 then
+    begin
+      {The script unexpectedly failed. Report the output}
+      Error := 'Error: script %s failed%s%s';
+      Debug(Format(Error, [PHP_INI, LF, Config.Extra]));
+    end;
+
     Exit;
+  end;
 
   {Check tmp files have been written}
   if not IniCheckTmp(not ModIni.New) then

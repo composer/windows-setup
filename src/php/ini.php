@@ -20,7 +20,12 @@ class Ini
     private $eol;
     private $changes;
 
-    public function __construct($argv)
+    /**
+     * Constructor
+     *
+     * @param array $argv Coomand-line args
+     */
+    public function __construct(array $argv)
     {
         $this->phpDir = $argv[1];
         $tmpDir = $argv[2];
@@ -31,7 +36,11 @@ class Ini
         $this->status = '';
     }
 
-
+    /**
+     * Returns true if an ini was created or modified
+     *
+     * @return bool
+     */
     public function run()
     {
         if (!$this->init($new)) {
@@ -58,7 +67,13 @@ class Ini
         return true;
     }
 
-
+    /**
+     * Returns true if various init checks succeed
+     *
+     * @param null|bool $new Set by method
+     *
+     * @return bool
+     */
     private function init(&$new)
     {
         if ($missing = $this->checkBuiltIns()) {
@@ -89,7 +104,6 @@ class Ini
                 $this->writeError('Failed to copy source ini: '.$srcIni);
                 return;
             }
-
         } else {
             $new = true;
             $srcIni = $this->phpDir.'/php.ini-production';
@@ -108,19 +122,29 @@ class Ini
         return true;
     }
 
-
+    /**
+     * Returns true if the ini needs modifying
+     *
+     * @return bool
+     *
+     */
     private function needsChanges()
     {
         if (!ini_get('allow_url_fopen')) {
             return true;
         }
 
-        $exts = array('openssl');
+        if (!ini_get('date.timezone')) {
+            if (PHP_MAJOR_VERSION < 7) {
+                return true;
+            }
+        }
+
+        $exts = array('openssl', 'mbstring');
         $missing = $this->getMissingExts($exts);
 
         return !empty($missing);
     }
-
 
     /**
      * Checks that Windows built-in extensions are loaded in case of cygwin
@@ -140,12 +164,18 @@ class Ini
         return $this->getMissingExts($exts);
     }
 
-
-    private function getMissingExts(array $extensions)
+    /**
+     * Returns an array of missing extensions
+     *
+     * @param array $required
+     *
+     * @return array
+     */
+    private function getMissingExts(array $required)
     {
         $result = array();
 
-        foreach ($extensions as $extension) {
+        foreach ($required as $extension) {
             if (!extension_loaded($extension)) {
                 $result[] = $extension;
             }
@@ -153,14 +183,29 @@ class Ini
         return $result;
     }
 
-
+    /**
+     * Returns true if all changes were processed
+     *
+     * @return bool
+     */
     private function processChanges()
     {
         // allow_url_fopen
-        $this->iniGet('allow_url_fopen', $value);
+        if ($set = $this->iniGet('allow_url_fopen', $value)) {
+            $set = (bool) $value;
+        }
 
-        if (empty($value)) {
+        if (!$set) {
             $this->iniSet('allow_url_fopen', 'On');
+        }
+
+        // date.timezone
+        if ($set = $this->iniGet('date.timezone', $value)) {
+            $set = (bool) $value || PHP_MAJOR_VERSION >= 7;
+        }
+
+        if (!$set) {
+            $this->iniSet('date.timezone', 'UTC');
         }
 
         // extensions
@@ -172,7 +217,6 @@ class Ini
 
         return true;
     }
-
 
     /**
      * Returns true if all extensions are enabled in the ini file
@@ -202,7 +246,6 @@ class Ini
         return true;
     }
 
-
     /**
      * Returns true if the extension dir is found
      *
@@ -227,9 +270,8 @@ class Ini
         return $result;
     }
 
-
     /**
-     * Returns true if the name is found and sets the value
+     * Returns true if name is found and gets the value
      *
      * This operates on the ini data to be modified.
      *
@@ -240,12 +282,13 @@ class Ini
      */
     private function iniGet($name, &$value)
     {
+        $value = null;
+
         if ($result = isset($this->iniItems[$name])) {
             $value = $this->iniItems[$name];
         }
         return $result;
     }
-
 
     /**
      * Adds an ini value, overwriting any existing value if found
@@ -272,7 +315,6 @@ class Ini
         $this->content = substr_replace($this->content, $line, $start, $length);
         $this->changes[] = sprintf('%s=%s', $name, $value);
     }
-
 
     /**
      * Returns an array containing the last matched offsets if found
@@ -301,7 +343,7 @@ class Ini
         $matches = $matches[0];
         $active = false;
 
-        foreach($matches as $match) {
+        foreach ($matches as $match) {
             $line = ltrim($match[0]);
 
             if ($line[0] !== ';') {
@@ -315,7 +357,6 @@ class Ini
         }
         return $result;
     }
-
 
     /**
      * Returns true if the source ini is read
@@ -341,7 +382,6 @@ class Ini
         return !empty($this->content);
     }
 
-
     /**
      * Returns true if the content is saved to file
      *
@@ -357,7 +397,6 @@ class Ini
 
         return @file_put_contents($this->modIni, $this->content);
     }
-
 
     /**
      * Writes an error message
