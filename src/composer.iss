@@ -363,6 +363,7 @@ function SetEnvironmentVariable (Name: String; Value: String): LongBool;
 procedure InitCommon; forward;
 function InitGetExisting: TExistingRec; forward;
 function InitGetParams: TParamsRec; forward;
+procedure InitPathParams(var Params: TParamsRec); forward;
 procedure InitSetData(); forward;
 
 {Common functions}
@@ -966,6 +967,43 @@ begin
 
     if Result.Proxy = '' then
       Result.Proxy := GetIniString('{#IniSection}', '{#ParamProxy}', '', LoadInf);
+  end;
+
+  InitPathParams(Result);
+
+end;
+
+
+{Checks and normalizes any path values in params.}
+procedure InitPathParams(var Params: TParamsRec);
+var
+  Path: String;
+  Php: String;
+
+begin
+
+  if Params.Dev <> '' then
+  begin
+    Path := NormalizePath(Params.Dev);
+    if Path <> '' then
+      Params.Dev := Path;
+  end;
+
+  {The php param can be passed as a folder or an exe}
+  if Params.Php <> '' then
+  begin
+    Php := AnsiLowercase(ExtractFileName(Params.Php));
+
+    if ExtractFileExt(Php) = '.exe' then
+      Path := NormalizePath(ExtractFileDir(Params.Php))
+    else
+    begin
+      Php := 'php.exe';
+      Path := NormalizePath(Params.Php);
+    end;
+
+    if Path <> '' then
+      Params.Php := AddBackslash(Path) + Php;
   end;
 
 end;
