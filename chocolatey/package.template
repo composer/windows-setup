@@ -1,37 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
-    <id>composer-setup</id>
-    <title>Composer-Setup</title>
+    <id>composer</id>
+    <title>{{Title}}</title>
     <version>{{Version}}</version>
     <packageSourceUrl>https://github.com/composer/windows-setup</packageSourceUrl>
-    <owners>John Stevenson</owners>        
-    <authors>Nils Adermann, Jordi Boggiano and community contributors</authors>    
+    <owners>John Stevenson</owners>
+    <authors>Nils Adermann, Jordi Boggiano and community contributors</authors>
     <projectUrl>https://getcomposer.org</projectUrl>
     <iconUrl>https://getcomposer.org/img/logo-composer-transparent.png</iconUrl>
-    <copyright>©2016 Nils Adermann, Jordi Boggiano</copyright>
+    <copyright>© 2011-Present Nils Adermann, Jordi Boggiano</copyright>
     <licenseUrl>https://github.com/composer/composer/blob/master/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectSourceUrl>https://github.com/composer/composer</projectSourceUrl>
     <docsUrl>https://getcomposer.org</docsUrl>
     <bugTrackerUrl>https://github.com/composer/windows-setup/issues</bugTrackerUrl>
-    <tags>composer-setup composer admin</tags>
+    <tags>composer php composer-setup admin</tags>
     <summary>Windows installer for the Composer PHP Dependency Manager</summary>
     <description>
-Composer-Setup downloads and installs [Composer](https://getcomposer.org), the PHP Dependency Manager, so you can use it easily from the command line.
+{{Title}} downloads and installs the latest version of Composer, the PHP Dependency Manager, so you can use it easily from the command line: just type `composer` from any location to use it.
 
-* it looks for PHP on your computer (you need to have this installed)
-* it adds PHP to the path
-* it offers solutions to common PHP configuration problems
-* it installs Composer globally - just type `composer` from any location to use it
-* it lets you use the Command Prompt, Git Bash, Msys, Msys2 and Cygwin (including cygwin php)
+Note: The {{Version}} version refers to the installer and not to Composer, which you can update by running `composer self-update` from your terminal.
 
-Note: To keep Composer updated, run `composer selfupdate` from your terminal.    
+###Package Specifics
+This package has a dependency on the Chocolatey PHP package. If this is not found, the latest version will be downloaded and installed first. If you already have PHP installed, you can override this by using the `-i` option to ignore dependencies.
+
+If you encounter any problems with the installation, you can run it interactively using the `--notsilent` option.
+
+####Advanced Usage
+The following package parameters can be set. They are mainly intended for CI usage:
+
+* `/DEV=path` - this installs Composer to the specified path, but without an uninstaller.
+* `/PHP=folder-or-exe` - this uses PHP from the specified location, adding it to the path.
+
+These parameters can be passed to the installer by using the `--ia` option.
+For example: --ia '"/DEV=C:\tools\php /PHP=C:\php"'.
     </description>
-    <releaseNotes>https://github.com/composer/windows-setup/releases</releaseNotes>  
+    <releaseNotes>https://github.com/composer/windows-setup/releases/tag/v{{Version}}</releaseNotes>
+    <dependencies>
+      <dependency id="php" version="5.3.4" />
+    </dependencies>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />
-    <file src="{{ReleaseExe}}" target="tools" /> 
+    <file src="..\src\release\Composer-Setup.{{Version}}.exe" target="tools" />
   </files>
 </package>

@@ -1,21 +1,20 @@
 $ErrorActionPreference = 'Stop';
 
 $toolsDir = "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)"
-Import-Module (Join-Path $toolsDir 'common.ps1')
-$data = Get-ComposerPackageData($toolsDir)
+$setup = (Get-ChildItem -Path "$toolsDir" -Filter *.exe | Select-Object -First 1).Name
 
 $packageArgs = @{
-  packageName   = $data.packageName
+  packageName   = 'composer'
   fileType      = 'EXE'
-  file          = $data.fileLocation  
-  silentArgs    = '/VERYSILENT /SUPPRESSMSGBOXES'
+  file          = Join-Path $toolsDir $setup
+  silentArgs    = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
   validExitCodes= @(0)
 }
 
 try {
   Install-ChocolateyInstallPackage @packageArgs
 } catch {
-  
+
   if ($env:ChocolateyExitCode -eq '1') {
     Write-Host ""
     Write-Host "*** IMPORTANT ***"
