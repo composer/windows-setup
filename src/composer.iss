@@ -10,6 +10,7 @@
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
+#define RunPhp "runphp.exe"
 #define DllData "userdata.dll"
 
 #define PhpCheck "check.php"
@@ -32,6 +33,7 @@ AppId={{7315AF68-E777-496A-A6A2-4763A98ED35A}
 AppName=Composer
 AppVerName=Composer
 AppPublisher={#AppUrl}
+AppCopyright=Copyright (C) 2012-2017 John Stevenson
 
 ; compile directives
 Compression=lzma
@@ -84,6 +86,7 @@ Name: {code:GetBinDir}; Permissions: users-modify; Check: CheckPermisions;
 Source: php\{#PhpCheck}; Flags: dontcopy;
 Source: php\{#PhpInstaller}; Flags: dontcopy;
 Source: php\{#PhpIni}; Flags: dontcopy;
+Source: runphp\{#RunPhp}; Flags: dontcopy signonce;
 Source: shims\{#CmdShell}; Flags: dontcopy;
 
 ; app files
@@ -194,6 +197,7 @@ type
 
 type
   TTmpFile = record
+    RunPhp   : String;
     Composer  : String;
     StdOut    : String;
     StdErr    : String;
@@ -331,6 +335,7 @@ const
   LF2 = LF + LF;
   TAB = #32#32#32#32#32#32;
 
+  RUN_PHP = '{#RunPhp}';
   PHP_CHECK = '{#PhpCheck}';
   PHP_CHECK_ID = '{#PHP_CHECK_ID}';
   PHP_INI = '{#PhpIni}';
@@ -348,8 +353,8 @@ const
   PROXY_KEY = 'http_proxy';
 
   ERR_SUCCESS = 0;
-  ERR_EXE_PHP = 100;
-  ERR_EXE_CMD = 101;
+  ERR_RUN_PHP = 100;
+  ERR_RUN_CMD = 101;
   ERR_CHECK_PHP = 200;
   ERR_CHECK_PATH = 201;
   ERR_INSTALL_WARNINGS = 300;
@@ -380,9 +385,10 @@ procedure DebugPageName(Id: Integer); forward;
 function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean; forward;
 function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
-function GetCmdError(StatusCode: Integer; Config: TConfigRec): String; forward;
+function GetExecError(StatusCode: Integer; Config: TConfigRec): String; forward;
 function GetExecParams(Config: TConfigRec; Script, Args, Ini: String): String; forward;
 function GetRegHive: Integer; forward;
+function GetRunPhpError(ExitCode: Integer): String; forward;
 function GetStatusText(Status: Integer): String; forward;
 procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
 procedure ShowErrorIfSilent; forward;
@@ -518,6 +524,7 @@ begin
   TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
 
   {Extract our temp files to installer directory}
+  ExtractTemporaryFile(RUN_PHP);
   ExtractTemporaryFile(PHP_CHECK);
   ExtractTemporaryFile(PHP_INSTALLER);
   ExtractTemporaryFile(PHP_INI);
@@ -527,6 +534,7 @@ begin
   cygwin php. Also, the PHP_CHECK script must not have a path, otherwise it
   masks errors caused by autorun registry settings that force cmd.exe to open
   in a particular directory}
+  TmpFile.RunPhp := TmpDir + '\' + RUN_PHP;
   TmpFile.Composer := TmpDir + '\' + CMD_SHELL;
   TmpFile.StdOut := TmpDir + '\stdout.txt';
   TmpFile.StdErr := TmpDir + '\stderr.txt';
@@ -1102,7 +1110,7 @@ end;
 procedure DebugExecBegin(const Exe, Params: String);
 begin
   Debug('-- Execute File --');
-  Debug(Format('Running "%s" %s', [Exe, Params]));
+  Debug(Format('Running %s %s', [AddQuotes(Exe), Params]));
 end;
 
 
@@ -1174,7 +1182,7 @@ begin
 
   if not Result then
   begin
-    SetError(ERR_EXE_CMD, Config);
+    SetError(ERR_RUN_CMD, Config);
     Exit;
   end;
 
@@ -1198,7 +1206,7 @@ begin
 end;
 
 
-function GetCmdError(StatusCode: Integer; Config: TConfigRec): String;
+function GetExecError(StatusCode: Integer; Config: TConfigRec): String;
 var
   Filename: String;
   Prog: String;
@@ -1207,19 +1215,20 @@ var
 
 begin
 
-  if StatusCode = ERR_EXE_CMD then
+  if StatusCode = ERR_RUN_CMD then
   begin
     Filename := CmdExe;
     Prog := 'The command interpreter';
+    SysError := SysErrorMessage(Config.ExitCode);
   end
   else
   begin
     Filename := Config.PhpExe;
     Prog := 'The PHP exe file you specified';
+    SysError := GetRunPhpError(Config.ExitCode);
   end;
 
   Error := Format('%s did not run correctly', [Prog]);
-  SysError := SysErrorMessage(Config.ExitCode);
 
   if StringChangeEx(SysError, '%1', '%s', True) = 1 then
     SysError := Format(SysError, [Filename]);
@@ -1264,14 +1273,41 @@ begin
 end;
 
 
+{Returns a string representing the ExitCode received from runphp.exe. This will
+be a code from GelLastError that we can use with SysErrorMessage if the
+process cannot be created or a WinApi call has failed. Otherwise it will
+return NTStatus errors.}
+function GetRunPhpError(ExitCode: Integer): String;
+var
+  UintCode: DWord;
+  Suffix: String;
+
+begin
+
+  Result := '';
+  UintCode := ExitCode;
+  Suffix := ' Try reinstalling the program to fix this problem.';
+
+  if ExitCode > 0 then
+    Result := SysErrorMessage(ExitCode)
+  else if UintCode = $C0000135 then
+   {STATUS_DLL_NOT_FOUND}
+    Result := 'The program cannot start because a dll was not found.' + Suffix;
+
+  if Result = '' then
+    Result := 'The program failed to run correctly.' + Suffix;
+
+end;
+
+
 function GetStatusText(Status: Integer): String;
 begin
 
   case Status of
 
     ERR_SUCCESS:          Result := 'ERR_SUCCESS';
-    ERR_EXE_PHP:          Result := 'ERR_EXE_PHP';
-    ERR_EXE_CMD:          Result := 'ERR_EXE_CMD';
+    ERR_RUN_PHP:          Result := 'ERR_RUN_PHP';
+    ERR_RUN_CMD:          Result := 'ERR_RUN_CMD';
     ERR_CHECK_PHP:        Result := 'ERR_CHECK_PHP';
     ERR_CHECK_PATH:       Result := 'ERR_CHECK_PATH';
     ERR_INSTALL_WARNINGS: Result := 'ERR_INSTALL_WARNINGS';
@@ -1294,8 +1330,8 @@ var
 begin
 
   case StatusCode of
-    ERR_EXE_PHP,
-    ERR_EXE_CMD: Message := GetCmdError(StatusCode, Config);
+    ERR_RUN_PHP,
+    ERR_RUN_CMD: Message := GetExecError(StatusCode, Config);
     ERR_CHECK_PHP: Message := GetPhpError(Config);
     ERR_CHECK_PATH: Message := Config.Extra;
 
@@ -2491,21 +2527,28 @@ var
 
 begin
 
-  {We check that we can run the supplied exe file directly. We need to do this
-  separately because our other calls use cmd to invoke php and it is more
-  difficult to get a true error message. Also when using cmd, a message box
-  can be shown for certain error conditions in the called process}
+  {We check that we can run the supplied exe file by running it via runphp.exe.
+  We need to do this separately because our other calls use cmd to invoke php
+  and it is more difficult to get a true error message. Also, Inno use
+  CreateProcess with the dwCreationFlags set to CREATE_DEFAULT_ERROR_MODE. This
+  stops processes from inheriting any error mode we can set here, which we need
+  to do to stop message boxes being  shown for certain error conditions.}
 
-  Debug('Checking php will execute');
+  Debug('Checking if php will execute');
+  Params := AddQuotes(Config.PhpExe);
 
-  Params := '-v';
-  DebugExecBegin(Config.PhpExe, Params);
+  if WizardSilent then
+    Params := Params + ' silent';
 
-  Result := Exec(Config.PhpExe, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
+  DebugExecBegin(TmpFile.RunPhp, Params);
+  Result := Exec(TmpFile.RunPhp, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
   DebugExecEnd(Result, Config.ExitCode);
 
   if not Result or (Config.ExitCode <> 0) then
-    SetError(ERR_EXE_PHP, Config);
+  begin
+    SetError(ERR_RUN_PHP, Config);
+    Result := False;
+  end;
 
 end;
 
