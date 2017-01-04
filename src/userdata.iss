@@ -7,7 +7,7 @@ type
   TUserDataRec = record
     User      : String;
     Folder    : String;
-    Caption   : String;    
+    Caption   : String;
     Delete    : Boolean;
     Local     : Boolean;
   end;
@@ -34,12 +34,12 @@ type
 type
   TDataForm = record
     Main: TSetupForm;
-    ListBox: TNewCheckListBox;    
+    ListBox: TNewCheckListBox;
   end;
 
 var
   UserForm: TDataForm;
-  
+
 const
   DELETE_NONE = 0;
   DELETE_LOCAL = 1;
@@ -101,7 +101,7 @@ function UserDataGet(Delete: Integer): TUserDataList;
 var
   Rec: TUserFolderRec;
   I: Integer;
-  
+
 begin
 
   {Add current user as first item}
@@ -109,19 +109,19 @@ begin
   Rec.Home := ExpandConstant('{userappdata}\Composer');
   Rec.Cache := ExpandConstant('{localappdata}\Composer');
   UserAddDataRec(Rec, Result);
-  
+
   if IsAdminLoggedOn then
     UserDataGetAll(Rec.User, Result);
-    
+
   for I := 0 to GetArrayLength(Result) - 1 do
   begin
-    
+
     case Delete of
       DELETE_NONE: Result[I].Delete := False;
       DELETE_LOCAL: Result[I].Delete := Result[I].Local;
-      DELETE_ALL: Result[I].Delete := True;  
+      DELETE_ALL: Result[I].Delete := True;
     end;
-    
+
   end;
 
 end;
@@ -348,14 +348,14 @@ begin
     Caption := 'cache';
     Local := True;
     UserAddDataItem(User, Rec.Cache, Caption, Local, List);
-  end; 
+  end;
 
   if DirExists(Rec.Home) then
   begin
     User := Rec.User + ': roaming';
     Caption := 'config';
     Local := False;
-    
+
     if DirExists(Rec.Home + '\vendor') then
       Caption := Caption + ', bin';
 
@@ -379,12 +379,12 @@ begin
 
   if not RegQueryStringValue(HKEY_USERS, SubKey, Folder, Prefix) then
     Exit;
-  
+
   Profile := '%USERPROFILE%';
 
   if Pos(Profile, Prefix) <> 1 then
     Exit;
-  
+
   Prefix := Copy(Prefix, Length(Profile) + 1, MaxInt);
   StringChangeEx(Prefix, '/', '\', True);
   Result := Prefix <> '';
@@ -408,15 +408,15 @@ begin
       Data := Data + List[I].Folder + ';';
 
   end;
-    
+
   if Data = '' then
     Exit;
 
-  Debug('Calling dll: ' + DllData);   
+  Debug('Calling dll: ' + DllData);
   DeleteData(UninstallProgressForm.Handle, Data, UninstallSilent);
-  
+
   CharCount := 0;
-  CharCount := GetResult(Data, CharCount);  
+  CharCount := GetResult(Data, CharCount);
   SetLength(Data, CharCount);
 
   if GetResult(Data, CharCount) <> CharCount then
@@ -424,9 +424,9 @@ begin
 
   Data := TrimRight(Data);
   StringChangeEx(Data, ';', #13, True);
-  
+
   InfoList := TStringList.Create;
-  
+
   try
     InfoList.Text := Data;
 
@@ -464,9 +464,9 @@ begin
 
   try
 
-    {Populate the listbox}    
+    {Populate the listbox}
     for I := 0 to GetArrayLength(List) - 1 do
-    begin      
+    begin
       UserForm.ListBox.AddCheckBox(List[I].User, List[I].Caption, 0,
         List[I].Delete, True, False, False, TObject(I));
     end;
@@ -480,7 +480,7 @@ begin
 
       Index := Integer(UserForm.ListBox.ItemObject[I]);
       List[Index].Delete := UserForm.ListBox.Checked[I];
-      
+
       if UserForm.ListBox.Checked[I] then
         Result := True;
 
@@ -577,7 +577,7 @@ var
   Param: String;
 
 begin
-  
+
   Result := DELETE_NONE;
   Param := ExpandConstant('{param:delete}');
 

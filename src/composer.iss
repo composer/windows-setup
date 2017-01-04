@@ -858,7 +858,8 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
-  VendorBin: String;
+  Home: String;
+  Cache: String;
   Error: String;
 
 begin
@@ -866,18 +867,19 @@ begin
   if CurUninstallStep = usUninstall then
   begin
 
-    {We must call this in usUninstall because the dll and app dir will not be
-    deleted and because we need to know if the vendor/bin folder still exists}
+    {We must call this in usUninstall otherwise the dll and app dir will not be
+    deleted. Also we need to know if the user data folders still exist}
     UserDataDelete();
 
     {Remove composer from path}
     PathChange(GetRegHive(), ENV_REMOVE, GetBinDir(''), False);
 
-    {Remove user vendor/bin if they chose to delete it}
-    VendorBin := GetVendorBinDir();
+    {Only remove vendor/bin from path if the data folders were deleted}
+    Home := ExpandConstant('{userappdata}\Composer');
+    Cache := ExpandConstant('{localappdata}\Composer');
 
-    if not DirExists(VendorBin) then
-      PathChange(HKCU, ENV_REMOVE, VendorBin, False);
+    if not DirExists(Home) and not DirExists(Cache) then
+      PathChange(HKCU, ENV_REMOVE, GetVendorBinDir(), False);
 
     if EnvMakeChanges(EnvChanges, Error) = ENV_FAILED then
       ShowErrorMessage(Error);
@@ -3611,9 +3613,22 @@ begin
 
   if ExistingRec.Installed then
   begin
-    S := 'Warning: Composer is already installed. You should uninstall it from the';
-    S := S + ' Control Panel first, or you may break one of these installations.';
+
+    {The user is not prevented from making a dev install over an existing
+    installation. Unless they install to the default bin directory the worst
+    that can happen if they susbsequently uninstall is that the vendor/bin
+    directory will be removed from the user path. After version 4.6.0 this will
+    not happen unless the user data folders have been removed}
+
+    S := 'Composer is already installed.';
+
+    if StrToVer(ExistingRec.Version) < StrToVer('4.6.0') then
+      S := S + ' You should uninstall it from the Control Panel first.'
+    else
+      S := S + ' You can uninstall it from the Control Panel later.';
+
     OptionsPage.DevInfo.Caption := S;
+
   end;
 
   OptionsPage.DevInfo.Parent := Result.Surface;

@@ -40,7 +40,7 @@ const
   ENV_REMOVE = 101;
 
   ENV_KEY_PATH = 'PATH';
-  
+
 
 function EnvAdd(Hive: Integer; Name, Value: String; Display: Boolean): Integer;
 var
@@ -60,7 +60,7 @@ begin
 
   if RegQueryStringValue(Hive, Key, Name, Existing) then
   begin
-    
+
     if CompareText(Existing, Value) = 0 then
     begin
       Result := ENV_NONE;
@@ -69,7 +69,7 @@ begin
   end;
 
   DbgEnv(ENV_ADD, Hive, Name, Value, Display);
-  Existing := Value;  
+  Existing := Value;
 
   {See if we are expandable}
   if StringChangeEx(Existing, '%', '', True) = 2 then
@@ -155,8 +155,8 @@ begin
   Path := '';
   RegQueryStringValue(Hive, Key, ENV_KEY_PATH, Path);
 
-  DbgPath(ENV_ADD, Hive, SafeDirectory);  
-  
+  DbgPath(ENV_ADD, Hive, SafeDirectory);
+
   {Add trailing separator to path if required}
   if (Path <> '') and (Path[Length(Path)] <> ';') then
     Path := Path + ';';
@@ -173,7 +173,7 @@ begin
   else
   begin
     Result := ENV_FAILED;
-    DbgError(ENV_KEY_PATH);    
+    DbgError(ENV_KEY_PATH);
   end;
 
 end;
@@ -219,9 +219,9 @@ begin
     Result := ENV_NONE;
     Exit;
   end;
-    
+
   DbgPath(ENV_REMOVE, Hive, SafeDirectory);
-  
+
   {Split current path into a list of raw entries}
   RawList := SplitPath(CurrentPath);
   NewPath := '';
@@ -354,7 +354,7 @@ end;
 
 function GetHiveFriendlyName(Hive: Integer): String;
 begin
-  
+
   if Hive = HKLM then
     Result := 'System'
   else
@@ -410,10 +410,10 @@ var
   Path: String;
 
 begin
-  
+
   if not GetRawPath(Hive, Path) then
     Exit;
-  
+
   SetPathList(Hive, Path, Result);
 
 end;
@@ -558,7 +558,7 @@ procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Display: Boolean);
 var
   Path: String;
   Prefix: String;
-  
+
 begin
 
   Path := Format('%s\%s', [GetHiveName(Hive), GetPathKeyForHive(Hive)]);
