@@ -30,7 +30,7 @@ Composer-Setup is written with [Inno Setup][inno], which is a powerful free inst
 ## Details
 
 First you must choose the installation type. By default Composer will be installed to a [fixed location](#Locations)
-with a Control Panel uninstaller. You can choose `Developer Mode` if you want more control, which will install
+with a Control Panel uninstaller. You can choose _Developer Mode_ if you want more control, which will install
 Composer anywhere you want without an uninstaller.
 
 The next step is to find the location of your `php.exe`, which is the PHP command line interpreter. The installer
@@ -58,7 +58,7 @@ temp directory `AppData\Local\Temp` with a formatted filename: `Setup Log YYYY-M
 The uninstall program is available from the Control Panel. Go to Programs and Features, select Composer, then click
 Uninstall. This offers the option to remove user cache and configuration data.
 
-The uninstall program will not be available If you installed in `Developer Mode`. To manually uninstall you must delete
+The uninstall program will not be available If you installed in _Developer Mode_. To manually uninstall you must delete
 the composer files from the location you installed to and update the [environment](#Environment).
 
 <a name="Locations"></a>
