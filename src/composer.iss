@@ -250,7 +250,7 @@ type
     SettingsError : Boolean;  {Set if we have errors, to make ShouldSkipPage work}
     DisableTls    : Boolean;  {Set if the user has chosen to disable tls}
     EnvChanged    : Boolean;  {Set if we have altered the environment}
-    Completed     : Boolean;  {Flags that we have succesfully completed the install or uninstall}
+    Completed     : Boolean;  {Flags that we have succesfully completed the install}
   end;
 
 type
@@ -406,8 +406,10 @@ procedure SetPhpLocations; forward;
 function CheckPermisions: Boolean; forward;
 function GetBinDir(Param: String): String; forward;
 function GetDefaultDir(Param: String): String; forward;
-function GetVendorBinDir(): String; forward;
+function GetVendorBinDir: String; forward;
 function IncludeUninstaller: Boolean; forward;
+function IsSystemUser: Boolean; forward;
+procedure RemoveSystemUserData; forward;
 procedure SaveInfData; forward;
 function UnixifyShellFile(const Filename: String; var Error: String): Boolean; forward;
 
@@ -804,6 +806,8 @@ begin
   if not UnixifyShellFile(TmpFile.Composer, Result) then
     Exit;
 
+  RemoveSystemUserData();
+
   {Any failures will be reverted in DeinitializeSetup}
   EnvMakeChanges(EnvChanges, Result);
 
@@ -874,12 +878,16 @@ begin
     {Remove composer from path}
     PathChange(GetRegHive(), ENV_REMOVE, GetBinDir(''), False);
 
-    {Only remove vendor/bin from path if the data folders were deleted}
-    Home := ExpandConstant('{userappdata}\Composer');
-    Cache := ExpandConstant('{localappdata}\Composer');
+    if not IsSystemUser() then
+    begin
+      {Only remove vendor/bin from path if the data folders were deleted}
+      Home := ExpandConstant('{userappdata}\Composer');
+      Cache := ExpandConstant('{localappdata}\Composer');
 
-    if not DirExists(Home) and not DirExists(Cache) then
-      PathChange(HKCU, ENV_REMOVE, GetVendorBinDir(), False);
+      if not DirExists(Home) and not DirExists(Cache) then
+        PathChange(HKCU, ENV_REMOVE, GetVendorBinDir(), False);
+
+    end;
 
     if EnvMakeChanges(EnvChanges, Error) = ENV_FAILED then
       ShowErrorMessage(Error);
@@ -888,7 +896,8 @@ begin
     If there are hung programs then the progress bar will not start immediately.
     This is better than calling it in usPostUninstall where the Uninstall Form
     has closed, so there is no visible indication that anything is happening}
-    NotifyEnvironmentChange();
+    if Flags.EnvChanged then
+      NotifyEnvironmentChange();
 
   end;
 
@@ -1022,7 +1031,7 @@ end;
 procedure InitSetData();
 begin
 
-  Debug('Initializing {#AppInstallName} {#SetupVersion}');
+  Debug('Initializing {#AppInstallName} {#SetupVersion} for user: ' + GetUserNameString);
 
   ExistingRec := InitGetExisting();
   ParamsRec := InitGetParams();
@@ -1646,7 +1655,7 @@ begin
 end;
 
 
-function GetVendorBinDir(): String;
+function GetVendorBinDir: String;
 begin
   Result := ExpandConstant('{userappdata}') + '\Composer\vendor\bin';
 end;
@@ -1656,6 +1665,72 @@ function IncludeUninstaller: Boolean;
 begin
   {Code-constant function for Uninstallable and files Check}
   Result := not Flags.DevInstall;
+end;
+
+
+{Returns true if the user profile is in the system directory}
+function IsSystemUser: Boolean;
+var
+  WinDir: String;
+  UserDir: String;
+
+begin
+
+  WinDir := AnsiLowercase(GetWinDir);
+  UserDir := AnsiLowercase(GetEnv('USERPROFILE'));
+
+  Result := Pos(WinDir, UserDir) = 1;
+
+end;
+
+
+{Removes the data that the installer script writes to the system profile. On a
+64-bit system the location depends on the bitness of the php executable}
+procedure RemoveSystemUserData;
+var
+  Path: String;
+  Locations: TStringList;
+  OldState : Boolean;
+  I: Integer;
+
+begin
+
+  if not IsSystemUser() then
+    Exit;
+
+  Path := '\config\systemprofile\AppData\Roaming\Composer';
+  Locations := TStringList.Create;
+
+  try
+
+    Locations.Add(ExpandConstant('{sys}') + Path);
+
+    if IsWin64 then
+    begin
+      {We must disable WOW64 file system redirection}
+      OldState := EnableFsRedirection(False);
+      Locations.Add(ExpandConstant('{syswow64}') + Path);
+    end;
+
+    for I := 0 to Locations.Count - 1 do
+    begin
+      Path := Locations.Strings[I];
+
+      if DirExists(Path) then
+      begin
+        Debug('Removing user data from: ' + Path);
+        DelTree(Path, True, True, True);
+      end;
+    end;
+
+  finally
+
+    if IsWin64 then
+      EnableFsRedirection(OldState);
+
+    Locations.Free;
+  end;
+
 end;
 
 
@@ -1854,7 +1929,7 @@ begin
 
   end;
 
-  if not Paths.VendorBin.Checked then
+  if not IsSystemUser() and not Paths.VendorBin.Checked then
   begin
 
     VendorBin := GetVendorBinDir();
@@ -1942,7 +2017,7 @@ begin
     Exit;
   end;
 
-  if Paths.VendorBin.Status = PATH_NONE then
+  if not IsSystemUser() and (Paths.VendorBin.Status = PATH_NONE) then
     PathChange(HKCU, ENV_ADD, GetVendorBinDir(), Flags.DevInstall);
 
   Result := True;

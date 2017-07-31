@@ -1,3 +1,9 @@
+## v4.7.0
+Not yet released
+
+* Unattended `SYSTEM` installations no longer write data to the system user profile.
+
+
 ## v4.6.0
 2017-07-31
 
@@ -7,6 +13,7 @@
 * Added `/DEV=path\to\installation\folder` param for unattended Developer mode installs
 * Created a chocolatey package: https://chocolatey.org/packages/composer
 * Many code tweaks and improvements.
+
 
 ## v4.5.0
 2016-04-14
