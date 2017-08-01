@@ -130,8 +130,9 @@ type
     PhpCompat   : Boolean;
     ExitCode    : Integer;
     StatusCode  : Integer;
-    Output      : TArrayOfString;
-    Extra       : String;
+    StdOut      : TArrayOfString;
+    StdErr      : TArrayOfString;
+    Output      : String;
     Message     : String;
   end;
 
@@ -395,6 +396,11 @@ procedure ShowErrorIfSilent; forward;
 procedure ShowErrorMessage(const Message: String); forward;
 function StrToVer(Version: String): DWord; forward;
 function VersionMatchMajor(Ver1, Ver2: String): Boolean; forward;
+
+{Exec output functions}
+procedure OutputDebug(Output, Other: String; IsStdOut: Boolean); forward;
+function OutputFromFile(Filename: String; var Output: TArrayOfString): String; forward;
+procedure OutputReadStdFiles(var Config: TConfigRec); forward;
 
 {Find PHP functions}
 procedure CheckLocation(Path: String; ResultList: TStringList); forward;
@@ -1105,8 +1111,9 @@ begin
 
   Config.ExitCode := 0;
   Config.StatusCode := ERR_SUCCESS;
-  SetArrayLength(Config.Output, 0);
-  Config.Extra := '';
+  SetArrayLength(Config.StdOut, 0);
+  SetArrayLength(Config.StdErr, 0);
+  Config.Output := '';
   Config.Message := '';
 
 end;
@@ -1197,7 +1204,8 @@ begin
     Exit;
   end;
 
-  LoadStringsFromFile(TmpFile.StdOut, Config.Output);
+  {Put the output into Config}
+  OutputReadStdFiles(Config);
 
 end;
 
@@ -1344,10 +1352,10 @@ begin
     ERR_RUN_PHP,
     ERR_RUN_CMD: Message := GetExecError(StatusCode, Config);
     ERR_CHECK_PHP: Message := GetPhpError(Config);
-    ERR_CHECK_PATH: Message := Config.Extra;
+    ERR_CHECK_PATH: Message := Config.Output;
 
     ERR_INSTALL_WARNINGS,
-    ERR_INSTALL_ERRORS: Message := Config.Extra;
+    ERR_INSTALL_ERRORS: Message := Config.Output;
     ERR_INSTALL_OUTPUT: Message := GetInstallerError(Config);
 
   end;
@@ -1437,6 +1445,74 @@ begin
   Major2 := (StrToVer(Ver2) shr 24) and $ff;
 
   Result := Major1 = Major2;
+
+end;
+
+
+{*************** Exec output functions ***************}
+
+procedure OutputDebug(Output, Other: String; IsStdOut: Boolean);
+var
+  Count: Integer;
+  Detail: String;
+  Stream: String;
+  Msg: String;
+
+begin
+
+  Count := Length(Output);
+  Detail := Format('%d bytes', [Count]);
+
+  if IsStdOut then
+    Stream := 'stdout'
+  else
+  begin
+    Stream := 'stderr';
+    {Other is stdOut}
+    if (Count > 0) and (CompareText(Output, Other) = 0) then
+      Detail := 'same as stdout';
+  end;
+
+  Msg := Format('Output from %s [%s]', [Stream, Detail]);
+
+  if Count > 0 then
+    AddLine(Msg, Output);
+
+  Debug(Msg);
+
+end;
+
+
+function OutputFromFile(Filename: String; var Output: TArrayOfString): String;
+var
+  Count: Integer;
+  I: Integer;
+
+begin
+
+  LoadStringsFromFile(Filename, Output);
+  Count := GetArrayLength(Output);
+
+  for I := 0 to Count - 1 do
+    AddLine(Result, Output[I]);
+
+  Result := Trim(Result);
+
+end;
+
+
+procedure OutputReadStdFiles(var Config: TConfigRec);
+var
+  StdOut: String;
+  StdErr: String;
+
+begin
+
+  StdOut := OutputFromFile(TmpFile.StdOut, Config.StdOut);
+  StdErr := OutputFromFile(TmpFile.StdErr, Config.StdErr);
+
+  OutputDebug(StdOut, '', True);
+  OutputDebug(StdErr, StdOut, False);
 
 end;
 
@@ -2005,13 +2081,13 @@ begin
 
   CheckPathPhp(Paths.Php, ConfigRec);
 
-  if not CheckPathBin(Paths.Bin, ConfigRec.Extra) then
+  if not CheckPathBin(Paths.Bin, ConfigRec.Output) then
   begin
     SetError(ERR_CHECK_PATH, ConfigRec);
     Exit;
   end;
 
-  if not CheckPathExt(ConfigRec.Extra) then
+  if not CheckPathExt(ConfigRec.Output) then
   begin
     SetError(ERR_CHECK_PATH, ConfigRec);
     Exit;
@@ -2650,8 +2726,8 @@ begin
     Exit;
   end;
 
-  {ConfigExtra will contain output other than the details line}
-  Result := (Config.Extra = '') and (Config.ExitCode = 0);
+  {Config.Output will contain output other than the details line}
+  Result := (Config.Output = '') and (Config.ExitCode = 0);
 
 end;
 
@@ -2709,7 +2785,7 @@ begin
 
   {Autorun entries in the registry can start cmd.exe in the wrong directory}
 
-  if Pos('input file', Config.Extra) = 0 then
+  if Pos('input file', Config.Output) = 0 then
     Exit;
 
   if not GetRegistryAutorun(Key, Autorun) then
@@ -2743,7 +2819,7 @@ begin
 
   {The old wrong extension_dir problem}
 
-  if Pos('load dynamic library', Config.Extra) = 0 then
+  if Pos('load dynamic library', Config.Output) = 0 then
     Exit;
 
   AddPara(Message, 'A setting in your php.ini could be causing the problem:');
@@ -2759,7 +2835,7 @@ begin
 
   {We need to check this or it could muddle the logic with installer output}
 
-  if Pos('already loaded', Config.Extra) = 0 then
+  if Pos('already loaded', Config.Output) = 0 then
     Exit;
 
   AddPara(Message, 'A duplicate setting in your php.ini could be causing the problem.');
@@ -2812,12 +2888,12 @@ begin
   GetCommonErrors(Result, Config);
 
   {Unlikely we should have no output}
-  if Config.Extra = '' then
+  if Config.Output = '' then
     AddPara(Result, 'No output was returned.')
   else
   begin
     AddPara(Result, 'Program Output:');
-    AddLine(Result, Config.Extra);
+    AddLine(Result, Config.Output);
   end;
 
 end;
@@ -2861,14 +2937,14 @@ var
 begin
 
   Found := False;
-  Count := GetArrayLength(Config.Output);
+  Count := GetArrayLength(Config.StdOut);
 
   if Count = 0 then
   begin
-    {If we haven't got any output then something has gone wrong, so we report
+    {If we haven't got any std output then something has gone wrong, so we report
     any output from stderr}
-    LoadStringsFromFile(TmpFile.StdErr, Config.Output);
-    Count := GetArrayLength(Config.Output);
+    Config.StdOut := Config.StdErr;
+    Count := GetArrayLength(Config.StdOut);
     Found := True;
   end;
 
@@ -2878,7 +2954,7 @@ begin
   for I := 0 to Count - 1 do
   begin
 
-    Line := Config.Output[I];
+    Line := Config.StdOut[I];
 
     if not Found then
     begin
@@ -2908,10 +2984,10 @@ begin
 
   {Copy the stripped output back to the main record}
   SetArrayLength(Stripped, NextIndex);
-  Config.Output := Stripped;
+  Config.StdOut := Stripped;
 
   {Set the stripped output as a single string}
-  Config.Extra := Trim(Content);
+  Config.Output := Trim(Content);
 
 end;
 
@@ -2971,7 +3047,7 @@ begin
     begin
       {The script unexpectedly failed. Report the output}
       Error := 'Error: script %s failed%s%s';
-      Debug(Format(Error, [PHP_INI, LF, Config.Extra]));
+      Debug(Format(Error, [PHP_INI, LF, Config.Output]));
     end;
 
     Exit;
@@ -3229,10 +3305,10 @@ begin
   end;
 
   {In theory we should always have output to show}
-  if Config.Extra <> '' then
+  if Config.Output <> '' then
   begin
     AddStr(Result, ':');
-    AddPara(Result, Config.Extra);
+    AddPara(Result, Config.Output);
     Exit;
   end;
 
@@ -3279,7 +3355,7 @@ begin
   begin
 
     {See if we have output, which means that there are warnings}
-    if GetArrayLength(Config.Output) > 0 then
+    if GetArrayLength(Config.StdOut) > 0 then
       Status := ERR_INSTALL_WARNINGS;
 
     {Check in case composer.phar has not been created. Although very
@@ -3295,7 +3371,7 @@ begin
 
     {Check in case we have no output. Although very unlikely, it has been
     reported and not trapping this would leave the user with no information}
-    if GetArrayLength(Config.Output) = 0 then
+    if GetArrayLength(Config.StdOut) = 0 then
       Status := ERR_INSTALL_OUTPUT;
 
   end;
@@ -3307,7 +3383,7 @@ begin
 
 end;
 
-
+{Write stdout lines to Config.Output}
 procedure ParseInstallerOutput(StatusCode: Integer; var Config: TConfigRec);
 var
   Count: Integer;
@@ -3316,32 +3392,24 @@ var
 
 begin
 
-  Count := GetArrayLength(Config.Output);
+  Count := GetArrayLength(Config.StdOut);
 
   for I := 0 to Count - 1 do
   begin
 
-    Line := Config.Output[I];
+    Line := Config.StdOut[I];
 
+    {This relates to using the command-line -d option}
     if Pos('If you can not modify the ini', Line) <> 0 then
       Continue;
 
-    //if Pos('openssl', Line) <> 0 then
-    //  Continue;
-
-    //if Pos('You have instructed', Line) <> 0 then
-    //  Continue;
-
-    //if Pos('This will leave all downloads', Line) <> 0 then
-    //  Continue;
-
-    StringChangeEx(Line, '`', '', True);
-
-    AddLine(Config.Extra, Line);
+    AddLine(Config.Output, Line);
   end;
 
-  Config.Extra := Trim(Config.Extra);
-  AddStr(Config.Extra, LF);
+  Config.Output := Trim(Config.Output);
+
+  if Config.Output <> '' then
+    AddStr(Config.Output, LF);
 
 end;
 
