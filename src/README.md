@@ -7,7 +7,7 @@ You will need to [download](http://www.jrsoftware.org/download.php/is-unicode.ex
 To compile the main `composer.iss` script you must create a file named `develop.iss` in the same directory, defining *SetupVersion*. For example:
 
 ```
-#define SetupVersion "4.0"
+#define SetupVersion "4.6.0"
 ```
 
 Composer-Setup will be compiled with the following settings:
@@ -18,7 +18,7 @@ Composer-Setup will be compiled with the following settings:
 If you want to save the exe to a different directory, or give it a different name, you can use standard Inno Setup syntax:
 
 ```
-#define SetupVersion "4.0"
+#define SetupVersion "4.6.0"
 
 [Setup]
 OutputDir=myfolder
@@ -29,15 +29,17 @@ To compile a release version, you must create a file named `release.iss` in the 
 
 ```
 #define Release
-#define SetupVersion "4.0"
+#define SetupVersion "4.6.0"
 #define SignTool "uniquename"
-#define SignExe "path\to\signtool.exe"
+#define SignExe '"path\to\signtool.exe"''
 #define SignSha1 "sign /a /t http://timestamp.comodoca.com/authenticode"
 #define SignSha2 "sign /a /as /fd sha256 /td sha256 /tr http://timestamp.comodoca.com/rfc3161"
 #include "composer.iss"
 ```
 
 The *SignTool* define value is the unique name you give to the IDE SignTool in Inno Setup, set from Tools/Options menu. This value must be `uniquename=$p` (the $p is replaced by the actual parameters).
+
+The *SignExe* define value is the full path to `signtool.exe` enclosed in inner doube-quotes and outer single-quotes, as shown.
 
 Note that both the `develop.iss` and `release.iss` files are git-ignored.
 

@@ -1,10 +1,11 @@
 ## v4.6.0
-Not yet released
+2017-07-31
 
-* Improved unattended installation to handle `SYSTEM` installs and suppress system error dialogs. The `/PHP` param now accepts a folder or exe location.
+* Improved unattended installation to suppress system error dialogs. The `/PHP` param now accepts a folder or exe location.
 * Added automatic php.ini creation/modification. A new ini will be offered if one does not already exists, based on the user `php.ini-production` file. If an existing ini is missing required settings, Setup will offer to update it, having created a back-up.
-* Added Developer mode install option that allows users to install the Composer specific files where they want to, without including an uninstaller.
-* Created a package for https://chocolatey.org
+* Added a *Developer mode* install option that allows users to install the Composer specific files where they want to, without including an uninstaller.
+* Added `/DEV=path\to\installation\folder` param for unattended Developer mode installs
+* Created a chocolatey package: https://chocolatey.org/packages/composer
 * Many code tweaks and improvements.
 
 ## v4.5.0
@@ -38,7 +39,7 @@ Not yet released
 
 * Major version pushed to v4, reflecting ShellMenus removal which requires uninstalling.
 * Updated *userdata.dll* to handle silent uninstalls and removed the dialog cancel button, as it implied rollback functionality. File deletion can always be stopped using the dialog close icon.
-* Added `/PHP=path\to\php.ex` and `/PROXY=http_proxy url` params for installation, which can additionally be saved using `/SAFEINF`
+* Added `/PHP=path\to\php.exe` and `/PROXY=http_proxy url` params for installation, which can additionally be saved using `/SAFEINF`
 and loaded with `/LOADINF`. For uninstall `/DELETE=local` will remove only local data, while `/DELETE=all` will remove all user data.
 * Added unattended/silent install and uninstall functionality, with `/SILENT`, `/VERYSILENT` and `/SUPPRESSMSGBOXES` params, as per
 Inno Setup documentation.

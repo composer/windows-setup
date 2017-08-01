@@ -924,7 +924,7 @@ var
 
 begin
 
-  {We started using an AppId in v3.0, which is the regsitry key that Inno
+  {We started using an AppId in v3.0, which is the registry key that Inno
   uses, so older versions will not be found.}
   Result.Version := GetPreviousData('{#PrevDataVersion}', '');
   Result.Installed := Result.Version <> '';
@@ -1276,7 +1276,7 @@ end;
 
 
 {Returns a string representing the ExitCode received from runphp.exe. This will
-be a code from GelLastError that we can use with SysErrorMessage if the
+be a code from GetLastError that we can use with SysErrorMessage if the
 process cannot be created or a WinApi call has failed. Otherwise it will
 return NTStatus errors.}
 function GetRunPhpError(ExitCode: Integer): String;
