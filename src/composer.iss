@@ -399,6 +399,7 @@ function VersionMatchMajor(Ver1, Ver2: String): Boolean; forward;
 
 {Exec output functions}
 procedure OutputDebug(Output, Other: String; IsStdOut: Boolean); forward;
+function OutputFromArray(Items: TArrayOfString): String; forward;
 function OutputFromFile(Filename: String; var Output: TArrayOfString): String; forward;
 procedure OutputReadStdFiles(var Config: TConfigRec); forward;
 
@@ -445,7 +446,7 @@ procedure ProxyChange(const Value: String; Action: Integer); forward;
 
 {Proxy functions}
 function ProxyCanModify(Proxy: TProxyRec): Boolean; forward;
-procedure ProxyEnvClear; forward;
+procedure ProxyEnvClear(WasSet: Boolean); forward;
 function ProxyEnvSet: Boolean; forward;
 function ProxyInLocalEnvironment(var Proxy: TProxyRec): Boolean; forward;
 function ProxyInRegEnvironment(Hive: Integer; var Proxy: TProxyRec): Boolean; forward;
@@ -482,6 +483,7 @@ procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec); forward;
 {Composer installer functions}
 function GetInstallerArgs(Config: TConfigRec): String; forward;
 function GetInstallerError(Config: TConfigRec): String; forward;
+procedure MergeErrorOutput(var Config: TConfigRec); forward;
 procedure RunInstaller(var Config: TConfigRec); forward;
 procedure ParseInstallerOutput(StatusCode: Integer; var Config: TConfigRec); forward;
 
@@ -1064,7 +1066,10 @@ procedure AddLine(var Existing: String; const Value: String);
 begin
 
   if Existing <> '' then
+  begin
+    Existing := TrimRight(Existing);
     Existing := Existing + LF;
+  end;
 
   AddStr(Existing, Value);
 
@@ -1075,7 +1080,10 @@ procedure AddPara(var Existing: String; const Value: String);
 begin
 
   if Existing <> '' then
+  begin
+    Existing := TrimRight(Existing);
     Existing := Existing + LF2;
+  end;
 
   AddStr(Existing, Value);
 
@@ -1483,20 +1491,28 @@ begin
 end;
 
 
-function OutputFromFile(Filename: String; var Output: TArrayOfString): String;
+function OutputFromArray(Items: TArrayOfString): String;
 var
   Count: Integer;
   I: Integer;
 
 begin
 
-  LoadStringsFromFile(Filename, Output);
-  Count := GetArrayLength(Output);
+  Count := GetArrayLength(Items);
 
   for I := 0 to Count - 1 do
-    AddLine(Result, Output[I]);
+    AddLine(Result, Items[I]);
 
   Result := Trim(Result);
+
+end;
+
+
+function OutputFromFile(Filename: String; var Output: TArrayOfString): String;
+begin
+
+  LoadStringsFromFile(Filename, Output);
+  Result := OutputFromArray(Output);
 
 end;
 
@@ -2434,10 +2450,15 @@ begin
 end;
 
 
-procedure ProxyEnvClear;
+procedure ProxyEnvClear(WasSet: Boolean);
 begin
-  Debug(Format('Clearing %s local environment variable', [PROXY_KEY]));
-  SetEnvironmentVariable(PROXY_KEY, '');
+
+  if WasSet then
+  begin
+    Debug(Format('Clearing %s local environment variable', [PROXY_KEY]));
+    SetEnvironmentVariable(PROXY_KEY, '');
+  end;
+
 end;
 
 
@@ -2944,6 +2965,7 @@ begin
     {If we haven't got any std output then something has gone wrong, so we report
     any output from stderr}
     Config.StdOut := Config.StdErr;
+    SetArrayLength(Config.StdErr, 0);
     Count := GetArrayLength(Config.StdOut);
     Found := True;
   end;
@@ -3304,44 +3326,70 @@ begin
     Exit;
   end;
 
+  MergeErrorOutput(Config);
+
   {In theory we should always have output to show}
   if Config.Output <> '' then
   begin
     AddStr(Result, ':');
     AddPara(Result, Config.Output);
-    Exit;
+  end
+  else
+  begin
+
+    if Config.ExitCode = 1 then
+      AddStr(Result, ' because no output was returned.')
+    else
+      AddStr(Result, ' and no output was returned.');
   end;
 
-  if Config.ExitCode = 1 then
-    AddStr(Result, ' because no output was returned.')
-  else
-    AddStr(Result, ' and no output was returned.');
+  Config.Output := TrimRight(Config.Output);
+  AddStr(Config.Output, LF);
 
 end;
 
+
+procedure MergeErrorOutput(var Config: TConfigRec);
+var
+  Index: Integer;
+
+begin
+
+  if Config.Output = '' then
+    Config.Output := OutputFromArray(Config.StdErr)
+  else
+  begin
+    {We already have an error from stdout, but there might be more info in
+    stderr, particulaly if the installer script path is not present in stdout}
+    Index := Pos(TmpDir + '\' + PHP_INSTALLER, Config.Output);
+
+    if Index = 0 then
+      AddPara(Config.Output, OutputFromArray(Config.StdErr));
+  end;
+
+end;
 
 procedure RunInstaller(var Config: TConfigRec);
 var
   EnvSet: Boolean;
   Script: String;
   Args: String;
+  Success: Boolean;
   Status: Integer;
 
 begin
 
   Debug('Running Composer installer script');
-
-  EnvSet := ProxyEnvSet();
-
   Script := PHP_INSTALLER;
   Args := GetInstallerArgs(Config);
 
-  {ExecPhp should only fail calling cmd.exe, which has already been checked.}
-  if not ExecPhp(Script, Args, '', Config) then
-    Exit;
+  EnvSet := ProxyEnvSet();
+  Success := ExecPhp(Script, Args, '', Config);
+  ProxyEnvClear(EnvSet);
 
-  if EnvSet then
-    ProxyEnvClear();
+  {ExecPhp will only have failed calling cmd.exe, which has already been checked.}
+  if not Success then
+    Exit;
 
   {Set Status depending on the ExitCode}
   case Config.ExitCode of
@@ -3372,6 +3420,10 @@ begin
     {Check in case we have no output. Although very unlikely, it has been
     reported and not trapping this would leave the user with no information}
     if GetArrayLength(Config.StdOut) = 0 then
+      Status := ERR_INSTALL_OUTPUT;
+
+    {If there are errors on stderr then we have PHP errors}
+    if GetArrayLength(Config.StdErr) > 0 then
       Status := ERR_INSTALL_OUTPUT;
 
   end;
