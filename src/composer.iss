@@ -870,6 +870,9 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
+  BinPath: String;
+  BinDir: String;
+  NoBin: Boolean;
   Home: String;
   Cache: String;
   Error: String;
@@ -883,12 +886,26 @@ begin
     deleted. Also we need to know if the user data folders still exist}
     UserDataDelete();
 
-    {Remove composer from path}
-    PathChange(GetRegHive(), ENV_REMOVE, GetBinDir(''), False);
+    {Remove composer from the bin path if it matches the default location,
+    which will not be the case if a Developer mode install has been made over
+    the top of this one}
+    SetPathInfo(True);
+    BinPath := Paths.Bin.Data.Path;
+    BinDir := GetBinDir('');
 
-    if not IsSystemUser() then
+    if CompareText(BinDir, BinPath) = 0 then
     begin
-      {Only remove vendor/bin from path if the data folders were deleted}
+      PathChange(GetRegHive(), ENV_REMOVE, BinDir, False);
+      NoBin := True;
+    end
+    else
+      NoBin := BinPath = '';
+
+    {Only remove vendor/bin from the user path if composer is no longer in the
+    path and the user data folders do not exist}
+    if NoBin and not IsSystemUser() then
+    begin
+
       Home := ExpandConstant('{userappdata}\Composer');
       Cache := ExpandConstant('{localappdata}\Composer');
 
