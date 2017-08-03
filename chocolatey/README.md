@@ -4,7 +4,7 @@ A package for chocolatey: [https://chocolatey.org/packages/composer](Composer Se
 
 To create a `nupkg` file for submission, you need to have chocolatey itself installed and a release-built `Composer-Setup.x.x.x.exe`.
 
-From a command prompt (or Git Bash) type `powershell`, cd to this directory then run:
+From a command prompt (or Git Bash) type `powershell`, cd to this `chocolatey` directory then run:
 
 ```powershell
 ./release.ps1 -version x.x.x

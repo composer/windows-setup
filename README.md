@@ -17,6 +17,7 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 Composer-Setup downloads and installs Composer so you can use it easily from the command line.
 
 * it looks for PHP on your computer
+* it creates or modifies `php.ini`, if required
 * it adds PHP to the path
 * it installs Composer globally - just type `composer` from any location to use it
 * it lets you use the Command Prompt, Git Bash, Msys, Msys2 and Cygwin (including cygwin php)
@@ -38,7 +39,7 @@ searches common locations on your computer and presents you with its findings. I
 will display this value. If not, or you want to choose a different PHP, you must select from the list or hunt around manually.
 
 The installer will then check that PHP and your path are set up correctly. If it finds any errors it will give you
-the chance to fix them.
+the chance to fix them. It will also offer to either create or modify the `php.ini` file if required settings do not exist.
 
 Next, the installer will ask if you need a proxy server to connect to the internet. If it finds any values in your
 *Internet Settings* or your environment, then the proxy url will be displayed.

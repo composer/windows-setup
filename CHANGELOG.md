@@ -1,5 +1,5 @@
 ## v4.7.0
-Not yet released
+2017-08-03
 
 * Stopped uninstall removing `Composer\vendor\bin` from the user path if there is another composer files directory in the path (ie from a subseqent Devloper mode installation).
 * Improved shell proxy handling, in case of `CDPATH` conflicts.
