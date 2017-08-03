@@ -1,6 +1,9 @@
 ## v4.7.0
 Not yet released
 
+* Improved shell proxy handling, in case of `CDPATH` conflicts.
+* Improved error reporting, making use of stderr now that PHP uses it better.
+* Added output from stdout and stderr to the log file for better troubleshooting.
 * Unattended `SYSTEM` installations no longer write data to the system user profile.
 
 
