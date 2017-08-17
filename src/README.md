@@ -32,12 +32,12 @@ To compile a release version, you must create a file named `release.iss` in the 
 #define SetupVersion "4.6.0"
 #define SignTool "uniquename"
 #define SignExe '"path\to\signtool.exe"''
-#define SignSha1 "sign /a /t http://timestamp.comodoca.com/authenticode"
-#define SignSha2 "sign /a /as /fd sha256 /td sha256 /tr http://timestamp.comodoca.com/rfc3161"
+#define SignSha1 "sign /a /fd sha1 /t http://timestamp.comodoca.com/authenticode"
+#define SignSha2 "sign /a /fd sha256 /tr http://time.certum.pl/ /td sha256 /as"
 #include "composer.iss"
 ```
 
-The *SignTool* define value is the unique name you give to the IDE SignTool in Inno Setup, set from Tools/Options menu. This value must be `uniquename=$p` (the $p is replaced by the actual parameters).
+The *SignTool* define value is the unique name you give to the IDE SignTool in Inno Setup, set from Tools/Options menu. Its value must be `uniquename=$p` (the $p is replaced by the actual parameters).
 
 The *SignExe* define value is the full path to `signtool.exe` enclosed in inner doube-quotes and outer single-quotes, as shown.
 
@@ -50,10 +50,11 @@ Because the Inno IDE only allows one script open at a time, it is only possible 
 ## Code Signing
 The following instructions relate to [Certum CA](https://en.sklep.certum.pl), who provide cheap Open Source Code Signing certificates. Their SHA2 certificate lets you sign code with both SHA256 and SHA1 (for older OSs that do not understand SHA256).
 
-Use Firefox to create your certificate because it allows you to backup and save your complete certificate (ie private and public keys). When your certificate has been activated:
+From 2017 Certum can only issue certificates using a card reader with their own proprietary software.
+If you purchase their card-reader package, you can install the software from the USB stick, which  also contains helpful instruction manuals. The main interface is the `proCertumCardManager` application. Also included is the `cryptoCertumScanner` utility which lives in the system tray and runs at Start-up. I cannot really see what this does, so it is best to remove it from Start-up.
 
-* Go to the Certum certificate management page and click the *Install Online* button (the other options only download the public key).
-* Go to *Options/Advanced/Certificates* in Firefox, select your certificate and click *Backup*, saving it with a `.p12` extension.
-* Click on the backup file to import the certificate into the Windows Certificate Store - save it as the Current User, otherwise you will have to compile as an admin.
+Use Chrome to create your certificate, from the _Activate Certificates_ page in your account. You will need to download and run a Certum-provided Java plugin from the browser in order to create the key pair and you must have the card-reader inserted as it stores this on the card.
 
-Adding it to the certificate store enables the use of the `/a` option in signtool, which finds the most suitable certificate (rather than specifying a file and password in the command params).
+Once the certificate has been activated, go to the _Manage Certificates_ page and select `Save binary` to download the `.cer` file. Open the `proCertumCardManager` and import this file on to the reader, then click to register the certificate in the system (this will put it in the Windows Certificate Store for the Current User, under Personal).
+
+You will need to enter your PIN code for the card-reader several times when compiling.

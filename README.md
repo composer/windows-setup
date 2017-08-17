@@ -59,7 +59,7 @@ temp directory `AppData\Local\Temp` with a formatted filename: `Setup Log YYYY-M
 The uninstall program is available from the Control Panel. Go to Programs and Features, select Composer, then click
 Uninstall. This offers the option to remove user cache and configuration data.
 
-The uninstall program will not be available If you installed in _Developer Mode_. To manually uninstall you must delete
+The uninstall program will not be available if you installed in _Developer Mode_. To manually uninstall you must delete
 the composer files from the location you installed to and update the [environment](#Environment).
 
 <a name="Locations"></a>
