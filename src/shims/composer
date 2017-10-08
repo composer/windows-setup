@@ -2,7 +2,7 @@
 
 dir=$(cd "${0%[/\\]*}" > /dev/null; pwd)
 
-if [[ $dir == /cygdrive/* && $(which php) == /cygdrive/* ]]; then    
+if [[ $(uname -s) == CYGWIN_* ]]; then    
     # cygwin paths for windows PHP must be translated
     dir=$(cygpath -m "$dir");    
 fi
