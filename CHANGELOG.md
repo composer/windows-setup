@@ -1,3 +1,10 @@
+## v4.8.0
+Not yet released
+
+* Handle `cygdrive` prefix if it has been changed by the user (thanks to @DRSDavidSoft).
+* Expand reporting of registry `Autorun` entries to catch strange `ansicon` behaviour.
+
+
 ## v4.7.0
 2017-08-03
 
