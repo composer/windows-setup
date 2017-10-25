@@ -2,9 +2,9 @@
 
 dir=$(cd "${0%[/\\]*}" > /dev/null; pwd)
 
-if [[ $dir == /cygdrive/* && $(which php) == /cygdrive/* ]]; then    
-    # cygwin paths for windows PHP must be translated
-    dir=$(cygpath -m "$dir");    
+if [[ -d /proc/cygdrive && $(which php) == $(readlink -n /proc/cygdrive)/* ]]; then
+   # We are in Cgywin using Windows php, so the path must be translated
+   dir=$(cygpath -m "$dir");
 fi
 
 php "${dir}/composer.phar" "$@"
