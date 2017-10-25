@@ -2821,10 +2821,9 @@ var
 
 begin
 
-  {Autorun entries in the registry can start cmd.exe in the wrong directory}
-
-  if Pos('input file', Config.Output) = 0 then
-    Exit;
+  {Autorun entries in the registry can start cmd.exe in the wrong directory or
+  intercept the output. Some configurations of ansicon, for example, return
+  their own non-zero exit code}
 
   if not GetRegistryAutorun(Key, Autorun) then
     Exit;
@@ -2925,10 +2924,8 @@ begin
 
   GetCommonErrors(Result, Config);
 
-  {Unlikely we should have no output}
-  if Config.Output = '' then
-    AddPara(Result, 'No output was returned.')
-  else
+  {Config.Output should contain error output}
+  if Config.Output <> '' then
   begin
     AddPara(Result, 'Program Output:');
     AddLine(Result, Config.Output);
