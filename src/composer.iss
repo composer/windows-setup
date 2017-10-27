@@ -397,6 +397,10 @@ procedure ShowErrorMessage(const Message: String); forward;
 function StrToVer(Version: String): DWord; forward;
 function VersionMatchMajor(Ver1, Ver2: String): Boolean; forward;
 
+{Argument escaping functions}
+function EscapeArg(Argument: String; ForCmd: Boolean): String; forward;
+function MatchChar(Needle, Haystack: String): Boolean; forward;
+
 {Exec output functions}
 procedure OutputDebug(Output, Other: String; IsStdOut: Boolean); forward;
 function OutputFromArray(Items: TArrayOfString): String; forward;
@@ -459,11 +463,12 @@ function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
 function CheckPhpOutput(var Config: TConfigRec): Boolean; forward;
 function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean; forward;
-procedure GetCommonErrors(var Message: String; Config: TConfigRec); forward;
+function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String; forward;
 function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorCgi(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean; forward;
+procedure GetErrorIfAnsicon(var Message: String; Autorun: String); forward;
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean; forward;
 function GetPhpError(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
@@ -1470,6 +1475,197 @@ begin
   Major2 := (StrToVer(Ver2) shr 24) and $ff;
 
   Result := Major1 = Major2;
+
+end;
+
+
+{Argument escaping functions}
+
+{Escapes meta chararcters with a caret.}
+function CaretEscape(Argument: String): String;
+var
+  ToEscape: String;
+  I: Integer;
+
+begin
+
+  Result := Argument;
+
+  {The caret must come first or we will double escape them}
+  ToEscape := '^"&|<>()%';
+
+  for I := 1 to Length(ToEscape) do
+    StringChangeEx(Result, ToEscape[I], '^' + ToEscape[I], True);
+
+end;
+
+
+{Backslash-escapes consecutive backslashes at the end of argument.}
+function EscapeBackslashes(Argument: String): String;
+var
+  Start: Integer;
+  Count: Integer;
+
+begin
+
+  Result := Argument;
+  Count := 0;
+
+  for Start := Length(Argument) downto 1 do
+  begin
+
+    if Argument[Start] = '\' then
+      Inc(Count)
+    else
+    begin
+
+      if Count > 0 then
+        Insert(StringOfChar('\', Count), Result, Start + 1);
+
+      Break;
+    end;
+  end;
+
+end;
+
+
+function EscapeQuotes(Argument: String; var Changed: Boolean): String;
+var
+  Index: Integer;
+  Item: String;
+  Remainder: String;
+
+begin
+
+  Result := '';
+  Changed := False;
+  Remainder := Argument;
+
+  repeat
+    Index := Pos('"', Remainder);
+
+    if Index = 0 then
+      Result := Result + Remainder
+    else
+    begin
+      Item := Copy(Remainder, 1, Index - 1);
+      Delete(Remainder, 1, Index);
+      Result := Result + EscapeBackslashes(Item) + '\"';
+      Changed := True;
+    end;
+  until Index = 0;
+
+end;
+
+
+function EscapeWhitespace(Argument: String): String;
+var
+  I: Integer;
+
+begin
+
+  Result := Argument;
+  I := 1;
+
+  while I <= Length(Result) do
+  begin
+
+    if MatchChar(#32#9, Result[I]) then
+    begin
+      Insert('"', Result, I);
+      Inc(I);
+      while I <= Length(Result) do
+      begin
+        if not MatchChar(#32#9, Result[I]) then
+          Break;
+        Inc(I);
+      end;
+
+      Insert('"', Result, I);
+      Inc(I);
+    end;
+
+    Inc(I);
+  end;
+
+end;
+
+{Returns True if an argument contains surrounding % characters.}
+function IsExpandable(Argument: String): Boolean;
+var
+  Open: Integer;
+  Close: Integer;
+
+begin
+
+  Result := False;
+
+  Open := Pos('%', Argument);
+  if Open = 0 then
+    Exit;
+
+  Close := Pos('%', Copy(Argument, Open + 1, MaxInt));
+  Result := Close > 1;
+end;
+
+
+{Returns True if a character in needle is found in Haystack}
+function MatchChar(Needle, Haystack: String): Boolean;
+var
+  I: Integer;
+
+begin
+
+  Result := False;
+
+  if Haystack = '' then
+    Exit;
+
+  for I := 1 to Length(Needle) do
+  begin
+
+    if Pos(Needle[I], Haystack) > 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+
+  end;
+end;
+
+
+function EscapeArg(Argument: String; ForCmd: Boolean): String;
+var
+  Meta: Boolean;
+  Quote: Boolean;
+  DQuotes: Boolean;
+
+begin
+
+  Result := Argument;
+  Meta := ForCmd;
+
+  Quote := MatchChar(#32#9, Result) or (Result = '');
+  Result := EscapeQuotes(Result, DQuotes);
+
+  if Meta then
+  begin
+
+    Meta := DQuotes or IsExpandable(Result);
+
+    if not Meta and not Quote then
+      Quote := MatchChar('^&|<>()', Result);
+
+  end;
+
+  if Quote then
+  begin
+    Result := EscapeBackslashes(Result);
+    Result := '"' + Result + '"';
+  end;
+
+  if Meta then
+    Result := CaretEscape(Result);
 
 end;
 
@@ -2715,8 +2911,121 @@ end;
 function CheckPhpExe(var Config: TConfigRec): Boolean;
 var
   Params: String;
+  TestResult: Boolean;
+  Argument: String;
+  Expected: String;
+  Test: String;
 
 begin
+
+  {Tmp area to test arg escaping}
+
+  Argument := 'abc ';
+  Test := EscapeWhitespace(Argument);
+
+  Argument := '';
+  Expected := '""';
+  Test := EscapeArg(Argument, False);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+
+  Argument := 'a b c';
+  Expected := '"a b c"';
+  Test := EscapeArg(Argument, False);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+
+  Argument := 'a' + #9 + 'b' + #9 + 'c';
+  Expected := '"a' + #9 + 'b' + #9 + 'c"';
+  Test := EscapeArg(Argument, False);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := 'abc';
+  Expected := 'abc';
+  Test := EscapeArg(Argument, False);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := 'a"bc';
+  Expected := 'a\"bc';
+  Test := EscapeArg(Argument, False);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := 'a\\"bc';
+  Expected := 'a\\\\\"bc';
+  Test := EscapeArg(Argument, False);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := 'ab\\\\c\\';
+  Expected := 'ab\\\\c\\';
+  Test := EscapeArg(Argument, False);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := 'a b c\\\\';
+  Expected := '"a b c\\\\\\\\"';
+  Test := EscapeArg(Argument, False);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := 'a"bc';
+  Expected := 'a\^"bc';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := 'a "b" c';
+  Expected := '^"a \^"b\^" c^"';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := '%path%';
+  Expected := '^%path^%';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := '%path';
+  Expected := '%path';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := '%%path';
+  Expected := '%%path';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := '!path!';
+  Expected := '!path!';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := '<>"&|()^';
+  Expected := '^<^>\^"^&^|^(^)^^';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := '<> &| ()^';
+  Expected := '"<> &| ()^"';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
+
+  Argument := '<>&|()^';
+  Expected := '"<>&|()^"';
+  Test := EscapeArg(Argument, True);
+  if (Test <> Expected) then
+    RaiseException(Test + ' does not match expected ' + Expected);
 
   {We check that we can run the supplied exe file by running it via runphp.exe.
   We need to do this separately because our other calls use cmd to invoke php
@@ -2796,20 +3105,34 @@ begin
 end;
 
 
-procedure GetCommonErrors(var Message: String; Config: TConfigRec);
+function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String;
 begin
 
-  if GetErrorExtDirectory(Message, Config) then
-    Exit;
+  Result := '';
 
-  if GetErrorExtDuplicate(Message, Config) then
+  if GetErrorExtDirectory(Result, Config) then
+  begin
+    ShowIni := True;
     Exit;
+  end;
 
-  if GetErrorAutorun(Message, Config) then
+  if GetErrorExtDuplicate(Result, Config) then
+  begin
+    ShowIni := True;
     Exit;
+  end;
 
-  if GetErrorCgi(Message, Config) then
+  if GetErrorAutorun(Result, Config) then
+  begin
+    ShowIni := False;
     Exit;
+  end;
+
+  if GetErrorCgi(Result, Config) then
+  begin
+    ShowIni := False;
+    Exit;
+  end;
 
 end;
 
@@ -2828,9 +3151,11 @@ begin
   if not GetRegistryAutorun(Key, Autorun) then
     Exit;
 
-  AddPara(Message, 'A setting in your registry could be causing the problem.');
+  AddStr(Message, 'A setting in your registry could be causing the problem.');
   AddStr(Message, ' Check this value and remove it if necessary:');
   AddPara(Message, Format('%s = %s', [Key, Autorun]));
+
+  GetErrorIfAnsicon(Message, Autorun);
 
   Result := True;
 
@@ -2844,7 +3169,7 @@ begin
 
   if FileExists(ExtractFilePath(Config.PhpExe) + 'php-cli.exe') then
   begin
-    AddPara(Message, 'Your PHP is very old and must be upgraded to a recent version.');
+    AddStr(Message, 'Your PHP is very old and must be upgraded to a recent version.');
     Result := True;
   end;
 
@@ -2855,11 +3180,10 @@ function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean;
 begin
 
   {The old wrong extension_dir problem}
-
   if Pos('load dynamic library', Config.Output) = 0 then
     Exit;
 
-  AddPara(Message, 'A setting in your php.ini could be causing the problem:');
+  AddStr(Message, 'A setting in your php.ini could be causing the problem:');
   AddStr(Message, Format(' Either the %sextension_dir%s value is incorrect', [#39, #39]));
   AddStr(Message, ' or the dll does not exist.');
   Result := True;
@@ -2871,15 +3195,31 @@ function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean;
 begin
 
   {We need to check this or it could muddle the logic with installer output}
-
   if Pos('already loaded', Config.Output) = 0 then
     Exit;
 
-  AddPara(Message, 'A duplicate setting in your php.ini could be causing the problem.');
+  AddStr(Message, 'A duplicate setting in your php.ini could be causing the problem.');
   Result := True;
 
 end;
 
+
+{ANSICON is unreliable if installed in the system directory, resulting in a
+non-zero exit code being returned.}
+procedure GetErrorIfAnsicon(var Message: String; Autorun: String);
+var
+  Value: String;
+  System: String;
+
+begin
+
+  Value := Lowercase(Autorun);
+  System := Lowercase(ExpandConstant('{sys}'));
+
+  if (Pos('ansicon', Value) > 0) and (Pos(System, Value) > 0) then
+    AddPara(Message, 'Note: ANSICON should not be installed in the system directory.');
+
+end;
 
 
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean;
@@ -2912,17 +3252,24 @@ end;
 
 
 function GetPhpError(Config: TConfigRec): String;
+var
+  CommonErrors: String;
+  ShowIni: Boolean;
+
 begin
 
   Result := 'The PHP exe file you specified did not run correctly';
   FormatExitCode(Result, Config);
   Result := FormatError(Result, Config.PhpExe);
 
+  CommonErrors := GetCommonErrors(Config, ShowIni);
+
   {Version will not be empty if we got the check data}
-  if Config.PhpVersion <> '' then
+  if ShowIni and (Config.PhpVersion <> '') then
     AddPara(Result, GetPhpIni(Config, False));
 
-  GetCommonErrors(Result, Config);
+  if CommonErrors <> '' then
+    AddPara(Result, CommonErrors);
 
   {Config.Output should contain error output}
   if Config.Output <> '' then
