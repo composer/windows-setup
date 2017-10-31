@@ -52,7 +52,7 @@ function GetResult(StrBuf: String; BufCount: DWord): DWord;
   external 'GetResult@{app}\{#DllData} stdcall delayload uninstallonly';
 
 procedure UserDataDelete; forward;
-function UserDataGet(Delete: Integer): TUserDataList; forward;
+function UserDataGet(Status: Integer): TUserDataList; forward;
 procedure UserDataGetAll(const User: String; var List: TUserDataList); forward;
 function UserGetAccountsWmi(var Accounts: TUserProfileList): Boolean; forward;
 function UserGetAccountsReg(var Accounts: TUserProfileList): Boolean; forward;
@@ -62,8 +62,8 @@ procedure UserAddDataItem(User, Folder, Caption: String; Local: Boolean; var Lis
 procedure UserAddDataRec(Rec: TUserFolderRec; var List: TUserDataList); forward;
 function UserGetFolderPrefix(const Folder: String; var Prefix: String): Boolean; forward;
 procedure UserDeleteData(List: TUserDataList; const DllData: String); forward;
-function UserDataSelect(Delete: Integer; var List: TUserDataList): Boolean; forward;
-procedure UserDataCreateForm(Delete: Integer; var Form: TDataForm); forward;
+function UserDataSelect(Status: Integer; var List: TUserDataList): Boolean; forward;
+procedure UserDataCreateForm(Status: Integer; var Form: TDataForm); forward;
 procedure UserCheckboxClick(Sender: TObject); forward;
 function UserGetDelete: Integer; forward;
 
@@ -72,7 +72,7 @@ procedure UserDataDelete;
 var
   List: TUserDataList;
   DllData: String;
-  Delete: Integer;
+  Status: Integer;
 
 begin
 
@@ -80,13 +80,13 @@ begin
   otherwise the dll and app dir will not be deleted}
 
   DllData := ExpandConstant('{app}\{#DllData}');
-  Delete := UserGetDelete();
+  Status := UserGetDelete();
 
   try
 
-    List := UserDataGet(Delete);
+    List := UserDataGet(Status);
 
-    if UninstallSilent or UserDataSelect(Delete, List) then
+    if UninstallSilent or UserDataSelect(Status, List) then
       UserDeleteData(List, DllData);
 
   finally
@@ -97,7 +97,7 @@ begin
 end;
 
 
-function UserDataGet(Delete: Integer): TUserDataList;
+function UserDataGet(Status: Integer): TUserDataList;
 var
   Rec: TUserFolderRec;
   I: Integer;
@@ -116,7 +116,7 @@ begin
   for I := 0 to GetArrayLength(Result) - 1 do
   begin
 
-    case Delete of
+    case Status of
       DELETE_NONE: Result[I].Delete := False;
       DELETE_LOCAL: Result[I].Delete := Result[I].Local;
       DELETE_ALL: Result[I].Delete := True;
@@ -444,7 +444,7 @@ begin
 end;
 
 
-function UserDataSelect(Delete: Integer; var List: TUserDataList): Boolean;
+function UserDataSelect(Status: Integer; var List: TUserDataList): Boolean;
 var
   I: Integer;
   Index: Integer;
@@ -460,7 +460,7 @@ begin
   end;
 
   {Create the form}
-  UserDataCreateForm(Delete, UserForm);
+  UserDataCreateForm(Status, UserForm);
 
   try
 
@@ -498,7 +498,7 @@ begin
 end;
 
 
-procedure UserDataCreateForm(Delete: Integer; var Form: TDataForm);
+procedure UserDataCreateForm(Status: Integer; var Form: TDataForm);
 var
   Left: Integer;
   Width: Integer;
@@ -539,7 +539,7 @@ begin
   Checkbox.Left := Left;
   Checkbox.Parent := Form.Main;
   Checkbox.Caption := 'Select All';
-  Checkbox.Checked := Delete = DELETE_ALL;
+  Checkbox.Checked := Status = DELETE_ALL;
   Checkbox.OnClick := @UserCheckboxClick;
 
   OkButton := TButton.Create(Form.Main);

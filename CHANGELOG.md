@@ -1,8 +1,9 @@
 ## v4.8.0
 Not yet released
 
-* Handle `cygdrive` prefix if it has been changed by the user (thanks to @DRSDavidSoft).
-* Expand reporting of registry `Autorun` entries to catch strange `ansicon` behaviour.
+* Fixed argument escaping to handle unusual path characters.
+* Fixed shell proxy to handle `cygdrive` prefix if it has been changed by the user (thanks to @DRSDavidSoft).
+* Changed reporting of registry `Autorun` entries to catch strange `ansicon` behaviour.
 
 
 ## v4.7.0

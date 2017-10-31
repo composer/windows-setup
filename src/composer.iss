@@ -397,10 +397,6 @@ procedure ShowErrorMessage(const Message: String); forward;
 function StrToVer(Version: String): DWord; forward;
 function VersionMatchMajor(Ver1, Ver2: String): Boolean; forward;
 
-{Argument escaping functions}
-function EscapeArg(Argument: String; ForCmd: Boolean): String; forward;
-function MatchChar(Needle, Haystack: String): Boolean; forward;
-
 {Exec output functions}
 procedure OutputDebug(Output, Other: String; IsStdOut: Boolean); forward;
 function OutputFromArray(Items: TArrayOfString): String; forward;
@@ -526,6 +522,7 @@ procedure SettingsPageInit; forward;
 procedure SettingsPageUpdate; forward;
 
 #include "environment.iss"
+#include "escape.iss"
 #include "userdata.iss"
 
 
@@ -1158,7 +1155,7 @@ end;
 procedure DebugExecBegin(const Exe, Params: String);
 begin
   Debug('-- Execute File --');
-  Debug(Format('Running %s %s', [AddQuotes(Exe), Params]));
+  Debug(Format('Running %s %s', [ArgWin(Exe), Params]));
 end;
 
 
@@ -1295,16 +1292,16 @@ var
 begin
 
   if Ini = '' then
-    Params := AddQuotes(Config.PhpExe)
+    Params := ArgCmdModule(Config.PhpExe)
   else
-    Params := Format('%s -c %s', [AddQuotes(Config.PhpExe), AddQuotes(Ini)]);
+    Params := Format('%s -c %s', [ArgCmdModule(Config.PhpExe), ArgCmd(Ini)]);
 
-  Params := Format('%s %s', [Params, AddQuotes(Script)]);
+  Params := Format('%s %s', [Params, ArgCmd(Script)]);
 
   if Args <> '' then
     AddStr(Params, #32 + Args);
 
-  AddStr(Params, Format(' > %s 2> %s', [AddQuotes(TmpFile.StdOut), AddQuotes(TmpFile.StdErr)]));
+  AddStr(Params, Format(' > %s 2> %s', [ArgCmd(TmpFile.StdOut), ArgCmd(TmpFile.StdErr)]));
 
   Result := Format('/c "%s"', [Params]);
 
@@ -1340,7 +1337,7 @@ begin
   if ExitCode > 0 then
     Result := SysErrorMessage(ExitCode)
   else if UintCode = $C0000135 then
-   {STATUS_DLL_NOT_FOUND}
+    {STATUS_DLL_NOT_FOUND}
     Result := 'The program cannot start because a dll was not found.' + Suffix;
 
   if Result = '' then
@@ -1475,197 +1472,6 @@ begin
   Major2 := (StrToVer(Ver2) shr 24) and $ff;
 
   Result := Major1 = Major2;
-
-end;
-
-
-{Argument escaping functions}
-
-{Escapes meta chararcters with a caret.}
-function CaretEscape(Argument: String): String;
-var
-  ToEscape: String;
-  I: Integer;
-
-begin
-
-  Result := Argument;
-
-  {The caret must come first or we will double escape them}
-  ToEscape := '^"&|<>()%';
-
-  for I := 1 to Length(ToEscape) do
-    StringChangeEx(Result, ToEscape[I], '^' + ToEscape[I], True);
-
-end;
-
-
-{Backslash-escapes consecutive backslashes at the end of argument.}
-function EscapeBackslashes(Argument: String): String;
-var
-  Start: Integer;
-  Count: Integer;
-
-begin
-
-  Result := Argument;
-  Count := 0;
-
-  for Start := Length(Argument) downto 1 do
-  begin
-
-    if Argument[Start] = '\' then
-      Inc(Count)
-    else
-    begin
-
-      if Count > 0 then
-        Insert(StringOfChar('\', Count), Result, Start + 1);
-
-      Break;
-    end;
-  end;
-
-end;
-
-
-function EscapeQuotes(Argument: String; var Changed: Boolean): String;
-var
-  Index: Integer;
-  Item: String;
-  Remainder: String;
-
-begin
-
-  Result := '';
-  Changed := False;
-  Remainder := Argument;
-
-  repeat
-    Index := Pos('"', Remainder);
-
-    if Index = 0 then
-      Result := Result + Remainder
-    else
-    begin
-      Item := Copy(Remainder, 1, Index - 1);
-      Delete(Remainder, 1, Index);
-      Result := Result + EscapeBackslashes(Item) + '\"';
-      Changed := True;
-    end;
-  until Index = 0;
-
-end;
-
-
-function EscapeWhitespace(Argument: String): String;
-var
-  I: Integer;
-
-begin
-
-  Result := Argument;
-  I := 1;
-
-  while I <= Length(Result) do
-  begin
-
-    if MatchChar(#32#9, Result[I]) then
-    begin
-      Insert('"', Result, I);
-      Inc(I);
-      while I <= Length(Result) do
-      begin
-        if not MatchChar(#32#9, Result[I]) then
-          Break;
-        Inc(I);
-      end;
-
-      Insert('"', Result, I);
-      Inc(I);
-    end;
-
-    Inc(I);
-  end;
-
-end;
-
-{Returns True if an argument contains surrounding % characters.}
-function IsExpandable(Argument: String): Boolean;
-var
-  Open: Integer;
-  Close: Integer;
-
-begin
-
-  Result := False;
-
-  Open := Pos('%', Argument);
-  if Open = 0 then
-    Exit;
-
-  Close := Pos('%', Copy(Argument, Open + 1, MaxInt));
-  Result := Close > 1;
-end;
-
-
-{Returns True if a character in needle is found in Haystack}
-function MatchChar(Needle, Haystack: String): Boolean;
-var
-  I: Integer;
-
-begin
-
-  Result := False;
-
-  if Haystack = '' then
-    Exit;
-
-  for I := 1 to Length(Needle) do
-  begin
-
-    if Pos(Needle[I], Haystack) > 0 then
-    begin
-      Result := True;
-      Exit;
-    end;
-
-  end;
-end;
-
-
-function EscapeArg(Argument: String; ForCmd: Boolean): String;
-var
-  Meta: Boolean;
-  Quote: Boolean;
-  DQuotes: Boolean;
-
-begin
-
-  Result := Argument;
-  Meta := ForCmd;
-
-  Quote := MatchChar(#32#9, Result) or (Result = '');
-  Result := EscapeQuotes(Result, DQuotes);
-
-  if Meta then
-  begin
-
-    Meta := DQuotes or IsExpandable(Result);
-
-    if not Meta and not Quote then
-      Quote := MatchChar('^&|<>()', Result);
-
-  end;
-
-  if Quote then
-  begin
-    Result := EscapeBackslashes(Result);
-    Result := '"' + Result + '"';
-  end;
-
-  if Meta then
-    Result := CaretEscape(Result);
 
 end;
 
@@ -2911,121 +2717,8 @@ end;
 function CheckPhpExe(var Config: TConfigRec): Boolean;
 var
   Params: String;
-  TestResult: Boolean;
-  Argument: String;
-  Expected: String;
-  Test: String;
 
 begin
-
-  {Tmp area to test arg escaping}
-
-  Argument := 'abc ';
-  Test := EscapeWhitespace(Argument);
-
-  Argument := '';
-  Expected := '""';
-  Test := EscapeArg(Argument, False);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-
-  Argument := 'a b c';
-  Expected := '"a b c"';
-  Test := EscapeArg(Argument, False);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-
-  Argument := 'a' + #9 + 'b' + #9 + 'c';
-  Expected := '"a' + #9 + 'b' + #9 + 'c"';
-  Test := EscapeArg(Argument, False);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := 'abc';
-  Expected := 'abc';
-  Test := EscapeArg(Argument, False);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := 'a"bc';
-  Expected := 'a\"bc';
-  Test := EscapeArg(Argument, False);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := 'a\\"bc';
-  Expected := 'a\\\\\"bc';
-  Test := EscapeArg(Argument, False);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := 'ab\\\\c\\';
-  Expected := 'ab\\\\c\\';
-  Test := EscapeArg(Argument, False);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := 'a b c\\\\';
-  Expected := '"a b c\\\\\\\\"';
-  Test := EscapeArg(Argument, False);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := 'a"bc';
-  Expected := 'a\^"bc';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := 'a "b" c';
-  Expected := '^"a \^"b\^" c^"';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := '%path%';
-  Expected := '^%path^%';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := '%path';
-  Expected := '%path';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := '%%path';
-  Expected := '%%path';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := '!path!';
-  Expected := '!path!';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := '<>"&|()^';
-  Expected := '^<^>\^"^&^|^(^)^^';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := '<> &| ()^';
-  Expected := '"<> &| ()^"';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
-
-  Argument := '<>&|()^';
-  Expected := '"<>&|()^"';
-  Test := EscapeArg(Argument, True);
-  if (Test <> Expected) then
-    RaiseException(Test + ' does not match expected ' + Expected);
 
   {We check that we can run the supplied exe file by running it via runphp.exe.
   We need to do this separately because our other calls use cmd to invoke php
@@ -3035,7 +2728,7 @@ begin
   to do to stop message boxes being  shown for certain error conditions.}
 
   Debug('Checking if php will execute');
-  Params := AddQuotes(Config.PhpExe);
+  Params := ArgWin(Config.PhpExe);
 
   if WizardSilent then
     Params := Params + ' silent';
@@ -3586,8 +3279,8 @@ begin
   DeleteFile(TmpFile.ModIni);
   DeleteFile(TmpFile.OrigIni);
 
-  Args := AddQuotes(ExtractFileDir(Config.PhpExe));
-  AddStr(Args, #32 + AddQuotes(TmpDir));
+  Args := ArgCmd(ExtractFileDir(Config.PhpExe));
+  AddStr(Args, #32 + ArgCmd(TmpDir));
 
   {ExecPhp should only fail calling cmd.exe}
   if not ExecPhp(PHP_INI, Args, '', Config) then
