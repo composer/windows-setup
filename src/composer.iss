@@ -29,7 +29,7 @@
 
 [Setup]
 AppId={{7315AF68-E777-496A-A6A2-4763A98ED35A}
-; app name and version, must both Composer
+; app name and version, must both be Composer
 AppName=Composer
 AppVerName=Composer
 AppPublisher={#AppUrl}
@@ -2725,7 +2725,9 @@ begin
   and it is more difficult to get a true error message. Also, Inno use
   CreateProcess with the dwCreationFlags set to CREATE_DEFAULT_ERROR_MODE. This
   stops processes from inheriting any error mode we can set here, which we need
-  to do to stop message boxes being  shown for certain error conditions.}
+  to do to stop message boxes being shown for certain error conditions. The
+  common use case is to catch situations where the VC redistributable runtime
+  required for a specific php version has not been installed.}
 
   Debug('Checking if php will execute');
   Params := ArgWin(Config.PhpExe);
@@ -2838,8 +2840,8 @@ var
 begin
 
   {Autorun entries in the registry can start cmd.exe in the wrong directory or
-  intercept the output. Some configurations of ansicon, for example, return
-  their own non-zero exit code}
+  intercept the output. Some configurations of ansicon, for example, can cause
+  a non-zero exit code to be returned.}
 
   if not GetRegistryAutorun(Key, Autorun) then
     Exit;
