@@ -377,6 +377,7 @@ procedure AddPhpParam(const Value: String; var Params: String); forward;
 procedure AddLine(var Existing: String; const Value: String); forward;
 procedure AddPara(var Existing: String; const Value: String); forward;
 procedure AddStr(var Existing: String; const Value: String); forward;
+function BoolFromString(Input: String; var Value: Boolean): Boolean; forward;
 function ConfigInit(Exe: String): TConfigRec; forward;
 procedure ConfigResetOutput(var Config: TConfigRec); forward;
 procedure Debug(const Message: String); forward;
@@ -473,12 +474,14 @@ function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
 function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean; forward;
 
 {Ini file functions}
-function IniCheckOutput(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
+function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean; forward;
 function IniCheckTmp(Existing: Boolean): Boolean; forward;
+function IniCreateTmp(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
 function IniFileRestore: Boolean; forward;
 function IniFileSave: Boolean; forward;
 function IniFileUpdate(Save: Boolean): Boolean; forward;
-function IniNeedsMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
+function IniGetDetails(Details: String; var Modify: Boolean; var Status: String): Boolean; forward;
+function IniHasMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
 procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec); forward;
 
 {Composer installer functions}
@@ -1112,6 +1115,20 @@ end;
 procedure AddStr(var Existing: String; const Value: String);
 begin
   Existing := Existing + Value;
+end;
+
+
+function BoolFromString(Input: String; var Value: Boolean): Boolean;
+begin
+
+  Result := False;
+
+  if (Input = '0') or (Input = '1') then
+  begin
+    Value := Boolean(StrToInt(Input));
+    Result := True;
+  end;
+
 end;
 
 
@@ -2687,8 +2704,8 @@ begin
     Exit;
   end;
 
-  {See if we need to modify the ini}
-  if IniNeedsMod(ModIni, GConfigRec) then
+  {See if php.ini needs and has been modified}
+  if IniHasMod(ModIni, GConfigRec) then
   begin
     ModIni.Active := True;
     ModIni.OldFile := GConfigRec.PhpIni;
@@ -2912,6 +2929,7 @@ var
 
 begin
 
+  Result := False;
   StringChangeEx(Details, '|', #13, True);
   List := TStringList.Create;
 
@@ -2922,10 +2940,10 @@ begin
     begin
       Config.PhpVersion := List.Strings[0];
       Config.PhpIni := List.Strings[1];
-      Config.PhpSecure := Boolean(StrToIntDef(List.Strings[2], 0));
-      Config.PhpCompat := Boolean(StrToIntDef(List.Strings[3], 0));
 
-      Result := True;
+      if BoolFromString(List.Strings[2], Config.PhpSecure) then
+        Result := BoolFromString(List.Strings[3], Config.PhpCompat);
+
     end;
 
   finally
@@ -3075,10 +3093,10 @@ end;
 
 {*************** Ini file functions ***************}
 
-function IniCheckOutput(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
+function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean;
 var
   Details: String;
-  Error: string;
+  Status: String;
 
 begin
 
@@ -3086,36 +3104,16 @@ begin
 
   GetPhpOutput(Details, Config);
 
-  if Details <> '' then
-    Debug(Details);
-
-  {The script exits 0 if the ini needs modifying/creating}
-  if Config.ExitCode <> 0 then
+  if not IniGetDetails(Details, Modify, Status) then
   begin
-
-    if Config.ExitCode <> 1 then
-    begin
-      {The script unexpectedly failed. Report the output}
-      Error := 'Error: script %s failed%s%s';
-      Debug(Format(Error, [PHP_INI, LF, Config.Output]));
-    end;
-
+    Debug('Invalid details: ' + Details);
     Exit;
   end;
 
-  {Check tmp files have been written}
-  if not IniCheckTmp(not ModIni.New) then
-    Exit;
+  Debug(Format('Details: modify=%d, status=%s', [Modify, Status]));
 
-  Debug('Checking tmp ini with selected php');
-  Config := ConfigInit(Config.PhpExe);
-
-  if CheckPhpSetup(Config, GTmpFile.ModIni) then
-  begin
-    ModIni.Secure := Config.PhpSecure;
-    ModIni.Compat := Config.PhpCompat;
-    Result := Config.PhpCompat;
-  end;
+  {Config.Output will contain output other than the details line}
+  Result := (Config.Output = '') and (Config.ExitCode = 0);
 
 end;
 
@@ -3142,6 +3140,40 @@ begin
   end;
 
   Result := True;
+
+end;
+
+
+function IniCreateTmp(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
+var
+  Modify: Boolean;
+
+begin
+
+  Result := False;
+
+  if not IniCheckOutput(Modify, Config) then
+  begin
+    Debug(Format('Error: script %s failed', [PHP_INI]));
+    Exit;
+  end;
+
+  if not Modify then
+    Exit;
+
+  {Check tmp files have been written}
+  if not IniCheckTmp(not ModIni.New) then
+    Exit;
+
+  Debug('Checking tmp ini with selected php');
+  Config := ConfigInit(Config.PhpExe);
+
+  if CheckPhpSetup(Config, GTmpFile.ModIni) then
+  begin
+    ModIni.Secure := Config.PhpSecure;
+    ModIni.Compat := Config.PhpCompat;
+    Result := Config.PhpCompat;
+  end;
 
 end;
 
@@ -3225,7 +3257,33 @@ begin
 end;
 
 
-function IniNeedsMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
+function IniGetDetails(Details: String; var Modify: Boolean; var Status: String): Boolean;
+var
+  List: TStringList;
+
+begin
+
+  Result := False;
+  StringChangeEx(Details, '|', #13, True);
+  List := TStringList.Create;
+
+  try
+    List.Text := Details;
+
+    if List.Count = 2 then
+    begin
+      Status := List.Strings[1];
+      Result := BoolFromString(List.Strings[0], Modify);
+    end;
+
+  finally
+    List.Free;
+  end;
+
+end;
+
+
+function IniHasMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
 var
   Args: String;
 
@@ -3253,6 +3311,7 @@ begin
   DeleteFile(GTmpFile.ModIni);
   DeleteFile(GTmpFile.OrigIni);
 
+  {The script needs the php.exe location and the Inno temp directory}
   Args := ArgCmd(ExtractFileDir(Config.PhpExe));
   AddStr(Args, #32 + ArgCmd(GTmpDir));
 
@@ -3260,7 +3319,7 @@ begin
   if not ExecPhp(PHP_INI, Args, '', Config) then
     Exit;
 
-  if IniCheckOutput(ModIni, Config) then
+  if IniCreateTmp(ModIni, Config) then
   begin
 
     if ModIni.New then

@@ -1,15 +1,29 @@
 <?php
 
+/**
+* Checks if a php.ini file needs creating or modifying. Returns a single line
+* of output that contains info required by the setup.
+*
+* The line must start with PHP_CHECK_ID (which is the same value as the
+* define in the main install script), followed by pipe (|) separated
+* values and ending with an eol.
+*
+* The values required are 0 or 1, signifying whether modification is required,
+* and an infomrational status message, which may contain an error.
+*/
+
 $PHP_CHECK_ID = '<ComposerSetup:>';
 
-$ini = new Ini($argv);
-$exitCode = $ini->run() ? 0 : 1;
+$ini = new IniChecker($argv);
+$result = (int) $ini->needsModification();
 
-printf('%s%s%s', $PHP_CHECK_ID, $ini->status, PHP_EOL);
-exit($exitCode);
+$data = array($result, $ini->status);
+printf('%s%s%s', $PHP_CHECK_ID, implode('|', $data), PHP_EOL);
+
+exit(0);
 
 
-class Ini
+class IniChecker
 {
     public $status;
     private $phpDir;
@@ -23,7 +37,7 @@ class Ini
     /**
      * Constructor
      *
-     * @param array $argv Coomand-line args
+     * @param array $argv Command-line args
      */
     public function __construct(array $argv)
     {
@@ -33,7 +47,7 @@ class Ini
         $this->modIni = $tmpDir.'/php.ini-mod';
         $this->origIni = $tmpDir.'/php.ini-orig';
         $this->changes = array();
-        $this->status = '';
+        $this->status = $this->writeError('Status message missing');
     }
 
     /**
@@ -41,7 +55,7 @@ class Ini
      *
      * @return bool
      */
-    public function run()
+    public function needsModification()
     {
         if (!$this->init($new)) {
             return;
