@@ -398,7 +398,7 @@ function StrToVer(Version: String): DWord; forward;
 function VersionMatchMajor(Ver1, Ver2: String): Boolean; forward;
 
 {Exec output functions}
-procedure OutputDebug(Output, Other: String; IsStdOut: Boolean); forward;
+procedure OutputDebug(Output, Name: String); forward;
 function OutputFromArray(Items: TArrayOfString): String; forward;
 function OutputFromFile(Filename: String; var Output: TArrayOfString): String; forward;
 procedure OutputReadStdFiles(var Config: TConfigRec); forward;
@@ -1478,11 +1478,10 @@ end;
 
 {*************** Exec output functions ***************}
 
-procedure OutputDebug(Output, Other: String; IsStdOut: Boolean);
+procedure OutputDebug(Output, Name: String);
 var
   Count: Integer;
   Detail: String;
-  Stream: String;
   Msg: String;
 
 begin
@@ -1490,17 +1489,7 @@ begin
   Count := Length(Output);
   Detail := Format('%d bytes', [Count]);
 
-  if IsStdOut then
-    Stream := 'stdout'
-  else
-  begin
-    Stream := 'stderr';
-    {Other is stdOut}
-    if (Count > 0) and (CompareText(Output, Other) = 0) then
-      Detail := 'same as stdout';
-  end;
-
-  Msg := Format('Output from %s [%s]', [Stream, Detail]);
+  Msg := Format('Output from %s [%s]', [Name, Detail]);
 
   if Count > 0 then
     AddLine(Msg, Output);
@@ -1546,8 +1535,8 @@ begin
   StdOut := OutputFromFile(GTmpFile.StdOut, Config.StdOut);
   StdErr := OutputFromFile(GTmpFile.StdErr, Config.StdErr);
 
-  OutputDebug(StdOut, '', True);
-  OutputDebug(StdErr, StdOut, False);
+  OutputDebug(StdOut, 'stdout');
+  OutputDebug(StdErr, 'stderr');
 
 end;
 
