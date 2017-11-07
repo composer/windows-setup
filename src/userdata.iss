@@ -38,7 +38,7 @@ type
   end;
 
 var
-  UserForm: TDataForm;
+  GUserForm: TDataForm;
 
 const
   DELETE_NONE = 0;
@@ -204,7 +204,7 @@ begin
   Params := Format('/c "%s %s > %s"', ['wmic', 'USERACCOUNT GET Name,SID,Disabled', AddQuotes(Output)]);
   Debug('Calling cmd.exe with params: ' + Params);
 
-  if not (Exec(Cmd, Params, TmpDir, 0, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
+  if not (Exec(Cmd, Params, GTmpDir, 0, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
     Exit;
 
   {We use TStringList because this handles the BOM produced in the output file}
@@ -460,28 +460,28 @@ begin
   end;
 
   {Create the form}
-  UserDataCreateForm(Status, UserForm);
+  UserDataCreateForm(Status, GUserForm);
 
   try
 
     {Populate the listbox}
     for I := 0 to GetArrayLength(List) - 1 do
     begin
-      UserForm.ListBox.AddCheckBox(List[I].User, List[I].Caption, 0,
+      GUserForm.ListBox.AddCheckBox(List[I].User, List[I].Caption, 0,
         List[I].Delete, True, False, False, TObject(I));
     end;
 
     {Show the form}
-    UserForm.Main.ShowModal();
+    GUserForm.Main.ShowModal();
 
     {Transfer checked items to Delete field}
-    for I := 0 to UserForm.ListBox.Items.Count - 1 do
+    for I := 0 to GUserForm.ListBox.Items.Count - 1 do
     begin
 
-      Index := Integer(UserForm.ListBox.ItemObject[I]);
-      List[Index].Delete := UserForm.ListBox.Checked[I];
+      Index := Integer(GUserForm.ListBox.ItemObject[I]);
+      List[Index].Delete := GUserForm.ListBox.Checked[I];
 
-      if UserForm.ListBox.Checked[I] then
+      if GUserForm.ListBox.Checked[I] then
         Result := True;
 
     end;
@@ -492,7 +492,7 @@ begin
       Debug('User chose not to delete data');
 
   finally
-    UserForm.Main.Free();
+    GUserForm.Main.Free();
   end;
 
 end;
@@ -566,8 +566,8 @@ begin
 
   Checkbox := Sender as TNewCheckbox;
 
-  for I := 0 to UserForm.ListBox.Items.Count - 1 do
-    UserForm.ListBox.Checked[I] := Checkbox.Checked;
+  for I := 0 to GUserForm.ListBox.Items.Count - 1 do
+    GUserForm.ListBox.Checked[I] := Checkbox.Checked;
 
 end;
 

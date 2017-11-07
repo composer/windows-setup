@@ -309,25 +309,25 @@ end;
 
 
 var
-  BaseDir: TDirectoryRec;         {contains all base program and data dirs}
-  TmpFile: TTmpFile;              {contains full pathname of temp files}
-  TmpDir: String;                 {the temp directory that setup/uninstall uses}
-  ConfigRec: TConfigRec;          {contains path/selected php.exe data and any error}
-  ExistingRec: TExistingRec;      {contains data about any existing version}
-  ParamsRec: TParamsRec;          {contains any params from the command line or inf file}
-  Paths: TPathInfo;               {contains latest path info}
-  PhpList: TStringList;           {contains found PHP locations}
-  ProxyInfo: TProxyRec;           {contains latest proxy info}
-  CmdExe: String;                 {full pathname to system cmd}
-  EnvChanges: TEnvChangeList;     {list of environment changes to make, or made}
-  ModIniRec: TModIniRec;          {contains data for a new/modified php ini}
-  Flags: TFlagsRec;               {contains global flags that won't go anywhere else}
-  Pages: TCustomPagesRec;         {group of custom pages}
-  OptionsPage: TOptionsPageRec;   {contains Options page controls}
-  IniPage: TIniPageRec;           {contains Ini page controls}
-  SettingsPage: TSettingsPageRec; {contains Settings page controls}
-  SecurityPage: TSecurityPageRec; {contains Security page controls}
-  ProxyPage: TProxyPageRec;       {contains Proxy page controls}
+  GBaseDir: TDirectoryRec;         {contains all base program and data dirs}
+  GTmpFile: TTmpFile;              {contains full pathname of temp files}
+  GTmpDir: String;                 {the temp directory that setup/uninstall uses}
+  GConfigRec: TConfigRec;          {contains path/selected php.exe data and any error}
+  GExistingRec: TExistingRec;      {contains data about any existing version}
+  GParamsRec: TParamsRec;          {contains any params from the command line or inf file}
+  GPaths: TPathInfo;               {contains latest path info}
+  GPhpList: TStringList;           {contains found PHP locations}
+  GProxyInfo: TProxyRec;           {contains latest proxy info}
+  GCmdExe: String;                 {full pathname to system cmd}
+  GEnvChanges: TEnvChangeList;     {list of environment changes to make, or made}
+  GModIniRec: TModIniRec;          {contains data for a new/modified php ini}
+  GFlags: TFlagsRec;               {contains global flags that won't go anywhere else}
+  GPages: TCustomPagesRec;         {group of custom pages}
+  GOptionsPage: TOptionsPageRec;   {contains Options page controls}
+  GIniPage: TIniPageRec;           {contains Ini page controls}
+  GSettingsPage: TSettingsPageRec; {contains Settings page controls}
+  GSecurityPage: TSecurityPageRec; {contains Security page controls}
+  GProxyPage: TProxyPageRec;       {contains Proxy page controls}
 
 
 const
@@ -532,8 +532,8 @@ begin
   {This must be the first call}
   InitCommon();
 
-  CmdExe := ExpandConstant('{cmd}');
-  TmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
+  GCmdExe := ExpandConstant('{cmd}');
+  GTmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
 
   {Extract our temp files to installer directory}
   ExtractTemporaryFile(RUN_PHP);
@@ -546,12 +546,12 @@ begin
   cygwin php. Also, the PHP_CHECK script must not have a path, otherwise it
   masks errors caused by autorun registry settings that force cmd.exe to open
   in a particular directory}
-  TmpFile.RunPhp := TmpDir + '\' + RUN_PHP;
-  TmpFile.Composer := TmpDir + '\' + CMD_SHELL;
-  TmpFile.StdOut := TmpDir + '\stdout.txt';
-  TmpFile.StdErr := TmpDir + '\stderr.txt';
-  TmpFile.ModIni := TmpDir + '\php.ini-mod';
-  TmpFile.OrigIni := TmpDir + '\php.ini-orig';
+  GTmpFile.RunPhp := GTmpDir + '\' + RUN_PHP;
+  GTmpFile.Composer := GTmpDir + '\' + CMD_SHELL;
+  GTmpFile.StdOut := GTmpDir + '\stdout.txt';
+  GTmpFile.StdErr := GTmpDir + '\stderr.txt';
+  GTmpFile.ModIni := GTmpDir + '\php.ini-mod';
+  GTmpFile.OrigIni := GTmpDir + '\php.ini-orig';
 
   {Set our initial data}
   InitSetData();
@@ -564,16 +564,16 @@ end;
 procedure DeinitializeSetup();
 begin
 
-  if not Flags.Completed then
+  if not GFlags.Completed then
   begin
 
-    EnvRevokeChanges(EnvChanges);
+    EnvRevokeChanges(GEnvChanges);
     IniFileRestore();
 
   end;
 
-  if PhpList <> nil then
-    PhpList.Free;
+  if GPhpList <> nil then
+    GPhpList.Free;
 
 end;
 
@@ -581,32 +581,32 @@ end;
 procedure InitializeWizard;
 begin
 
-  Pages.Options := OptionsPageCreate(wpWelcome,
+  GPages.Options := OptionsPageCreate(wpWelcome,
     'Installation Options', 'Choose your installation type.');
 
-  Pages.Settings := SettingsPageCreate(wpSelectDir,
+  GPages.Settings := SettingsPageCreate(wpSelectDir,
     'Settings Check', 'We need to check your PHP and other settings.');
 
-  Pages.ProgressSettings := CreateOutputProgressPage('Checking your settings', 'Please wait');
+  GPages.ProgressSettings := CreateOutputProgressPage('Checking your settings', 'Please wait');
 
-  Pages.ErrorSettings := MessagePageCreate(Pages.Settings.ID,
+  GPages.ErrorSettings := MessagePageCreate(GPages.Settings.ID,
     '', '', 'Please review and fix the issues listed below, then click Back and try again');
 
-  Pages.Ini := IniPageCreate(Pages.ErrorSettings.ID,
+  GPages.Ini := IniPageCreate(GPages.ErrorSettings.ID,
     'PHP Configuration Error', '');
 
-  Pages.Security := SecurityPageCreate(Pages.Ini.ID,
+  GPages.Security := SecurityPageCreate(GPages.Ini.ID,
     'Composer Security Warning', 'Choose one of the following options.');
 
-  Pages.Proxy := ProxyPageCreate(Pages.Security.ID,
+  GPages.Proxy := ProxyPageCreate(GPages.Security.ID,
     'Proxy Settings', 'Choose if you need to use a proxy.');
 
-  Pages.ProgressInstaller := CreateOutputProgressPage('Downloading Composer', 'Please wait');
-  Pages.ProgressInstaller.SetText('Running the Composer installer script...' , '');
+  GPages.ProgressInstaller := CreateOutputProgressPage('Downloading Composer', 'Please wait');
+  GPages.ProgressInstaller.SetText('Running the Composer installer script...' , '');
 
-  Pages.ErrorInstaller := MessagePageCreate(wpReady, '', '', '');
+  GPages.ErrorInstaller := MessagePageCreate(wpReady, '', '', '');
 
-  Pages.Environment := EnvironmentPageCreate(wpInstalling,
+  GPages.Environment := EnvironmentPageCreate(wpInstalling,
     'Information', 'Please read the following information before continuing.');
 
 end;
@@ -615,12 +615,12 @@ end;
 procedure CurPageChanged(CurPageID: Integer);
 begin
 
-  if CurPageID = Pages.Settings.ID then
+  if CurPageID = GPages.Settings.ID then
   begin
 
     {We must check Pages.ProgressSettings.Tag first}
-    if CurPageID = Pages.ProgressSettings.Tag then
-      Pages.ProgressSettings.Tag := 0
+    if CurPageID = GPages.ProgressSettings.Tag then
+      GPages.ProgressSettings.Tag := 0
     else
     begin
       SettingsPageUpdate();
@@ -628,7 +628,7 @@ begin
     end;
 
   end
-  else if CurPageID = Pages.ErrorSettings.ID then
+  else if CurPageID = GPages.ErrorSettings.ID then
   begin
 
     ErrorSettingsUpdate();
@@ -637,37 +637,37 @@ begin
     ShowErrorIfSilent();
 
   end
-  else if CurPageID = Pages.Security.ID then
+  else if CurPageID = GPages.Security.ID then
   begin
 
     SecurityPageUpdate();
-    WizardForm.NextButton.Enabled := SecurityPage.Checkbox.Checked;
+    WizardForm.NextButton.Enabled := GSecurityPage.Checkbox.Checked;
     WizardForm.ActiveControl := nil;
     ShowErrorIfSilent();
 
   end
-  else if CurPageID = Pages.Ini.ID then
+  else if CurPageID = GPages.Ini.ID then
   begin
 
     IniPageUpdate();
     WizardForm.ActiveControl := nil;
 
   end
-  else if CurPageID = Pages.Proxy.ID then
+  else if CurPageID = GPages.Proxy.ID then
   begin
 
     ProxyPageUpdate();
     WizardForm.ActiveControl := nil;
 
   end
-  else if CurPageID = Pages.ErrorInstaller.ID then
+  else if CurPageID = GPages.ErrorInstaller.ID then
   begin
 
     ErrorInstallerUpdate();
     WizardForm.ActiveControl := nil;
-    WizardForm.BackButton.Enabled := ConfigRec.StatusCode <> ERR_INSTALL_WARNINGS;
+    WizardForm.BackButton.Enabled := GConfigRec.StatusCode <> ERR_INSTALL_WARNINGS;
 
-    if ConfigRec.StatusCode <> ERR_INSTALL_WARNINGS then
+    if GConfigRec.StatusCode <> ERR_INSTALL_WARNINGS then
     begin
       WizardForm.NextButton.Caption := 'Retry';
       ShowErrorIfSilent();
@@ -686,17 +686,17 @@ begin
   Result := False;
 
   if PageID = wpSelectDir then
-    Result := not Flags.DevInstall
-  else if PageID = Pages.ErrorSettings.ID then
-    Result := not Flags.SettingsError
-  else if PageID = Pages.Ini.ID then
-    Result := not ModIniRec.Active
-  else if PageID = Pages.Security.ID then
-    Result := ConfigRec.PhpSecure
-  else if PageID = Pages.ErrorInstaller.ID then
-    Result := ConfigRec.StatusCode = ERR_SUCCESS
-  else if PageID = Pages.Environment.ID then
-    Result := not Flags.EnvChanged;
+    Result := not GFlags.DevInstall
+  else if PageID = GPages.ErrorSettings.ID then
+    Result := not GFlags.SettingsError
+  else if PageID = GPages.Ini.ID then
+    Result := not GModIniRec.Active
+  else if PageID = GPages.Security.ID then
+    Result := GConfigRec.PhpSecure
+  else if PageID = GPages.ErrorInstaller.ID then
+    Result := GConfigRec.StatusCode = ERR_SUCCESS
+  else if PageID = GPages.Environment.ID then
+    Result := not GFlags.EnvChanged;
 
 end;
 
@@ -706,7 +706,7 @@ begin
 
   Result := True;
 
-  if CurPageID = Pages.Ini.ID then
+  if CurPageID = GPages.Ini.ID then
   begin
 
     {Delete/replace the ini file}
@@ -722,13 +722,13 @@ begin
 
   Result := True;
 
-  if CurPageID = Pages.Options.ID then
+  if CurPageID = GPages.Options.ID then
   begin
 
-    Result := OptionsCheckExisting(ExistingRec);
+    Result := OptionsCheckExisting(GExistingRec);
 
   end
-  else if CurPageID = Pages.Settings.ID then
+  else if CurPageID = GPages.Settings.ID then
   begin
 
     if not SettingsCheckSelected() then
@@ -736,18 +736,18 @@ begin
     else
     begin
       {Show the progress page which calls the check function}
-      ProgressPageSettings(SettingsPage.Combo.Text);
+      ProgressPageSettings(GSettingsPage.Combo.Text);
     end;
 
   end
-  else if CurPageID = Pages.Ini.ID then
+  else if CurPageID = GPages.Ini.ID then
   begin
 
     {Create/delete/replace the ini file}
-    Result := IniFileUpdate(IniPage.Checkbox.Checked);
+    Result := IniFileUpdate(GIniPage.Checkbox.Checked);
 
   end
-  else if CurPageID = Pages.Proxy.ID then
+  else if CurPageID = GPages.Proxy.ID then
   begin
     Result := ProxyCheckInput();
   end
@@ -758,10 +758,10 @@ begin
     Result := ProgressPageInstaller();
 
   end
-  else if CurPageID = Pages.ErrorInstaller.ID then
+  else if CurPageID = GPages.ErrorInstaller.ID then
   begin
 
-    if ConfigRec.StatusCode = ERR_INSTALL_WARNINGS then
+    if GConfigRec.StatusCode = ERR_INSTALL_WARNINGS then
       {The warnings have been shown, so ok to continue}
       Result := True
     else if WizardSilent then
@@ -782,8 +782,8 @@ begin
 
   case CurPageID of
     wpWelcome: Confirm := False;
-    Pages.ErrorSettings.ID: Confirm := False;
-    Pages.ErrorInstaller.ID: Confirm := ConfigRec.StatusCode = ERR_INSTALL_WARNINGS;
+    GPages.ErrorSettings.ID: Confirm := False;
+    GPages.ErrorInstaller.ID: Confirm := GConfigRec.StatusCode = ERR_INSTALL_WARNINGS;
   end;
 
   if not Confirm then
@@ -796,12 +796,12 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
 
-  if Flags.DevInstall then
+  if GFlags.DevInstall then
     AddStr(Result, MemoDirInfo + NewLine + NewLine);
 
-  AddStr(Result, 'PHP version ' + ConfigRec.PhpVersion);
-  AddStr(Result, NewLine + Space + ConfigRec.PhpExe);
-  AddStr(Result, EnvListChanges(EnvChanges));
+  AddStr(Result, 'PHP version ' + GConfigRec.PhpVersion);
+  AddStr(Result, NewLine + Space + GConfigRec.PhpExe);
+  AddStr(Result, EnvListChanges(GEnvChanges));
 
 end;
 
@@ -813,13 +813,13 @@ begin
 
   Debug('Running PrepareToInstall tasks...');
 
-  if not UnixifyShellFile(TmpFile.Composer, Result) then
+  if not UnixifyShellFile(GTmpFile.Composer, Result) then
     Exit;
 
   RemoveSystemUserData();
 
   {Any failures will be reverted in DeinitializeSetup}
-  EnvMakeChanges(EnvChanges, Result);
+  EnvMakeChanges(GEnvChanges, Result);
 
 end;
 
@@ -833,7 +833,7 @@ begin
     {It is arbitrary where we NotifyEnvironmentChange. If there are hung
     programs then the progress bar will not start immediately. If we call
     it in ssPostInstall then the finished progress bar hangs.}
-    if Flags.EnvChanged then
+    if GFlags.EnvChanged then
       NotifyEnvironmentChange();
 
   end
@@ -842,10 +842,10 @@ begin
 
     {We need to call this here since the data will not get saved
     in RegisterPreviousData event without an uninstaller.}
-    if Flags.DevInstall then
+    if GFlags.DevInstall then
       SaveInfData();
 
-    Flags.Completed := True;
+    GFlags.Completed := True;
   end;
 
 end;
@@ -892,7 +892,7 @@ begin
     which will not be the case if a Developer mode install has been made over
     the top of this one}
     SetPathInfo(True);
-    BinPath := Paths.Bin.Data.Path;
+    BinPath := GPaths.Bin.Data.Path;
     BinDir := GetBinDir('');
 
     if CompareText(BinDir, BinPath) = 0 then
@@ -916,14 +916,14 @@ begin
 
     end;
 
-    if EnvMakeChanges(EnvChanges, Error) = ENV_FAILED then
+    if EnvMakeChanges(GEnvChanges, Error) = ENV_FAILED then
       ShowErrorMessage(Error);
 
     {Call NotifyEnvironmentChange here since the Uninstall Form is showing.
     If there are hung programs then the progress bar will not start immediately.
     This is better than calling it in usPostUninstall where the Uninstall Form
     has closed, so there is no visible indication that anything is happening}
-    if Flags.EnvChanged then
+    if GFlags.EnvChanged then
       NotifyEnvironmentChange();
 
   end;
@@ -937,18 +937,18 @@ procedure InitCommon;
 begin
 
   {Initialize our flags - not strictly necessary}
-  Flags.DevInstall := False;
-  Flags.LastFolder := '';
-  Flags.SettingsError := False;
-  Flags.DisableTls := False;
-  Flags.EnvChanged := False;
-  Flags.Completed := False;
+  GFlags.DevInstall := False;
+  GFlags.LastFolder := '';
+  GFlags.SettingsError := False;
+  GFlags.DisableTls := False;
+  GFlags.EnvChanged := False;
+  GFlags.Completed := False;
 
-  {Initialize BaseDir}
-  BaseDir.AdminApp := ExpandConstant('{pf}');
-  BaseDir.AdminData := ExpandConstant('{commonappdata}');
-  BaseDir.UserApp := ExpandConstant('{localappdata}');
-  BaseDir.UserData := ExpandConstant('{localappdata}');
+  {Initialize GBaseDir}
+  GBaseDir.AdminApp := ExpandConstant('{pf}');
+  GBaseDir.AdminData := ExpandConstant('{commonappdata}');
+  GBaseDir.UserApp := ExpandConstant('{localappdata}');
+  GBaseDir.UserData := ExpandConstant('{localappdata}');
 
 end;
 
@@ -1060,8 +1060,8 @@ begin
 
   Debug('Initializing {#AppInstallName} {#SetupVersion} for user: ' + GetUserNameString);
 
-  ExistingRec := InitGetExisting();
-  ParamsRec := InitGetParams();
+  GExistingRec := InitGetExisting();
+  GParamsRec := InitGetParams();
   SetPathInfo(False);
   SetPhpLocations();
 
@@ -1128,7 +1128,7 @@ begin
   Result.PhpCompat := False;
 
   ConfigResetOutput(Result);
-  ModIniRec := ModIni;
+  GModIniRec := ModIni;
 
 end;
 
@@ -1182,23 +1182,23 @@ begin
 
   case Id of
     {Inno built-in pages}
-    wpWelcome                 : Name := 'Welcome';
-    wpSelectDir               : Name := 'Select Destination Location';
-    wpReady                   : Name := 'Ready to Install';
-    wpPreparing               : Name := 'Preparing to Install';
-    wpInstalling              : Name := 'Installing';
-    wpFinished                : Name := 'Setup Completed';
+    wpWelcome                  : Name := 'Welcome';
+    wpSelectDir                : Name := 'Select Destination Location';
+    wpReady                    : Name := 'Ready to Install';
+    wpPreparing                : Name := 'Preparing to Install';
+    wpInstalling               : Name := 'Installing';
+    wpFinished                 : Name := 'Setup Completed';
     {Custom pages}
-    Pages.Options.ID          : Name := 'Installation Options';
-    Pages.Settings.ID         : Name := 'Settings Check';
-    Pages.ProgressSettings.ID : Name := 'Running Settings Check';
-    Pages.ErrorSettings.ID    : Name := 'Settings Errors';
-    Pages.Ini.ID              : Name := 'PHP Configuration Error';
-    Pages.Security.ID         : Name := 'Security Warning';
-    Pages.Proxy.ID            : Name := 'Proxy Settings';
-    Pages.ProgressInstaller.ID: Name := 'Running Composer Install';
-    Pages.ErrorInstaller.ID   : Name := 'Composer Install Errors';
-    Pages.Environment.ID      : Name := 'Information';
+    GPages.Options.ID          : Name := 'Installation Options';
+    GPages.Settings.ID         : Name := 'Settings Check';
+    GPages.ProgressSettings.ID : Name := 'Running Settings Check';
+    GPages.ErrorSettings.ID    : Name := 'Settings Errors';
+    GPages.Ini.ID              : Name := 'PHP Configuration Error';
+    GPages.Security.ID         : Name := 'Security Warning';
+    GPages.Proxy.ID            : Name := 'Proxy Settings';
+    GPages.ProgressInstaller.ID: Name := 'Running Composer Install';
+    GPages.ErrorInstaller.ID   : Name := 'Composer Install Errors';
+    GPages.Environment.ID      : Name := 'Information';
 
   else
     Name := 'Unknown';
@@ -1215,14 +1215,14 @@ var
 
 begin
 
-  DeleteFile(TmpFile.StdOut);
-  DeleteFile(TmpFile.StdErr);
+  DeleteFile(GTmpFile.StdOut);
+  DeleteFile(GTmpFile.StdErr);
   ConfigResetOutput(Config);
 
   Params := GetExecParams(Config, Script, Args, Ini);
-  DebugExecBegin(CmdExe, Params);
+  DebugExecBegin(GCmdExe, Params);
 
-  Result := Exec(CmdExe, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
+  Result := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
   DebugExecEnd(Result, Config.ExitCode);
 
   if not Result then
@@ -1263,7 +1263,7 @@ begin
 
   if StatusCode = ERR_RUN_CMD then
   begin
-    Filename := CmdExe;
+    Filename := GCmdExe;
     Prog := 'The command interpreter';
     SysError := SysErrorMessage(Config.ExitCode);
   end
@@ -1301,7 +1301,7 @@ begin
   if Args <> '' then
     AddStr(Params, #32 + Args);
 
-  AddStr(Params, Format(' > %s 2> %s', [ArgCmd(TmpFile.StdOut), ArgCmd(TmpFile.StdErr)]));
+  AddStr(Params, Format(' > %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]));
 
   Result := Format('/c "%s"', [Params]);
 
@@ -1543,8 +1543,8 @@ var
 
 begin
 
-  StdOut := OutputFromFile(TmpFile.StdOut, Config.StdOut);
-  StdErr := OutputFromFile(TmpFile.StdErr, Config.StdErr);
+  StdOut := OutputFromFile(GTmpFile.StdOut, Config.StdOut);
+  StdErr := OutputFromFile(GTmpFile.StdErr, Config.StdErr);
 
   OutputDebug(StdOut, '', True);
   OutputDebug(StdErr, StdOut, False);
@@ -1683,9 +1683,9 @@ var
 begin
 
   {First create our global}
-  PhpList := TStringList.Create;
-  PhpList.Sorted := True;
-  PhpList.Duplicates := dupIgnore;
+  GPhpList := TStringList.Create;
+  GPhpList.Sorted := True;
+  GPhpList.Duplicates := dupIgnore;
 
   Locations := TStringList.Create;
 
@@ -1698,9 +1698,9 @@ begin
       Path := Locations.Strings[I];
 
       if Pos('*', Path) = 0 then
-        CheckLocation(Path, PhpList)
+        CheckLocation(Path, GPhpList)
       else
-        CheckWildcardLocation(Path, PhpList);
+        CheckWildcardLocation(Path, GPhpList);
 
     end;
 
@@ -1716,7 +1716,7 @@ end;
 function CheckPermisions: Boolean;
 begin
   {Dirs check function}
-  Result := isAdminLoggedOn and not Flags.DevInstall;
+  Result := isAdminLoggedOn and not GFlags.DevInstall;
 end;
 
 
@@ -1729,16 +1729,16 @@ var
 begin
 
   {Code-constant function for data directory}
-  if not IsUninstaller and Flags.DevInstall then
+  if not IsUninstaller and GFlags.DevInstall then
   begin
     Result := WizardDirValue;
     Exit;
   end;
 
   if IsAdminLoggedOn then
-    Path := BaseDir.AdminData
+    Path := GBaseDir.AdminData
   else
-    Path := BaseDir.UserData;
+    Path := GBaseDir.UserData;
 
   Result := Path + '\{#AppInstallName}\bin';
 
@@ -1755,9 +1755,9 @@ var
 begin
 
   if IsAdminLoggedOn then
-    Path := BaseDir.AdminApp
+    Path := GBaseDir.AdminApp
   else
-    Path := BaseDir.UserApp;
+    Path := GBaseDir.UserApp;
 
   Result := Path + '\{#AppInstallName}';
 
@@ -1775,7 +1775,7 @@ end;
 function IncludeUninstaller: Boolean;
 begin
   {Code-constant function for Uninstallable and files Check}
-  Result := not Flags.DevInstall;
+  Result := not GFlags.DevInstall;
 end;
 
 
@@ -1851,15 +1851,15 @@ var
 
 begin
 
-  if ParamsRec.SaveInf = '' then
+  if GParamsRec.SaveInf = '' then
     Exit;
 
-  if Flags.DevInstall then
+  if GFlags.DevInstall then
     DevModeDir := ExpandConstant('{app}');
 
-  SetIniString('{#IniSection}', '{#ParamDev}', DevModeDir, ParamsRec.SaveInf);
-  SetIniString('{#IniSection}', '{#ParamPhp}', ConfigRec.PhpExe, ParamsRec.SaveInf);
-  SetIniString('{#IniSection}', '{#ParamProxy}', ProxyInfo.UserUrl, ParamsRec.SaveInf);
+  SetIniString('{#IniSection}', '{#ParamDev}', DevModeDir, GParamsRec.SaveInf);
+  SetIniString('{#IniSection}', '{#ParamPhp}', GConfigRec.PhpExe, GParamsRec.SaveInf);
+  SetIniString('{#IniSection}', '{#ParamProxy}', GProxyInfo.UserUrl, GParamsRec.SaveInf);
 
 end;
 
@@ -1959,8 +1959,8 @@ begin
 
   Result := '';
 
-  Res[0] := SearchPathEx(Paths.List, Hive, '{#CmdBat}', Index[0]);
-  Res[1] := SearchPathEx(Paths.List, Hive, '{#CmdShell}', Index[1])
+  Res[0] := SearchPathEx(GPaths.List, Hive, '{#CmdBat}', Index[0]);
+  Res[1] := SearchPathEx(GPaths.List, Hive, '{#CmdShell}', Index[1])
 
   Low := MaxInt;
 
@@ -2007,19 +2007,19 @@ var
 
 begin
 
-  Result := GetPathData(Paths);
+  Result := GetPathData(GPaths);
   IsUser := not IsAdminLoggedOn;
 
-  if not Paths.Php.Checked then
+  if not GPaths.Php.Checked then
   begin
 
-    Paths.Php.Data.System := SearchPath(Paths.List, HKLM, '{#CmdPhp}');
+    GPaths.Php.Data.System := SearchPath(GPaths.List, HKLM, '{#CmdPhp}');
 
     {Only check user path if we have no system entry, even if we are an admin}
-    if Paths.Php.Data.System = '' then
-      Paths.Php.Data.User := SearchPath(Paths.List, HKCU, '{#CmdPhp}');
+    if GPaths.Php.Data.System = '' then
+      GPaths.Php.Data.User := SearchPath(GPaths.List, HKCU, '{#CmdPhp}');
 
-    UpdatePathStatus(Paths.Php);
+    UpdatePathStatus(GPaths.Php);
 
   end;
 
@@ -2027,20 +2027,20 @@ begin
   if not AllData then
     Exit;
 
-  if not Paths.Bin.Checked then
+  if not GPaths.Bin.Checked then
   begin
 
-    Paths.Bin.Data.System := SearchPathBin(HKLM);
+    GPaths.Bin.Data.System := SearchPathBin(HKLM);
 
     {Only check user path if we are a User and have no system entry}
-    if IsUser and (Paths.Bin.Data.System = '') then
-      Paths.Bin.Data.User := SearchPathBin(HKCU);
+    if IsUser and (GPaths.Bin.Data.System = '') then
+      GPaths.Bin.Data.User := SearchPathBin(HKCU);
 
-    UpdatePathStatus(Paths.Bin);
+    UpdatePathStatus(GPaths.Bin);
 
   end;
 
-  if not IsSystemUser() and not Paths.VendorBin.Checked then
+  if not IsSystemUser() and not GPaths.VendorBin.Checked then
   begin
 
     VendorBin := GetVendorBinDir();
@@ -2049,13 +2049,13 @@ begin
     to find an entry in the system path. We only add this path
     if the status is PATH_NONE}
 
-    if DirectoryInPath(VendorBin, Paths.List, HKLM) then
-      Paths.VendorBin.Data.System := VendorBin;
+    if DirectoryInPath(VendorBin, GPaths.List, HKLM) then
+      GPaths.VendorBin.Data.System := VendorBin;
 
-    if DirectoryInPath(VendorBin, Paths.List, HKCU) then
-      Paths.VendorBin.Data.User := VendorBin;
+    if DirectoryInPath(VendorBin, GPaths.List, HKCU) then
+      GPaths.VendorBin.Data.User := VendorBin;
 
-    UpdatePathStatus(Paths.VendorBin);
+    UpdatePathStatus(GPaths.VendorBin);
 
   end;
 
@@ -2110,26 +2110,26 @@ begin
 
   Result := False;
 
-  Flags.EnvChanged := False;
-  SetArrayLength(EnvChanges, 0);
+  GFlags.EnvChanged := False;
+  SetArrayLength(GEnvChanges, 0);
   SetPathInfo(True);
 
-  CheckPathPhp(Paths.Php, ConfigRec);
+  CheckPathPhp(GPaths.Php, GConfigRec);
 
-  if not CheckPathBin(Paths.Bin, ConfigRec.Output) then
+  if not CheckPathBin(GPaths.Bin, GConfigRec.Output) then
   begin
-    SetError(ERR_CHECK_PATH, ConfigRec);
+    SetError(ERR_CHECK_PATH, GConfigRec);
     Exit;
   end;
 
-  if not CheckPathExt(ConfigRec.Output) then
+  if not CheckPathExt(GConfigRec.Output) then
   begin
-    SetError(ERR_CHECK_PATH, ConfigRec);
+    SetError(ERR_CHECK_PATH, GConfigRec);
     Exit;
   end;
 
-  if not IsSystemUser() and (Paths.VendorBin.Status = PATH_NONE) then
-    PathChange(HKCU, ENV_ADD, GetVendorBinDir(), Flags.DevInstall);
+  if not IsSystemUser() and (GPaths.VendorBin.Status = PATH_NONE) then
+    PathChange(HKCU, ENV_ADD, GetVendorBinDir(), GFlags.DevInstall);
 
   Result := True;
 
@@ -2150,7 +2150,7 @@ begin
   begin
 
     {Path empty, so add BinPath and exit}
-    PathChange(GetRegHive(), ENV_ADD, BinPath, Flags.DevInstall);
+    PathChange(GetRegHive(), ENV_ADD, BinPath, GFlags.DevInstall);
     Exit;
 
   end
@@ -2162,7 +2162,7 @@ begin
       Exit;
 
     {Allow admins and dev mode installs to change the path}
-    if IsAdminLoggedOn or Flags.DevInstall then
+    if IsAdminLoggedOn or GFlags.DevInstall then
     begin
       PathChange(GetRegHive(), ENV_ADD, BinPath, True);
       PathChange(Rec.Data.Hive, ENV_REMOVE, Rec.Data.Path, True);
@@ -2347,7 +2347,7 @@ begin
     if Result = ENV_CHANGED then
     begin
       List[I].Done := True;
-      Flags.EnvChanged := True;
+      GFlags.EnvChanged := True;
     end
     else if Result = ENV_FAILED then
     begin
@@ -2368,19 +2368,19 @@ var
 
 begin
 
-  Next := GetArrayLength(EnvChanges);
-  SetArrayLength(EnvChanges, Next + 1);
+  Next := GetArrayLength(GEnvChanges);
+  SetArrayLength(GEnvChanges, Next + 1);
   Display := CompareText(Name, PROXY_KEY) <> 0;
 
-  EnvChanges[Next].Hive := Hive;
-  EnvChanges[Next].Action := Action;
-  EnvChanges[Next].Name := Name;
-  EnvChanges[Next].Value := Value;
-  EnvChanges[Next].Display := Display;
-  EnvChanges[Next].Show := Show;
-  EnvChanges[Next].Done := False;
+  GEnvChanges[Next].Hive := Hive;
+  GEnvChanges[Next].Action := Action;
+  GEnvChanges[Next].Name := Name;
+  GEnvChanges[Next].Value := Value;
+  GEnvChanges[Next].Display := Display;
+  GEnvChanges[Next].Show := Show;
+  GEnvChanges[Next].Done := False;
 
-  Debug('Registering: ' + EnvChangeToString(EnvChanges[Next], ''));
+  Debug('Registering: ' + EnvChangeToString(GEnvChanges[Next], ''));
 
 end;
 
@@ -2427,21 +2427,21 @@ var
 
 begin
 
-  Count := GetArrayLength(EnvChanges);
+  Count := GetArrayLength(GEnvChanges);
   SetArrayLength(TmpList, Count);
   Next := 0;
 
   for I := 0 to Count - 1 do
   begin
 
-    if CompareText(PROXY_KEY, EnvChanges[I].Name) <> 0 then
+    if CompareText(PROXY_KEY, GEnvChanges[I].Name) <> 0 then
     begin
-      TmpList[Next] := EnvChanges[I];
+      TmpList[Next] := GEnvChanges[I];
       Inc(Next);
     end
     else if Action = ENV_ADD then
     begin
-      EnvChanges[I].Value := Value;
+      GEnvChanges[I].Value := Value;
       Exit;
     end;
 
@@ -2450,7 +2450,7 @@ begin
   if Count > Next then
   begin
     SetArrayLength(TmpList, Next);
-    EnvChanges := TmpList;
+    GEnvChanges := TmpList;
   end;
 
   if Action = ENV_ADD then
@@ -2488,12 +2488,12 @@ var
 
 begin
 
-  Result := (ProxyInfo.UserUrl <> '') and not ProxyInLocalEnvironment(Tmp);
+  Result := (GProxyInfo.UserUrl <> '') and not ProxyInLocalEnvironment(Tmp);
 
   if Result then
   begin
     Debug(Format('Setting %s local environment variable', [PROXY_KEY]));
-    SetEnvironmentVariable(PROXY_KEY, ProxyInfo.UserUrl);
+    SetEnvironmentVariable(PROXY_KEY, GProxyInfo.UserUrl);
   end;
 
 end;
@@ -2584,31 +2584,31 @@ var
 begin
 
   {Important to reset these values}
-  ProxyInfo.Status := PROXY_NONE;
-  ProxyInfo.UserUrl := '';
+  GProxyInfo.Status := PROXY_NONE;
+  GProxyInfo.UserUrl := '';
 
   {A proxy param overrides all other settings and cannot be changed}
-  if ParamsRec.Proxy <> '' then
+  if GParamsRec.Proxy <> '' then
   begin
-    ProxyInfo.Status := PROXY_PARAM;
+    GProxyInfo.Status := PROXY_PARAM;
     Exit;
   end;
 
-  if ProxyInRegEnvironment(HKCU, ProxyInfo) then
+  if ProxyInRegEnvironment(HKCU, GProxyInfo) then
   begin
-    ProxyInfo.Status := PROXY_ENV;
+    GProxyInfo.Status := PROXY_ENV;
     Exit;
   end;
 
-  if ProxyInRegEnvironment(HKLM, ProxyInfo) then
+  if ProxyInRegEnvironment(HKLM, GProxyInfo) then
   begin
-    ProxyInfo.Status := PROXY_ENV;
+    GProxyInfo.Status := PROXY_ENV;
     Exit;
   end;
 
-  if ProxyInLocalEnvironment(ProxyInfo) then
+  if ProxyInLocalEnvironment(GProxyInfo) then
   begin
-    ProxyInfo.Status := PROXY_ENV;
+    GProxyInfo.Status := PROXY_ENV;
     Exit;
   end;
 
@@ -2616,13 +2616,13 @@ begin
 
   if ProxyInRegistry(HKCU, Key, Servers) then
   begin
-    SetProxyFromReg(Servers, ProxyInfo);
+    SetProxyFromReg(Servers, GProxyInfo);
     Exit;
   end;
 
   if ProxyInRegistry(HKLM, Key, Servers) then
   begin
-    SetProxyFromReg(Servers, ProxyInfo);
+    SetProxyFromReg(Servers, GProxyInfo);
     Exit;
   end;
 
@@ -2681,32 +2681,32 @@ var
 
 begin
 
-  ConfigRec := ConfigInit(Filename);
+  GConfigRec := ConfigInit(Filename);
   Debug('Checking selected php: ' + Filename);
 
   {Make sure whatever we've been given can execute}
-  if not CheckPhpExe(ConfigRec) then
+  if not CheckPhpExe(GConfigRec) then
   begin
     Result := False;
     Exit;
   end;
 
   {Run php to check everything is okay}
-  if not CheckPhpSetup(ConfigRec, '') then
+  if not CheckPhpSetup(GConfigRec, '') then
   begin
     Result := False;
     Exit;
   end;
 
   {See if we need to modify the ini}
-  if IniNeedsMod(ModIni, ConfigRec) then
+  if IniNeedsMod(ModIni, GConfigRec) then
   begin
     ModIni.Active := True;
-    ModIni.OldFile := ConfigRec.PhpIni;
-    ModIni.OldSecure := ConfigRec.PhpSecure;
-    ModIni.OldCompat := ConfigRec.PhpCompat;
+    ModIni.OldFile := GConfigRec.PhpIni;
+    ModIni.OldSecure := GConfigRec.PhpSecure;
+    ModIni.OldCompat := GConfigRec.PhpCompat;
 
-    ModIniRec := ModIni;
+    GModIniRec := ModIni;
   end;
 
   Result := True;
@@ -2735,8 +2735,8 @@ begin
   if WizardSilent then
     Params := Params + ' silent';
 
-  DebugExecBegin(TmpFile.RunPhp, Params);
-  Result := Exec(TmpFile.RunPhp, Params, TmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
+  DebugExecBegin(GTmpFile.RunPhp, Params);
+  Result := Exec(GTmpFile.RunPhp, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
   DebugExecEnd(Result, Config.ExitCode);
 
   if not Result or (Config.ExitCode <> 0) then
@@ -3138,7 +3138,7 @@ begin
   Debug('Checking tmp ini with selected php');
   Config := ConfigInit(Config.PhpExe);
 
-  if CheckPhpSetup(Config, TmpFile.ModIni) then
+  if CheckPhpSetup(Config, GTmpFile.ModIni) then
   begin
     ModIni.Secure := Config.PhpSecure;
     ModIni.Compat := Config.PhpCompat;
@@ -3157,15 +3157,15 @@ begin
   Result := False;
   Error := Format('Error: script %s did not create ', [PHP_INI]);
 
-  if not FileExists(TmpFile.ModIni) then
+  if not FileExists(GTmpFile.ModIni) then
   begin
-    Debug(Error + ExtractFileName(TmpFile.ModIni));
+    Debug(Error + ExtractFileName(GTmpFile.ModIni));
     Exit;
   end;
 
-  if Existing and not FileExists(TmpFile.OrigIni) then
+  if Existing and not FileExists(GTmpFile.OrigIni) then
   begin
-    Debug(Error + ExtractFileName(TmpFile.OrigIni));
+    Debug(Error + ExtractFileName(GTmpFile.OrigIni));
     Exit;
   end;
 
@@ -3180,31 +3180,31 @@ var
 
 begin
 
-  Ini := ModIniRec.File;
+  Ini := GModIniRec.File;
 
   {Return true if the new/modified ini is not in use}
-  if not ModIniRec.InUse then
+  if not GModIniRec.InUse then
   begin
     Result := True;
     Exit;
   end;
 
-  if ModIniRec.New then
+  if GModIniRec.New then
   begin
     DelayDeleteFile(Ini, 2);
     Result := not FileExists(Ini);
   end
   else
-    Result := FileCopy(TmpFile.OrigIni, Ini, False);
+    Result := FileCopy(GTmpFile.OrigIni, Ini, False);
 
-  IniSetMessage(Result, False, ModIniRec);
+  IniSetMessage(Result, False, GModIniRec);
 
   if Result then
   begin
-    ConfigRec.PhpIni := ModIniRec.OldFile;
-    ConfigRec.PhpSecure := ModIniRec.OldSecure;
-    ConfigRec.PhpCompat := ModIniRec.OldCompat;
-    ModIniRec.InUse := False;
+    GConfigRec.PhpIni := GModIniRec.OldFile;
+    GConfigRec.PhpSecure := GModIniRec.OldSecure;
+    GConfigRec.PhpCompat := GModIniRec.OldCompat;
+    GModIniRec.InUse := False;
   end;
 
 end;
@@ -3216,24 +3216,24 @@ var
 
 begin
 
-  Ini := ModIniRec.File;
+  Ini := GModIniRec.File;
 
   {Return true if the new/modified ini is in use}
-  if ModIniRec.InUse then
+  if GModIniRec.InUse then
   begin
     Result := True;
     Exit;
   end;
 
-  Result := FileCopy(TmpFile.ModIni, Ini, False);
-  IniSetMessage(Result, True, ModIniRec);
+  Result := FileCopy(GTmpFile.ModIni, Ini, False);
+  IniSetMessage(Result, True, GModIniRec);
 
   if Result then
   begin
-    ConfigRec.PhpIni := Ini;
-    ConfigRec.PhpSecure := ModIniRec.Secure;
-    ConfigRec.PhpCompat := ModIniRec.Compat;
-    ModIniRec.InUse := True;
+    GConfigRec.PhpIni := Ini;
+    GConfigRec.PhpSecure := GModIniRec.Secure;
+    GConfigRec.PhpCompat := GModIniRec.Compat;
+    GModIniRec.InUse := True;
   end;
 
 end;
@@ -3248,7 +3248,7 @@ begin
     Result := IniFileRestore();
 
   if not Result then
-    ShowErrorMessage(ModIniRec.UpdateError);
+    ShowErrorMessage(GModIniRec.UpdateError);
 
 end;
 
@@ -3278,11 +3278,11 @@ begin
   Config := ConfigInit(Config.PhpExe);
 
   {We must delete any existing tmp inis}
-  DeleteFile(TmpFile.ModIni);
-  DeleteFile(TmpFile.OrigIni);
+  DeleteFile(GTmpFile.ModIni);
+  DeleteFile(GTmpFile.OrigIni);
 
   Args := ArgCmd(ExtractFileDir(Config.PhpExe));
-  AddStr(Args, #32 + ArgCmd(TmpDir));
+  AddStr(Args, #32 + ArgCmd(GTmpDir));
 
   {ExecPhp should only fail calling cmd.exe}
   if not ExecPhp(PHP_INI, Args, '', Config) then
@@ -3363,7 +3363,7 @@ begin
   AddPhpParam('quiet', Result);
 
   {Important to check both these values}
-  if not Config.PhpSecure and Flags.DisableTls then
+  if not Config.PhpSecure and GFlags.DisableTls then
     AddPhpParam('disable-tls', Result);
 
 end;
@@ -3417,7 +3417,7 @@ begin
   begin
     {We already have an error from stdout, but there might be more info in
     stderr, particulaly if the installer script path is not present in stdout}
-    Index := Pos(TmpDir + '\' + PHP_INSTALLER, Config.Output);
+    Index := Pos(GTmpDir + '\' + PHP_INSTALLER, Config.Output);
 
     if Index = 0 then
       AddPara(Config.Output, OutputFromArray(Config.StdErr));
@@ -3465,7 +3465,7 @@ begin
     {Check in case composer.phar has not been created. Although very
     unlikely, it has been reported and not trapping this would cause setup to
     complain about not having a file to install}
-    if not FileExists(TmpDir + '\composer.phar') then
+    if not FileExists(GTmpDir + '\composer.phar') then
       Status := ERR_INSTALL_OUTPUT;
 
   end;
@@ -3571,17 +3571,17 @@ var
 
 begin
 
-  Page := Pages.ErrorInstaller;
+  Page := GPages.ErrorInstaller;
   Text := TNewStaticText(Page.FindComponent('Text'));
   Memo := TNewMemo(Page.FindComponent('Memo'));
 
-  if ConfigRec.StatusCode <> ERR_INSTALL_WARNINGS then
+  if GConfigRec.StatusCode <> ERR_INSTALL_WARNINGS then
   begin
 
     Page.Caption := 'Composer Installer Error';
     Page.Description := 'Unable to continue with installation';
 
-    if ConfigRec.StatusCode = ERR_INSTALL_OUTPUT then
+    if GConfigRec.StatusCode = ERR_INSTALL_OUTPUT then
       Text.Caption := 'An error occurred. Clicking Retry may resolve this issue.'
     else
       Text.Caption := 'Please review and fix the issues listed below then try again.';
@@ -3594,7 +3594,7 @@ begin
     Text.Caption := 'Review the issues listed below then click Next to continue';
   end;
 
-  Memo.Text := ConfigRec.Message;
+  Memo.Text := GConfigRec.Message;
 
 end;
 
@@ -3606,21 +3606,21 @@ var
 
 begin
 
-  Page := Pages.ErrorSettings;
+  Page := GPages.ErrorSettings;
   Memo := TNewMemo(Page.FindComponent('Memo'));
 
-  if ConfigRec.StatusCode = ERR_CHECK_PHP then
+  if GConfigRec.StatusCode = ERR_CHECK_PHP then
   begin
     Page.Caption := 'PHP Settings Error';
     Page.Description := 'Composer will not work with your current settings';
   end
-  else if ConfigRec.StatusCode = ERR_CHECK_PATH then
+  else if GConfigRec.StatusCode = ERR_CHECK_PATH then
   begin
     Page.Caption := 'Path Settings Error';
     Page.Description := 'Composer Setup cannot continue with your current settings';
   end;
 
-  Memo.Text := ConfigRec.Message;
+  Memo.Text := GConfigRec.Message;
 
 end;
 
@@ -3639,32 +3639,32 @@ begin
 
   Result := CreateCustomPage(Id, Caption, Description);
 
-  IniPage.Text := TNewStaticText.Create(Result);
-  IniPage.Text.Width := Result.SurfaceWidth;
-  IniPage.Text.WordWrap := True;
-  IniPage.Text.AutoSize := True;
-  IniPage.Text.Caption := '';
-  IniPage.Text.Parent := Result.Surface;
+  GIniPage.Text := TNewStaticText.Create(Result);
+  GIniPage.Text.Width := Result.SurfaceWidth;
+  GIniPage.Text.WordWrap := True;
+  GIniPage.Text.AutoSize := True;
+  GIniPage.Text.Caption := '';
+  GIniPage.Text.Parent := Result.Surface;
 
-  Base := GetBase(IniPage.Text);
+  Base := GetBase(GIniPage.Text);
 
-  IniPage.Checkbox := TNewCheckbox.Create(Result);
-  IniPage.Checkbox.Top := Base + ScaleY(60);
-  IniPage.Checkbox.Width := Result.SurfaceWidth;
-  IniPage.Checkbox.Caption := '';
-  IniPage.Checkbox.Enabled := True;
-  IniPage.Checkbox.Checked := True;
-  IniPage.Checkbox.Parent := Result.Surface;
+  GIniPage.Checkbox := TNewCheckbox.Create(Result);
+  GIniPage.Checkbox.Top := Base + ScaleY(60);
+  GIniPage.Checkbox.Width := Result.SurfaceWidth;
+  GIniPage.Checkbox.Caption := '';
+  GIniPage.Checkbox.Enabled := True;
+  GIniPage.Checkbox.Checked := True;
+  GIniPage.Checkbox.Parent := Result.Surface;
 
-  Base := GetBase(IniPage.Checkbox);
+  Base := GetBase(GIniPage.Checkbox);
 
-  IniPage.Info := TNewStaticText.Create(Result);
-  IniPage.Info.Top := Base + ScaleY(5);
-  IniPage.Info.Width := Result.SurfaceWidth;
-  IniPage.Info.WordWrap := True;
-  IniPage.Info.AutoSize := True;
-  IniPage.Info.Caption := '';
-  IniPage.Info.Parent := Result.Surface;
+  GIniPage.Info := TNewStaticText.Create(Result);
+  GIniPage.Info.Top := Base + ScaleY(5);
+  GIniPage.Info.Width := Result.SurfaceWidth;
+  GIniPage.Info.WordWrap := True;
+  GIniPage.Info.AutoSize := True;
+  GIniPage.Info.Caption := '';
+  GIniPage.Info.Parent := Result.Surface;
 
 end;
 
@@ -3676,17 +3676,17 @@ var
 begin
 
   {Page description}
-  if ModIniRec.New then
+  if GModIniRec.New then
     S := 'Your php.ini file is missing. Setup can create one for you.'
   else
     S := 'Your php.ini file needs updating. Setup can do this for you.';
 
-  Pages.Ini.Description := S;
+  GPages.Ini.Description := S;
 
   {Main text caption}
   S := 'Composer expects PHP to be configured with some basic settings,';
 
-  if ModIniRec.New then
+  if GModIniRec.New then
   begin
     S := S + ' but this requires a php.ini file.';
     S := S + ' Setup can create one at the following location:';
@@ -3697,17 +3697,17 @@ begin
     S := S + ' The php.ini used by your command-line PHP is:';
   end;
 
-  S := S + LF2 + TAB + ModIniRec.File;
-  IniPage.Text.Caption := S;
+  S := S + LF2 + TAB + GModIniRec.File;
+  GIniPage.Text.Caption := S;
 
   {Checkbox caption}
-  if ModIniRec.New then
-    IniPage.Checkbox.Caption := 'Create a php.ini file'
+  if GModIniRec.New then
+    GIniPage.Checkbox.Caption := 'Create a php.ini file'
   else
-    IniPage.Checkbox.Caption := 'Update this php.ini';
+    GIniPage.Checkbox.Caption := 'Update this php.ini';
 
   {Info text caption}
-  if ModIniRec.New then
+  if GModIniRec.New then
   begin
     S := 'This will be a copy of your php.ini-production file,';
     S := S + ' with the minimum settings enabled.';
@@ -3716,10 +3716,10 @@ begin
   begin
     S := 'Your existing php.ini will be modified.';
     S := S + ' A back-up has been made and saved to:' + LF2 + TAB;
-    S := S + ModIniRec.Backup;
+    S := S + GModIniRec.Backup;
   end;
 
-  IniPage.Info.Caption := S;
+  GIniPage.Info.Caption := S;
 
 end;
 
@@ -3769,12 +3769,12 @@ var
 begin
 
   {Deal with Dev mode first as it always succeeds}
-  if Flags.DevInstall then
+  if GFlags.DevInstall then
   begin
     Result := True;
     DebugMsg := 'Setup will install {#SetupVersion} in Developer Mode';
 
-    if not ExistingRec.Installed then
+    if not GExistingRec.Installed then
       Debug(DebugMsg)
     else
       Debug(Format('%s alongside existing version %s', [DebugMsg, Rec.Version]));
@@ -3796,7 +3796,7 @@ begin
   else
   begin
 
-    if ExistingRec.Installed then
+    if GExistingRec.Installed then
       Debug(Format(DebugMsg, ['will', Rec.Version]));
 
   end;
@@ -3814,10 +3814,10 @@ begin
 
   Result := CreateCustomPage(Id, Caption, Description);
 
-  OptionsPage.Text := TNewStaticText.Create(Result);
-  OptionsPage.Text.Width := Result.SurfaceWidth;
-  OptionsPage.Text.AutoSize := True;
-  OptionsPage.Text.WordWrap := True;
+  GOptionsPage.Text := TNewStaticText.Create(Result);
+  GOptionsPage.Text.Width := Result.SurfaceWidth;
+  GOptionsPage.Text.AutoSize := True;
+  GOptionsPage.Text.WordWrap := True;
 
   if IsAdminLoggedOn then
     Users := 'all users'
@@ -3828,41 +3828,41 @@ begin
   S := S + ' This includes a Control Panel uninstaller and is the recommended option.';
   S := S + ' Click Next to use it.';
 
-  OptionsPage.Text.Caption := S;
-  OptionsPage.Text.Parent := Result.Surface;
+  GOptionsPage.Text.Caption := S;
+  GOptionsPage.Text.Parent := Result.Surface;
 
-  Base := GetBase(OptionsPage.Text);
+  Base := GetBase(GOptionsPage.Text);
 
-  OptionsPage.Checkbox := TNewCheckbox.Create(Result);
-  OptionsPage.Checkbox.Top := Base + ScaleY(30);
-  OptionsPage.Checkbox.Width := Result.SurfaceWidth;
-  OptionsPage.Checkbox.Caption := 'Developer mode';
-  OptionsPage.Checkbox.Checked := False;
-  OptionsPage.Checkbox.OnClick := @OptionsCheckboxClick;
-  OptionsPage.Checkbox.Parent := Result.Surface;
+  GOptionsPage.Checkbox := TNewCheckbox.Create(Result);
+  GOptionsPage.Checkbox.Top := Base + ScaleY(30);
+  GOptionsPage.Checkbox.Width := Result.SurfaceWidth;
+  GOptionsPage.Checkbox.Caption := 'Developer mode';
+  GOptionsPage.Checkbox.Checked := False;
+  GOptionsPage.Checkbox.OnClick := @OptionsCheckboxClick;
+  GOptionsPage.Checkbox.Parent := Result.Surface;
 
-  Base := GetBase(OptionsPage.Checkbox);
+  Base := GetBase(GOptionsPage.Checkbox);
 
-  OptionsPage.DevText := TNewStaticText.Create(Result);
-  OptionsPage.DevText.Top := Base + ScaleY(3);
-  OptionsPage.DevText.Width := Result.SurfaceWidth;
-  OptionsPage.DevText.AutoSize := True;
-  OptionsPage.DevText.WordWrap := True;
+  GOptionsPage.DevText := TNewStaticText.Create(Result);
+  GOptionsPage.DevText.Top := Base + ScaleY(3);
+  GOptionsPage.DevText.Width := Result.SurfaceWidth;
+  GOptionsPage.DevText.AutoSize := True;
+  GOptionsPage.DevText.WordWrap := True;
 
   S := 'Take control and just install Composer. An uninstaller will not be included.';
 
-  OptionsPage.DevText.Caption := S;
-  OptionsPage.DevText.Parent := Result.Surface;
+  GOptionsPage.DevText.Caption := S;
+  GOptionsPage.DevText.Parent := Result.Surface;
 
-  Base := GetBase(OptionsPage.DevText);
+  Base := GetBase(GOptionsPage.DevText);
 
-  OptionsPage.DevInfo := TNewStaticText.Create(Result);
-  OptionsPage.DevInfo.Top := Base + ScaleY(8);
-  OptionsPage.DevInfo.Width := Result.SurfaceWidth;
-  OptionsPage.DevInfo.AutoSize := True;
-  OptionsPage.DevInfo.WordWrap := True;
+  GOptionsPage.DevInfo := TNewStaticText.Create(Result);
+  GOptionsPage.DevInfo.Top := Base + ScaleY(8);
+  GOptionsPage.DevInfo.Width := Result.SurfaceWidth;
+  GOptionsPage.DevInfo.AutoSize := True;
+  GOptionsPage.DevInfo.WordWrap := True;
 
-  if ExistingRec.Installed then
+  if GExistingRec.Installed then
   begin
 
     {The user is not prevented from making a dev install over an existing
@@ -3873,16 +3873,16 @@ begin
 
     S := 'Composer is already installed.';
 
-    if StrToVer(ExistingRec.Version) < StrToVer('4.6.0') then
+    if StrToVer(GExistingRec.Version) < StrToVer('4.6.0') then
       S := S + ' You should uninstall it from the Control Panel first.'
     else
       S := S + ' You can uninstall it from the Control Panel later.';
 
-    OptionsPage.DevInfo.Caption := S;
+    GOptionsPage.DevInfo.Caption := S;
 
   end;
 
-  OptionsPage.DevInfo.Parent := Result.Surface;
+  GOptionsPage.DevInfo.Parent := Result.Surface;
 
   OptionsPageInit();
 
@@ -3893,27 +3893,27 @@ procedure OptionsPageInit;
 begin
 
   {Set LastDevDir to the default value}
-  if ParamsRec.Dev <> '' then
-    Flags.LastDevDir := ParamsRec.Dev
+  if GParamsRec.Dev <> '' then
+    GFlags.LastDevDir := GParamsRec.Dev
   else
   begin
 
     if IsAdminLoggedOn then
-      Flags.LastDevDir := ExpandConstant('{sd}') + '\composer'
+      GFlags.LastDevDir := ExpandConstant('{sd}') + '\composer'
     else
-      Flags.LastDevDir := GetEnv('USERPROFILE') + '\composer';
+      GFlags.LastDevDir := GetEnv('USERPROFILE') + '\composer';
 
   end;
 
   {The current value of WizardDirValue is saved to LastDevDir when toggling
   between dev mode and the default, so we need to initialize things in dev
   mode. The correct mode will be determined on the simulated click below.}
-  Flags.DevInstall := True;
-  WizardForm.DirEdit.Text := Flags.LastDevDir;
+  GFlags.DevInstall := True;
+  WizardForm.DirEdit.Text := GFlags.LastDevDir;
 
   {Set checkbox value and simulate click}
-  OptionsPage.Checkbox.Checked := ParamsRec.Dev <> '';
-  OptionsCheckboxClick(OptionsPage.Checkbox);
+  GOptionsPage.Checkbox.Checked := GParamsRec.Dev <> '';
+  OptionsCheckboxClick(GOptionsPage.Checkbox);
 
 end;
 
@@ -3921,14 +3921,14 @@ end;
 procedure OptionsPageUpdate;
 begin
 
-  Flags.DevInstall := OptionsPage.Checkbox.Checked;
-  OptionsPage.DevInfo.Visible := OptionsPage.Checkbox.Checked;
+  GFlags.DevInstall := GOptionsPage.Checkbox.Checked;
+  GOptionsPage.DevInfo.Visible := GOptionsPage.Checkbox.Checked;
 
-  if Flags.DevInstall then
-    WizardForm.DirEdit.Text := Flags.LastDevDir
+  if GFlags.DevInstall then
+    WizardForm.DirEdit.Text := GFlags.LastDevDir
   else
   begin
-    Flags.LastDevDir := WizardForm.DirEdit.Text;
+    GFlags.LastDevDir := WizardForm.DirEdit.Text;
     WizardForm.DirEdit.Text := GetDefaultDir('');
   end;
 
@@ -3957,16 +3957,16 @@ begin
   ErrorInstaller pages and returns true if we can move to the next page,
   which is the ErrorInstaller page or wpPreparing respectively}
 
-  ProgressShow(Pages.ProgressInstaller);
+  ProgressShow(GPages.ProgressInstaller);
 
   try
-    RunInstaller(ConfigRec);
+    RunInstaller(GConfigRec);
   finally
-    Pages.ProgressInstaller.Hide;
+    GPages.ProgressInstaller.Hide;
   end;
 
   {On success, ShouldSkipPage will move us past the ErrorInstaller page}
-  if ConfigRec.StatusCode = ERR_SUCCESS then
+  if GConfigRec.StatusCode = ERR_SUCCESS then
     Result := True
   else
     Result := WizardForm.CurPageID = wpReady;
@@ -3977,30 +3977,30 @@ end;
 procedure ProgressPageSettings(const Filename: String);
 begin
 
-  Pages.ProgressSettings.Tag := WizardForm.CurPageID;
-  Pages.ProgressSettings.SetText('Checking your command-line PHP', '');
-  ProgressShow(Pages.ProgressSettings);
+  GPages.ProgressSettings.Tag := WizardForm.CurPageID;
+  GPages.ProgressSettings.SetText('Checking your command-line PHP', '');
+  ProgressShow(GPages.ProgressSettings);
 
   try
 
     if not CheckPhp(Filename) then
     begin
       {Important to set this for ShouldSkipPage}
-      Flags.SettingsError := True;
+      GFlags.SettingsError := True;
       Exit;
     end;
 
-    Pages.ProgressSettings.SetText('Checking your environment variables', '');
+    GPages.ProgressSettings.SetText('Checking your environment variables', '');
 
     if not CheckAllPaths then
     begin
       {Important to set this for ShouldSkipPage}
-      Flags.SettingsError := True;
+      GFlags.SettingsError := True;
       Exit;
     end;
 
   finally
-    Pages.ProgressSettings.Hide;
+    GPages.ProgressSettings.Hide;
   end;
 
 end;
@@ -4019,22 +4019,22 @@ var
 begin
 
   Result := True;
-  ProxyPage.Edit.Text := Trim(ProxyPage.Edit.Text);
+  GProxyPage.Edit.Text := Trim(GProxyPage.Edit.Text);
 
-  if not ProxyPage.Checkbox.Checked then
+  if not GProxyPage.Checkbox.Checked then
   begin
-    ProxyInfo.UserUrl := '';
+    GProxyInfo.UserUrl := '';
     ProxyChange('', ENV_REMOVE);
   end
   else
   begin
-    ProxyInfo.UserUrl := ProxyPage.Edit.Text;
+    GProxyInfo.UserUrl := GProxyPage.Edit.Text;
 
-    if ProxyInfo.UserUrl <> '' then
+    if GProxyInfo.UserUrl <> '' then
     begin
       {Register environment change if applicable}
-      if ProxyCanModify(ProxyInfo) then
-        ProxyChange(ProxyInfo.UserUrl, ENV_ADD);
+      if ProxyCanModify(GProxyInfo) then
+        ProxyChange(GProxyInfo.UserUrl, ENV_ADD);
     end
     else
     begin
@@ -4056,39 +4056,39 @@ begin
 
   Result := CreateCustomPage(Id, Caption, Description);
 
-  ProxyPage.Checkbox := TNewCheckbox.Create(Result);
-  ProxyPage.Checkbox.Width := Result.SurfaceWidth;
-  ProxyPage.Checkbox.Caption := 'Use a proxy server to connect to internet';
-  ProxyPage.Checkbox.Checked := False;
-  ProxyPage.Checkbox.OnClick := @ProxyCheckboxClick;
-  ProxyPage.Checkbox.Parent := Result.Surface;
+  GProxyPage.Checkbox := TNewCheckbox.Create(Result);
+  GProxyPage.Checkbox.Width := Result.SurfaceWidth;
+  GProxyPage.Checkbox.Caption := 'Use a proxy server to connect to internet';
+  GProxyPage.Checkbox.Checked := False;
+  GProxyPage.Checkbox.OnClick := @ProxyCheckboxClick;
+  GProxyPage.Checkbox.Parent := Result.Surface;
 
-  Base := GetBase(ProxyPage.Checkbox);
+  Base := GetBase(GProxyPage.Checkbox);
 
-  ProxyPage.Text := TNewStaticText.Create(Result);
-  ProxyPage.Text.Top := Base + ScaleY(25);
-  ProxyPage.Text.Width := Result.SurfaceWidth;
-  ProxyPage.Text.AutoSize := True;
-  ProxyPage.Text.Caption := '';
-  ProxyPage.Text.Parent := Result.Surface;
+  GProxyPage.Text := TNewStaticText.Create(Result);
+  GProxyPage.Text.Top := Base + ScaleY(25);
+  GProxyPage.Text.Width := Result.SurfaceWidth;
+  GProxyPage.Text.AutoSize := True;
+  GProxyPage.Text.Caption := '';
+  GProxyPage.Text.Parent := Result.Surface;
 
-  Base := GetBase(ProxyPage.Text);
+  Base := GetBase(GProxyPage.Text);
 
-  ProxyPage.Edit := TNewEdit.Create(Result);
-  ProxyPage.Edit.Top := Base + ScaleY(5);
-  ProxyPage.Edit.Width := Result.SurfaceWidth;
-  ProxyPage.Edit.Text := '';
-  ProxyPage.Edit.Parent := Result.Surface;
+  GProxyPage.Edit := TNewEdit.Create(Result);
+  GProxyPage.Edit.Top := Base + ScaleY(5);
+  GProxyPage.Edit.Width := Result.SurfaceWidth;
+  GProxyPage.Edit.Text := '';
+  GProxyPage.Edit.Parent := Result.Surface;
 
-  Base := GetBase(ProxyPage.Edit);
+  Base := GetBase(GProxyPage.Edit);
 
-  ProxyPage.Info := TNewStaticText.Create(Result);
-  ProxyPage.Info.Top := Base + ScaleY(10);
-  ProxyPage.Info.Width := Result.SurfaceWidth;
-  ProxyPage.Info.WordWrap := True;
-  ProxyPage.Info.AutoSize := True;
-  ProxyPage.Info.Caption := '';
-  ProxyPage.Info.Parent := Result.Surface;
+  GProxyPage.Info := TNewStaticText.Create(Result);
+  GProxyPage.Info.Top := Base + ScaleY(10);
+  GProxyPage.Info.Width := Result.SurfaceWidth;
+  GProxyPage.Info.WordWrap := True;
+  GProxyPage.Info.AutoSize := True;
+  GProxyPage.Info.Caption := '';
+  GProxyPage.Info.Parent := Result.Surface;
 
   ProxyPageUpdate();
 
@@ -4103,23 +4103,23 @@ begin
 
   EnvName := PROXY_KEY;
 
-  case ProxyInfo.Status of
+  case GProxyInfo.Status of
     PROXY_NONE: Result := '';
-    PROXY_PARAM: Result := ParamsRec.Proxy;
+    PROXY_PARAM: Result := GParamsRec.Proxy;
   else
     begin
 
-      if not Flags.DisableTls then
+      if not GFlags.DisableTls then
       begin
 
         {Use https if it is available}
-        if ProxyInfo.Https <> '' then
+        if GProxyInfo.Https <> '' then
         begin
-          Result := ProxyInfo.Https;
+          Result := GProxyInfo.Https;
           EnvName := 'https_proxy';
         end
         else
-          Result := ProxyInfo.Http;
+          Result := GProxyInfo.Http;
 
       end
       else
@@ -4127,11 +4127,11 @@ begin
 
         {No tls. If we haven't got an http value the installer script
         may fail later, but it is hard to do something else with it here}
-        if ProxyInfo.Http <> '' then
-          Result := ProxyInfo.Http
+        if GProxyInfo.Http <> '' then
+          Result := GProxyInfo.Http
         else
         begin
-          Result := ProxyInfo.Https;
+          Result := GProxyInfo.Https;
           EnvName := 'https_proxy';
         end;
 
@@ -4142,7 +4142,7 @@ begin
 
   EnvName := Format('%s%s%s environment variable', [#39, EnvName, #39]);
 
-  if ProxyInfo.Status = PROXY_ENV then
+  if GProxyInfo.Status = PROXY_ENV then
     Info := Format('Your %s is already set.', [EnvName])
   else
     Info := Format('This will set your %s.', [EnvName]);
@@ -4160,20 +4160,20 @@ begin
 
   SetProxyData();
 
-  case ProxyInfo.Status of
-    PROXY_NONE: ProxyPage.Text.Caption := 'Enter proxy url:';
-    PROXY_PARAM: ProxyPage.Text.Caption := 'Proxy url set by command param:';
-    PROXY_ENV: ProxyPage.Text.Caption := 'Proxy url set from the environment:';
-    PROXY_REG: ProxyPage.Text.Caption := 'Proxy url set from the registry:';
+  case GProxyInfo.Status of
+    PROXY_NONE: GProxyPage.Text.Caption := 'Enter proxy url:';
+    PROXY_PARAM: GProxyPage.Text.Caption := 'Proxy url set by command param:';
+    PROXY_ENV: GProxyPage.Text.Caption := 'Proxy url set from the environment:';
+    PROXY_REG: GProxyPage.Text.Caption := 'Proxy url set from the registry:';
   end;
 
-  if ProxyInfo.Status <> PROXY_NONE then
+  if GProxyInfo.Status <> PROXY_NONE then
   begin
-    ProxyPage.Checkbox.Checked := True;
-    ProxyPage.Edit.Text := ProxyPageGetText(Info);
+    GProxyPage.Checkbox.Checked := True;
+    GProxyPage.Edit.Text := ProxyPageGetText(Info);
   end;
 
-  ProxyPage.Info.Caption := Info;
+  GProxyPage.Info.Caption := Info;
   ProxyPageRefresh();
 
 end;
@@ -4182,17 +4182,17 @@ end;
 procedure ProxyPageRefresh;
 begin
 
-  if (ProxyInfo.Status = PROXY_PARAM) or (ProxyInfo.Status = PROXY_ENV) then
+  if (GProxyInfo.Status = PROXY_PARAM) or (GProxyInfo.Status = PROXY_ENV) then
   begin
-    ProxyPage.Checkbox.Enabled := False;
-    ProxyPage.Edit.Enabled := False;
-    ProxyPage.Info.Enabled := True;
+    GProxyPage.Checkbox.Enabled := False;
+    GProxyPage.Edit.Enabled := False;
+    GProxyPage.Info.Enabled := True;
   end
   else
   begin
-    ProxyPage.Checkbox.Enabled := True;
-    ProxyPage.Edit.Enabled := ProxyPage.Checkbox.Checked;
-    ProxyPage.Info.Enabled := ProxyPage.Checkbox.Checked;
+    GProxyPage.Checkbox.Enabled := True;
+    GProxyPage.Edit.Enabled := GProxyPage.Checkbox.Checked;
+    GProxyPage.Info.Enabled := GProxyPage.Checkbox.Checked;
   end;
 
 end;
@@ -4200,9 +4200,9 @@ end;
 
 procedure SecurityCheckboxClick(Sender: TObject);
 begin
-  WizardForm.NextButton.Enabled := SecurityPage.Checkbox.Checked;
-  Flags.DisableTls := SecurityPage.Checkbox.Checked;
-  SecurityPage.Info.Visible := SecurityPage.Checkbox.Checked;
+  WizardForm.NextButton.Enabled := GSecurityPage.Checkbox.Checked;
+  GFlags.DisableTls := GSecurityPage.Checkbox.Checked;
+  GSecurityPage.Info.Visible := GSecurityPage.Checkbox.Checked;
 end;
 
 
@@ -4215,49 +4215,49 @@ begin
 
   Result := CreateCustomPage(Id, Caption, Description);
 
-  SecurityPage.Text := TNewStaticText.Create(Result);
-  SecurityPage.Text.Width := Result.SurfaceWidth;
-  SecurityPage.Text.WordWrap := True;
-  SecurityPage.Text.AutoSize := True;
+  GSecurityPage.Text := TNewStaticText.Create(Result);
+  GSecurityPage.Text.Width := Result.SurfaceWidth;
+  GSecurityPage.Text.WordWrap := True;
+  GSecurityPage.Text.AutoSize := True;
   S := 'The openssl extension is missing from the PHP version you specified.';
   S := S + ' This means that secure HTTPS transfers are not possible.';
-  SecurityPage.Text.Caption := S;
-  SecurityPage.Text.Parent := Result.Surface;
+  GSecurityPage.Text.Caption := S;
+  GSecurityPage.Text.Parent := Result.Surface;
 
-  Base := GetBase(SecurityPage.Text);
+  Base := GetBase(GSecurityPage.Text);
 
-  SecurityPage.Ini := TNewStaticText.Create(Result);
-  SecurityPage.Ini.Top := Base + ScaleY(15);
-  SecurityPage.Ini.Width := Result.SurfaceWidth;
-  SecurityPage.Ini.WordWrap := True;
-  SecurityPage.Ini.AutoSize := True;
-  SecurityPage.Ini.Caption := '';
-  SecurityPage.Ini.Parent := Result.Surface;
+  GSecurityPage.Ini := TNewStaticText.Create(Result);
+  GSecurityPage.Ini.Top := Base + ScaleY(15);
+  GSecurityPage.Ini.Width := Result.SurfaceWidth;
+  GSecurityPage.Ini.WordWrap := True;
+  GSecurityPage.Ini.AutoSize := True;
+  GSecurityPage.Ini.Caption := '';
+  GSecurityPage.Ini.Parent := Result.Surface;
 
-  Base := GetBase(SecurityPage.Ini);
+  Base := GetBase(GSecurityPage.Ini);
 
-  SecurityPage.Checkbox := TNewCheckbox.Create(Result);
-  SecurityPage.Checkbox.Top := Base + ScaleY(75);
-  SecurityPage.Checkbox.Width := Result.SurfaceWidth;
-  SecurityPage.Checkbox.Caption := 'Disable this requirement - this option is not recommended';
-  SecurityPage.Checkbox.Enabled := True;
-  SecurityPage.Checkbox.OnClick := @SecurityCheckboxClick;
-  SecurityPage.Checkbox.Parent := Result.Surface;
+  GSecurityPage.Checkbox := TNewCheckbox.Create(Result);
+  GSecurityPage.Checkbox.Top := Base + ScaleY(75);
+  GSecurityPage.Checkbox.Width := Result.SurfaceWidth;
+  GSecurityPage.Checkbox.Caption := 'Disable this requirement - this option is not recommended';
+  GSecurityPage.Checkbox.Enabled := True;
+  GSecurityPage.Checkbox.OnClick := @SecurityCheckboxClick;
+  GSecurityPage.Checkbox.Parent := Result.Surface;
 
-  Base := GetBase(SecurityPage.Checkbox);
+  Base := GetBase(GSecurityPage.Checkbox);
 
-  SecurityPage.Info := TNewStaticText.Create(Result);
-  SecurityPage.Info.Top := Base + ScaleY(5);
-  SecurityPage.Info.Width := Result.SurfaceWidth;
-  SecurityPage.Info.WordWrap := True;
-  SecurityPage.Info.AutoSize := True;
+  GSecurityPage.Info := TNewStaticText.Create(Result);
+  GSecurityPage.Info.Top := Base + ScaleY(5);
+  GSecurityPage.Info.Width := Result.SurfaceWidth;
+  GSecurityPage.Info.WordWrap := True;
+  GSecurityPage.Info.AutoSize := True;
   S := 'Your computer could be vulnerable to MITM attacks which may result';
   S := S + ' in the installation or execution of arbitrary code.';
   S := S + LF2
   S := S + 'You will have to modify a config file before you can use Composer.';
-  SecurityPage.Info.Caption := S;
-  SecurityPage.Info.Visible := False;
-  SecurityPage.Info.Parent := Result.Surface;
+  GSecurityPage.Info.Caption := S;
+  GSecurityPage.Info.Visible := False;
+  GSecurityPage.Info.Parent := Result.Surface;
 
 end;
 
@@ -4269,14 +4269,14 @@ var
 begin
 
   S := 'The recommended option is to enable the extension in your php.ini,';
-  S := S + ' then click Back and try again. ' + GetPhpIni(ConfigRec, True);
+  S := S + ' then click Back and try again. ' + GetPhpIni(GConfigRec, True);
 
-  SecurityPage.Ini.Caption := S;
-  SecurityPage.Checkbox.Checked := Flags.DisableTls;
+  GSecurityPage.Ini.Caption := S;
+  GSecurityPage.Checkbox.Checked := GFlags.DisableTls;
 
   {Report action for logging when silent}
   if WizardSilent then
-    Debug(Format('Error: openssl is not enabled for %s.', [ConfigRec.PhpExe]));
+    Debug(Format('Error: openssl is not enabled for %s.', [GConfigRec.PhpExe]));
 
 end;
 
@@ -4293,8 +4293,8 @@ begin
   Filename := '';
 
   {Show last last selected directory, or Program Files}
-  if Flags.LastFolder <> '' then
-    Dir := Flags.LastFolder
+  if GFlags.LastFolder <> '' then
+    Dir := GFlags.LastFolder
   else if IsWin64 then
     Dir := ExpandConstant('{pf64}')
   else
@@ -4305,7 +4305,7 @@ begin
 
   if GetOpenFileName('', Filename, Dir, Filter, Extension) then
   begin
-    Flags.LastFolder := ExtractFileDir(Filename);
+    GFlags.LastFolder := ExtractFileDir(Filename);
     SettingsComboAdd(Filename);
   end;
 
@@ -4320,7 +4320,7 @@ var
 
 begin
 
-  Selected := SettingsPage.Combo.Text;
+  Selected := GSettingsPage.Combo.Text;
 
   {Check filename is php.exe, for param input}
   DebugMsg := Format('Error, file name must be php.exe: %s', [Selected]);
@@ -4359,16 +4359,16 @@ begin
   {Add the exe to the main PhpList. It might not
   exist if we are initialzing}
   if PhpExe <> '' then
-    Index := PhpList.Add(PhpExe);
+    Index := GPhpList.Add(PhpExe);
 
-  if SettingsPage.Combo.Items.Count > 0 then
-    SettingsPage.Combo.Items.Clear;
+  if GSettingsPage.Combo.Items.Count > 0 then
+    GSettingsPage.Combo.Items.Clear;
 
-  for I := 0 to PhpList.Count - 1 do
-    SettingsPage.Combo.Items.Add(PhpList.Strings[I]);
+  for I := 0 to GPhpList.Count - 1 do
+    GSettingsPage.Combo.Items.Add(GPhpList.Strings[I]);
 
-  SettingsPage.Combo.ItemIndex := Index;
-  SettingsComboChange(SettingsPage.Combo);
+  GSettingsPage.Combo.ItemIndex := Index;
+  SettingsComboChange(GSettingsPage.Combo);
 
 end;
 
@@ -4379,11 +4379,11 @@ var
 
 begin
 
-  case Paths.Php.Status of
+  case GPaths.Php.Status of
     PATH_OK:
     begin
 
-      if CompareText(SettingsPage.Combo.Text, Paths.Php.Data.Cmd) = 0 then
+      if CompareText(GSettingsPage.Combo.Text, GPaths.Php.Data.Cmd) = 0 then
         Caption := 'This is the PHP in your path. Click Next to use it.'
       else
         Caption := 'This will replace the PHP entry in your path. Click Next if you want to do this.';
@@ -4394,7 +4394,7 @@ begin
     PATH_FIXED: Caption := 'To use a different PHP, you must remove this one from your System path.';
   end;
 
-  SettingsPage.Info.Caption := Caption;
+  GSettingsPage.Info.Caption := Caption;
 
 end;
 
@@ -4407,36 +4407,36 @@ begin
 
   Result := CreateCustomPage(Id, Caption, Description);
 
-  SettingsPage.Text := TNewStaticText.Create(Result);
-  SettingsPage.Text.AutoSize := True;
-  SettingsPage.Text.Caption := 'Choose the command-line PHP you want to use:';
-  SettingsPage.Text.Parent := Result.Surface;
+  GSettingsPage.Text := TNewStaticText.Create(Result);
+  GSettingsPage.Text.AutoSize := True;
+  GSettingsPage.Text.Caption := 'Choose the command-line PHP you want to use:';
+  GSettingsPage.Text.Parent := Result.Surface;
 
-  Base := GetBase(SettingsPage.Text);
+  Base := GetBase(GSettingsPage.Text);
 
-  SettingsPage.Combo := TNewComboBox.Create(Result);
-  SettingsPage.Combo.Top := Base + ScaleY(8);
-  SettingsPage.Combo.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
-  SettingsPage.Combo.Style := csDropDownList;
-  SettingsPage.Combo.OnChange := @SettingsComboChange;
-  SettingsPage.Combo.Parent := Result.Surface;
+  GSettingsPage.Combo := TNewComboBox.Create(Result);
+  GSettingsPage.Combo.Top := Base + ScaleY(8);
+  GSettingsPage.Combo.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
+  GSettingsPage.Combo.Style := csDropDownList;
+  GSettingsPage.Combo.OnChange := @SettingsComboChange;
+  GSettingsPage.Combo.Parent := Result.Surface;
 
-  SettingsPage.Browse := TNewButton.Create(Result);
-  SettingsPage.Browse.Top := SettingsPage.Combo.Top - ScaleY(1);
-  SettingsPage.Browse.Left := Result.SurfaceWidth - ScaleX(75);
-  SettingsPage.Browse.Width := ScaleX(75);
-  SettingsPage.Browse.Height := ScaleY(23);
-  SettingsPage.Browse.Caption := '&Browse...';
-  SettingsPage.Browse.OnClick := @SettingsBrowseClick;
-  SettingsPage.Browse.Parent := Result.Surface;
+  GSettingsPage.Browse := TNewButton.Create(Result);
+  GSettingsPage.Browse.Top := GSettingsPage.Combo.Top - ScaleY(1);
+  GSettingsPage.Browse.Left := Result.SurfaceWidth - ScaleX(75);
+  GSettingsPage.Browse.Width := ScaleX(75);
+  GSettingsPage.Browse.Height := ScaleY(23);
+  GSettingsPage.Browse.Caption := '&Browse...';
+  GSettingsPage.Browse.OnClick := @SettingsBrowseClick;
+  GSettingsPage.Browse.Parent := Result.Surface;
 
-  Base := GetBase(SettingsPage.Combo);
+  Base := GetBase(GSettingsPage.Combo);
 
-  SettingsPage.Info := TNewStaticText.Create(Result);
-  SettingsPage.Info.Top := Base + ScaleY(8);
-  SettingsPage.Info.AutoSize := True;
-  SettingsPage.Info.Caption := '';
-  SettingsPage.Info.Parent := Result.Surface;
+  GSettingsPage.Info := TNewStaticText.Create(Result);
+  GSettingsPage.Info.Top := Base + ScaleY(8);
+  GSettingsPage.Info.AutoSize := True;
+  GSettingsPage.Info.Caption := '';
+  GSettingsPage.Info.Parent := Result.Surface;
 
   SettingsPageInit();
 
@@ -4448,10 +4448,10 @@ begin
 
   {Always add the php from the path, because we need to update the PhpList
   data. It will be ignored if it doesn't exist}
-  SettingsComboAdd(Paths.Php.Data.Cmd);
+  SettingsComboAdd(GPaths.Php.Data.Cmd);
 
-  if ParamsRec.Php <> '' then
-    SettingsComboAdd(ParamsRec.Php);
+  if GParamsRec.Php <> '' then
+    SettingsComboAdd(GParamsRec.Php);
 end;
 
 
@@ -4459,15 +4459,15 @@ procedure SettingsPageUpdate;
 begin
 
   {Important to reset these}
-  Flags.SettingsError := False;
-  Flags.DisableTls := False;
+  GFlags.SettingsError := False;
+  GFlags.DisableTls := False;
 
   {Update path data. Returns true if it has changed}
   if SetPathInfo(False) then
-    SettingsComboChange(SettingsPage.Combo);
+    SettingsComboChange(GSettingsPage.Combo);
 
-  SettingsPage.Combo.Enabled := Paths.Php.Status <> PATH_FIXED;
-  SettingsPage.Browse.Enabled := Paths.Php.Status <> PATH_FIXED;
+  GSettingsPage.Combo.Enabled := GPaths.Php.Status <> PATH_FIXED;
+  GSettingsPage.Browse.Enabled := GPaths.Php.Status <> PATH_FIXED;
 
 end;
 
