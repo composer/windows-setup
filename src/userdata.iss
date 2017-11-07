@@ -184,6 +184,7 @@ end;
 function UserGetAccountsWmi(var Accounts: TUserProfileList): Boolean;
 var
   Cmd: String;
+  Dir: String;
   Output: String;
   Params: String;
   ExitCode: Longint;
@@ -200,11 +201,13 @@ begin
   Result := False;
 
   Cmd := ExpandConstant('{cmd}');
-  Output := AddBackslash(ExpandConstant('{tmp}')) + 'result.txt';
-  Params := Format('/c "%s %s > %s"', ['wmic', 'USERACCOUNT GET Name,SID,Disabled', AddQuotes(Output)]);
+  Dir := ExpandConstant('{tmp}');
+  Output := Dir + '\result.txt';
+
+  Params := Format('/c "%s %s > %s"', ['wmic', 'USERACCOUNT GET Name,SID,Disabled', ArgCmd(Output)]);
   Debug('Calling cmd.exe with params: ' + Params);
 
-  if not (Exec(Cmd, Params, GTmpDir, 0, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
+  if not (Exec(Cmd, Params, Dir, 0, ewWaitUntilTerminated, ExitCode)) or (ExitCode <> 0) then
     Exit;
 
   {We use TStringList because this handles the BOM produced in the output file}
