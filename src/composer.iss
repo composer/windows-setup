@@ -1679,7 +1679,7 @@ begin
     List.Add(Pf64 + '\NuSphere\PhpEd\php*');
 
   {Chocolatey}
-  List.Add(System + '\tools\php');
+  List.Add(System + '\tools\php*');
 
 end;
 
