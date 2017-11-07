@@ -799,6 +799,8 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
   MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
 begin
 
+  Result := '';
+
   if GFlags.DevInstall then
     AddStr(Result, MemoDirInfo + NewLine + NewLine);
 
@@ -1445,6 +1447,7 @@ var
 
 begin
 
+  Result := 0;
   StringChangeEx(Version, '.', #13, True);
   List := TStringList.Create;
 
@@ -1523,6 +1526,7 @@ var
 
 begin
 
+  Result := '';
   Count := GetArrayLength(Items);
 
   for I := 0 to Count - 1 do
@@ -1766,8 +1770,6 @@ begin
     Path := GBaseDir.UserApp;
 
   Result := Path + '\{#AppInstallName}';
-
-  Exit;
 
 end;
 
@@ -2321,6 +2323,7 @@ var
 
 begin
 
+  Result := '';
   Spacing := LF + TAB;
 
   for I := 0 to GetArrayLength(List) - 1 do
@@ -2849,6 +2852,8 @@ begin
   intercept the output. Some configurations of ansicon, for example, can cause
   a non-zero exit code to be returned.}
 
+  Result := False;
+
   if not GetRegistryAutorun(Key, Autorun) then
     Exit;
 
@@ -2857,7 +2862,6 @@ begin
   AddPara(Message, Format('%s = %s', [Key, Autorun]));
 
   GetErrorIfAnsicon(Message, Autorun);
-
   Result := True;
 
 end;
@@ -2867,6 +2871,7 @@ function GetErrorCgi(var Message: String; Config: TConfigRec): Boolean;
 begin
 
   {In very old versions, the cli was a different exe}
+  Result := False;
 
   if FileExists(ExtractFilePath(Config.PhpExe) + 'php-cli.exe') then
   begin
@@ -2881,6 +2886,8 @@ function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean;
 begin
 
   {The old wrong extension_dir problem}
+  Result := False;
+
   if Pos('load dynamic library', Config.Output) = 0 then
     Exit;
 
@@ -2896,6 +2903,8 @@ function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean;
 begin
 
   {We need to check this or it could muddle the logic with installer output}
+  Result := False;
+
   if Pos('already loaded', Config.Output) = 0 then
     Exit;
 
@@ -3064,7 +3073,7 @@ function GetRegistryAutorun(var Name, Value: String): Boolean;
 begin
 
   if QueryRegistryAutorun(HKCU, Name, Value) then
-     Result := True
+    Result := True
   else
     Result := QueryRegistryAutorun(HKLM, Name, Value);
 
@@ -3077,6 +3086,7 @@ var
 
 begin
 
+  Result := False;
   Key := 'Software\Microsoft\Command Processor';
 
   if not RegQueryStringValue(Hive, Key, 'AutoRun', Value) then
@@ -3390,6 +3400,7 @@ end;
 function GetInstallerArgs(Config: TConfigRec): String;
 begin
 
+  Result := '';
   AddPhpParam('no-ansi', Result);
   AddPhpParam('quiet', Result);
 
@@ -3456,6 +3467,7 @@ begin
 
 end;
 
+
 procedure RunInstaller(var Config: TConfigRec);
 var
   EnvSet: Boolean;
@@ -3521,6 +3533,7 @@ begin
     SetError(Status, Config);
 
 end;
+
 
 {Write stdout lines to Config.Output}
 procedure ParseInstallerOutput(StatusCode: Integer; var Config: TConfigRec);
