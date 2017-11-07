@@ -2986,37 +2986,23 @@ begin
 end;
 
 
-{Program output should contain a single details line, or error messages if
-something is not set up correctly. If the details line is found it is removed
-from the output array. Additionally the output lines are placed in a string}
+{Program output from stdout should contain a single details line, which is
+extracted if found. If something is not set up correctly, either stdout or
+stderr will contain error messages or warnings. Any unexpected output is placed
+in Config.Output as a string.}
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec);
 var
   Found: Boolean;
   Count: Integer;
-  Stripped: TArrayOfString;
-  NextIndex: Integer;
   I: Integer;
   Line: String;
-  Content: String;
+  Output: String;
   StartPos: Integer;
 
 begin
 
   Found := False;
   Count := GetArrayLength(Config.StdOut);
-
-  if Count = 0 then
-  begin
-    {If we haven't got any std output then something has gone wrong, so we report
-    any output from stderr}
-    Config.StdOut := Config.StdErr;
-    SetArrayLength(Config.StdErr, 0);
-    Count := GetArrayLength(Config.StdOut);
-    Found := True;
-  end;
-
-  SetArrayLength(Stripped, Count);
-  NextIndex := 0;
 
   for I := 0 to Count - 1 do
   begin
@@ -3043,18 +3029,15 @@ begin
 
     end;
 
-    AddLine(Content, Line);
-    Stripped[NextIndex] := Line;
-    Inc(NextIndex);
+    AddLine(Output, Line);
 
   end;
 
-  {Copy the stripped output back to the main record}
-  SetArrayLength(Stripped, NextIndex);
-  Config.StdOut := Stripped;
+  {Add any error output}
+  AddLine(Output, OutputFromArray(Config.StdErr));
 
-  {Set the stripped output as a single string}
-  Config.Output := Trim(Content);
+  {Set the stripped/merged output as a single string}
+  Config.Output := Trim(Output);
 
 end;
 
