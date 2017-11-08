@@ -105,7 +105,7 @@ Type: filesandordirs; Name: {code:GetBinDir};
 
 
 [Run]
-Filename: "http://{#AppUrl}"; Description: "View online documentation"; Flags: postinstall shellexec unchecked;
+Filename: "https://{#AppUrl}"; Description: "View online documentation"; Flags: postinstall shellexec unchecked;
 
 
 [Messages]
