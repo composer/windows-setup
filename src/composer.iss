@@ -3868,7 +3868,7 @@ begin
   else
     Users := 'the current user';
 
-  S := Format('Setup will download and install Composer to a fixed location for %s.', [Users]);
+  S := Format('Setup will install Composer to a fixed location for %s.', [Users]);
   S := S + ' This includes a Control Panel uninstaller and is the recommended option.';
   S := S + ' Click Next to use it.';
 
