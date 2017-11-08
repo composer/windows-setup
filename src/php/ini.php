@@ -37,17 +37,21 @@ class IniChecker
     /**
      * Constructor
      *
+     * The args passed in contain:
+     *   [1] The php.exe directory
+     *   [2] The tmp path for the modified ini
+     *   [3] The tmp path for the original ini
+     *
      * @param array $argv Command-line args
      */
     public function __construct(array $argv)
     {
         $this->phpDir = $argv[1];
-        $tmpDir = $argv[2];
+        $this->modIni = $argv[2];
+        $this->origIni = $argv[3];
 
-        $this->modIni = $tmpDir.'/php.ini-mod';
-        $this->origIni = $tmpDir.'/php.ini-orig';
         $this->changes = array();
-        $this->status = $this->writeError('Status message missing');
+        $this->writeError('Status message missing');
     }
 
     /**
@@ -90,6 +94,11 @@ class IniChecker
      */
     private function init(&$new)
     {
+        if (!defined('PHP_WINDOWS_VERSION_BUILD')) {
+            $this->writeError('Non-Windows build: '.PHP_OS);
+            return;
+        }
+
         if ($missing = $this->checkBuiltIns()) {
             $this->writeError('Built-in extensions not avaliable: '.implode(',', $missing));
             return;
@@ -161,7 +170,7 @@ class IniChecker
     }
 
     /**
-     * Checks that Windows built-in extensions are loaded in case of cygwin
+     * Checks that Windows built-in extensions are loaded
      *
      * @return bool If a built-in extension is not loaded
      */

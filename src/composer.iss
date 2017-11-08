@@ -202,8 +202,8 @@ type
     Composer  : String;
     StdOut    : String;
     StdErr    : String;
-    ModIni    : String;
-    OrigIni   : String;
+    Ini       : String;
+    IniBackup : String;
   end;
 
 type
@@ -474,9 +474,11 @@ function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
 function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean; forward;
 
 {Ini file functions}
+procedure CheckPhpIni(Config: TConfigRec); forward;
 function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean; forward;
 function IniCheckTmp(Existing: Boolean): Boolean; forward;
 function IniCreateTmp(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
+procedure IniDebug(Message: String); forward;
 function IniFileRestore: Boolean; forward;
 function IniFileSave: Boolean; forward;
 function IniFileUpdate(Save: Boolean): Boolean; forward;
@@ -553,8 +555,8 @@ begin
   GTmpFile.Composer := GTmpDir + '\' + CMD_SHELL;
   GTmpFile.StdOut := GTmpDir + '\stdout.txt';
   GTmpFile.StdErr := GTmpDir + '\stderr.txt';
-  GTmpFile.ModIni := GTmpDir + '\php.ini-mod';
-  GTmpFile.OrigIni := GTmpDir + '\php.ini-orig';
+  GTmpFile.Ini := GTmpDir + '\php.ini';
+  GTmpFile.IniBackup := GTmpDir + '\php.ini.backup';
 
   {Set our initial data}
   InitSetData();
@@ -1320,6 +1322,7 @@ begin
   if Args <> '' then
     AddStr(Params, #32 + Args);
 
+  {Always use the full path for the output streams, in case the directory is changed}
   AddStr(Params, Format(' > %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]));
 
   Result := Format('/c "%s"', [Params]);
@@ -2685,9 +2688,6 @@ end;
 {*************** Check php functions ***************}
 
 function CheckPhp(const Filename: String): Boolean;
-var
-  ModIni: TModIniRec;
-
 begin
 
   GConfigRec := ConfigInit(Filename);
@@ -2707,16 +2707,8 @@ begin
     Exit;
   end;
 
-  {See if php.ini needs and has been modified}
-  if IniHasMod(ModIni, GConfigRec) then
-  begin
-    ModIni.Active := True;
-    ModIni.OldFile := GConfigRec.PhpIni;
-    ModIni.OldSecure := GConfigRec.PhpSecure;
-    ModIni.OldCompat := GConfigRec.PhpCompat;
-
-    GModIniRec := ModIni;
-  end;
+  {Handle modifying or creating ini, if needed}
+  CheckPhpIni(GConfigRec);
 
   Result := True;
 
@@ -2801,7 +2793,7 @@ begin
   end;
 
   {Everthing ok}
-  Debug(Format('Details: version=%s, ini=%s, tls=%d, compat=%d', [Config.PhpVersion,
+  Debug(Format('Config: version=%s, ini=%s, tls=%d, compat=%d', [Config.PhpVersion,
     Config.PhpIni, Config.PhpSecure, Config.PhpCompat]));
 
   Result := True;
@@ -3103,6 +3095,36 @@ end;
 
 {*************** Ini file functions ***************}
 
+procedure CheckPhpIni(Config: TConfigRec);
+var
+  ModIni: TModIniRec;
+  Msg: String;
+
+begin
+
+  {See if php.ini has been modified or created}
+  if not IniHasMod(ModIni, Config) then
+    Exit;
+
+  ModIni.Active := True;
+  ModIni.OldFile := Config.PhpIni;
+  ModIni.OldSecure := Config.PhpSecure;
+  ModIni.OldCompat := Config.PhpCompat;
+
+  {Set the global rec with the current details}
+  GModIniRec := ModIni;
+
+  {Debug result}
+  Msg := Format('Available at %s', [GTmpFile.Ini]);
+
+  if not ModIni.New then
+    AddStr(Msg, Format(', backup created at %s', [ModIni.Backup]));
+
+  IniDebug(Msg);
+
+end;
+
+
 function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean;
 var
   Details: String;
@@ -3116,11 +3138,11 @@ begin
 
   if not IniGetDetails(Details, Modify, Status) then
   begin
-    Debug('Invalid details: ' + Details);
+    IniDebug('Invalid details: ' + Details);
     Exit;
   end;
 
-  Debug(Format('Details: modify=%d, status=%s', [Modify, Status]));
+  IniDebug(Format('modify=%d, status=%s', [Modify, Status]));
 
   {Config.Output will contain output other than the details line}
   Result := (Config.Output = '') and (Config.ExitCode = 0);
@@ -3135,17 +3157,17 @@ var
 begin
 
   Result := False;
-  Error := Format('Error: script %s did not create ', [PHP_INI]);
+  Error := Format('Error, script %s did not create ', [PHP_INI]);
 
-  if not FileExists(GTmpFile.ModIni) then
+  if not FileExists(GTmpFile.Ini) then
   begin
-    Debug(Error + ExtractFileName(GTmpFile.ModIni));
+    IniDebug(Error + ExtractFileName(GTmpFile.Ini));
     Exit;
   end;
 
-  if Existing and not FileExists(GTmpFile.OrigIni) then
+  if Existing and not FileExists(GTmpFile.IniBackup) then
   begin
-    Debug(Error + ExtractFileName(GTmpFile.OrigIni));
+    IniDebug(Error + ExtractFileName(GTmpFile.IniBackup));
     Exit;
   end;
 
@@ -3164,7 +3186,7 @@ begin
 
   if not IniCheckOutput(Modify, Config) then
   begin
-    Debug(Format('Error: script %s failed', [PHP_INI]));
+    IniDebug(Format('Error, script %s failed', [PHP_INI]));
     Exit;
   end;
 
@@ -3175,16 +3197,22 @@ begin
   if not IniCheckTmp(not ModIni.New) then
     Exit;
 
-  Debug('Checking tmp ini with selected php');
+  IniDebug('Checking tmp ini with selected php');
   Config := ConfigInit(Config.PhpExe);
 
-  if CheckPhpSetup(Config, GTmpFile.ModIni) then
+  if CheckPhpSetup(Config, GTmpFile.Ini) then
   begin
     ModIni.Secure := Config.PhpSecure;
     ModIni.Compat := Config.PhpCompat;
     Result := Config.PhpCompat;
   end;
 
+end;
+
+
+procedure IniDebug(Message: String);
+begin
+  Debug(Format('PhpIni: %s', [Message]));
 end;
 
 
@@ -3209,7 +3237,7 @@ begin
     Result := not FileExists(Ini);
   end
   else
-    Result := FileCopy(GTmpFile.OrigIni, Ini, False);
+    Result := FileCopy(GTmpFile.IniBackup, Ini, False);
 
   IniSetMessage(Result, False, GModIniRec);
 
@@ -3239,7 +3267,7 @@ begin
     Exit;
   end;
 
-  Result := FileCopy(GTmpFile.ModIni, Ini, False);
+  Result := FileCopy(GTmpFile.Ini, Ini, False);
   IniSetMessage(Result, True, GModIniRec);
 
   if Result then
@@ -3305,37 +3333,46 @@ begin
   if ModIni.New then
   begin
     ModIni.File := ExtractFilePath(Config.PhpExe) + 'php.ini';
-    Debug(Format('Checking if ini can be created: %s', [ModIni.File]));
+    IniDebug(Format('Checking if ini can be created: %s', [ModIni.File]));
   end
   else
   begin
     ModIni.File := Config.PhpIni;
     ModIni.Backup := Config.PhpIni + '~orig';
-    Debug(Format('Checking if ini needs updating: %s', [Config.PhpIni]));
+    IniDebug(Format('Checking if ini needs updating: %s', [Config.PhpIni]));
   end;
 
   {Get a new config rec}
   Config := ConfigInit(Config.PhpExe);
 
   {We must delete any existing tmp inis}
-  DeleteFile(GTmpFile.ModIni);
-  DeleteFile(GTmpFile.OrigIni);
+  DeleteFile(GTmpFile.Ini);
+  DeleteFile(GTmpFile.IniBackup);
 
-  {The script needs the php.exe location and the Inno temp directory}
+  {The script needs the php.exe location, the tmp ini and backup ini}
   Args := ArgCmd(ExtractFileDir(Config.PhpExe));
-  AddStr(Args, #32 + ArgCmd(GTmpDir));
+  AddStr(Args, #32 + ArgCmd(GTmpFile.Ini));
+  AddStr(Args, #32 + ArgCmd(GTmpFile.IniBackup));
 
   {ExecPhp should only fail calling cmd.exe}
   if not ExecPhp(PHP_INI, Args, '', Config) then
     Exit;
 
-  if IniCreateTmp(ModIni, Config) then
+  {See if we needed and created a tmp ini}
+  if not IniCreateTmp(ModIni, Config) then
+    Exit;
+
+  if ModIni.New then
+    Result := True
+  else
   begin
 
-    if ModIni.New then
-      Result := True
-    else
-      Result := FileCopy(ModIni.File, ModIni.Backup, False);
+    {Make a backup of the current ini in case something goes wrong}
+    Result := FileCopy(ModIni.File, ModIni.Backup, False);
+
+    if not Result then
+      IniDebug(Format('Failed to backup existing ini: %s', [ModIni.File]));
+
   end;
 
 end;
@@ -3390,7 +3427,7 @@ begin
 
   end;
 
-  Debug(Format('%s ini : %s', [Msg, Rec.File]));
+  IniDebug(Format('%s ini: %s', [Msg, Rec.File]));
 
 end;
 
