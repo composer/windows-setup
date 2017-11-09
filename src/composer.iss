@@ -124,7 +124,9 @@ FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a comman
 type
   TConfigRec = record
     PhpExe      : String;
+    PhpCalls    : Integer;
     PhpVersion  : String;
+    PhpId       : Integer;
     PhpIni      : String;
     PhpSecure   : Boolean;
     PhpCompat   : Boolean;
@@ -379,7 +381,7 @@ procedure AddPara(var Existing: String; const Value: String); forward;
 procedure AddStr(var Existing: String; const Value: String); forward;
 function BoolFromString(Input: String; var Value: Boolean): Boolean; forward;
 function ConfigInit(Exe: String): TConfigRec; forward;
-procedure ConfigResetOutput(var Config: TConfigRec); forward;
+procedure ConfigSetExec(var Config: TConfigRec); forward;
 procedure Debug(const Message: String); forward;
 procedure DebugExecBegin(const Exe, Params: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
@@ -460,18 +462,20 @@ function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
 function CheckPhpOutput(var Config: TConfigRec): Boolean; forward;
 function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean; forward;
-function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String; forward;
+function CheckPhpVersion(Config: TConfigRec): Boolean; forward;
+function GetCommonErrors(Config: TConfigRec; var VersionError, ShowIni: Boolean): String; forward;
 function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean; forward;
-function GetErrorCgi(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean; forward;
 procedure GetErrorIfAnsicon(var Message: String; Autorun: String); forward;
+function GetErrorVersion(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean; forward;
 function GetPhpError(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec); forward;
 function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
 function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean; forward;
+procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
 {Ini file functions}
 procedure CheckPhpIni(Config: TConfigRec); forward;
@@ -1143,20 +1147,27 @@ var
 begin
 
   Result.PhpExe := Exe;
+  Result.PhpCalls := 0;
   Result.PhpVersion := '';
+  Result.PhpId := 0;
   Result.PhpIni := '';
   Result.PhpSecure := False;
   Result.PhpCompat := False;
 
-  ConfigResetOutput(Result);
+  ConfigSetExec(Result);
+
+  {Important to reset PhpCalls}
+  Dec(Result.PhpCalls);
+
   GModIniRec := ModIni;
 
 end;
 
 
-procedure ConfigResetOutput(var Config: TConfigRec);
+procedure ConfigSetExec(var Config: TConfigRec);
 begin
 
+  Inc(Config.PhpCalls);
   Config.ExitCode := 0;
   Config.StatusCode := ERR_SUCCESS;
   SetArrayLength(Config.StdOut, 0);
@@ -1238,7 +1249,7 @@ begin
 
   DeleteFile(GTmpFile.StdOut);
   DeleteFile(GTmpFile.StdErr);
-  ConfigResetOutput(Config);
+  ConfigSetExec(Config);
 
   Params := GetExecParams(Config, Script, Args, Ini);
   DebugExecBegin(GCmdExe, Params);
@@ -1405,8 +1416,8 @@ begin
 
     ERR_INSTALL_WARNINGS,
     ERR_INSTALL_ERRORS: Message := Config.Output;
-    ERR_INSTALL_OUTPUT: Message := GetInstallerError(Config);
 
+    ERR_INSTALL_OUTPUT: Message := GetInstallerError(Config);
   end;
 
   Config.Message := Message;
@@ -2690,22 +2701,27 @@ end;
 function CheckPhp(const Filename: String): Boolean;
 begin
 
+  Result := False;
+
   GConfigRec := ConfigInit(Filename);
   Debug('Checking selected php: ' + Filename);
 
-  {Make sure whatever we've been given can execute}
-  if not CheckPhpExe(GConfigRec) then
+  SetPhpVersionInfo(GConfigRec);
+
+  {Bail out on old php versions}
+  if not CheckPhpVersion(GConfigRec) then
   begin
-    Result := False;
+    SetError(ERR_CHECK_PHP, GConfigRec);
     Exit;
   end;
 
+  {Make sure whatever we've been given can execute}
+  if not CheckPhpExe(GConfigRec) then
+    Exit;
+
   {Run php to check everything is okay}
   if not CheckPhpSetup(GConfigRec, '') then
-  begin
-    Result := False;
     Exit;
-  end;
 
   {Handle modifying or creating ini, if needed}
   CheckPhpIni(GConfigRec);
@@ -2796,15 +2812,48 @@ begin
   Debug(Format('Config: version=%s, ini=%s, tls=%d, compat=%d', [Config.PhpVersion,
     Config.PhpIni, Config.PhpSecure, Config.PhpCompat]));
 
+  {Check for old php version}
+  if not CheckPhpVersion(GConfigRec) then
+  begin
+    SetError(ERR_CHECK_PHP, GConfigRec);
+    Exit;
+  end;
+
   Result := True;
 
 end;
 
 
-function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String;
+{This allows us to bail early on old PHP versions, so we can control subsequent
+error output more effectively. Old versions show a MessageBox on some errors,
+which is not suitable for silent installations. This was changed in 5.1.2 to
+show only if display_startup_errors is set. The MessageBox was removed entirely
+for 5.5.0}
+function CheckPhpVersion(Config: TConfigRec): Boolean;
+begin
+
+  if (Config.PhpCalls = 0) and (Config.PhpId = 0) then
+    {No file info available, allow if we are not silent}
+    Result := not WizardSilent
+  else
+    {The minimum version that Composer requires is 5.3.2}
+    Result := Config.PhpId >= 50302;
+
+end;
+
+
+function GetCommonErrors(Config: TConfigRec; var VersionError, ShowIni: Boolean): String;
 begin
 
   Result := '';
+  VersionError := False;
+
+  if GetErrorVersion(Result, Config) then
+  begin
+    VersionError := True;
+    ShowIni := False;
+    Exit;
+  end;
 
   if GetErrorExtDirectory(Result, Config) then
   begin
@@ -2819,12 +2868,6 @@ begin
   end;
 
   if GetErrorAutorun(Result, Config) then
-  begin
-    ShowIni := False;
-    Exit;
-  end;
-
-  if GetErrorCgi(Result, Config) then
   begin
     ShowIni := False;
     Exit;
@@ -2855,21 +2898,6 @@ begin
 
   GetErrorIfAnsicon(Message, Autorun);
   Result := True;
-
-end;
-
-
-function GetErrorCgi(var Message: String; Config: TConfigRec): Boolean;
-begin
-
-  {In very old versions, the cli was a different exe}
-  Result := False;
-
-  if FileExists(ExtractFilePath(Config.PhpExe) + 'php-cli.exe') then
-  begin
-    AddStr(Message, 'Your PHP is very old and must be upgraded to a recent version.');
-    Result := True;
-  end;
 
 end;
 
@@ -2924,9 +2952,35 @@ begin
 end;
 
 
+function GetErrorVersion(var Message: String; Config: TConfigRec): Boolean;
+var
+  Version: String;
+
+begin
+
+  if CheckPhpVersion(Config) then
+  begin
+    Result := False;
+    Exit;
+  end;
+
+  if Config.PhpVersion <> '' then
+    Version := Format('(%s) ', [Config.PhpVersion]);
+
+  if WizardSilent and (Version = '') then
+    Message := 'Your php.exe has no version info. It may be too old to be installed silently.'
+  else
+    Message := Format('Your PHP is very old %sand must be upgraded to a recent version.', [Version]);
+
+  Result := True;
+
+end;
+
+
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean;
 var
   List: TStringList;
+  Id : Integer;
 
 begin
 
@@ -2937,13 +2991,20 @@ begin
   try
     List.Text := Details;
 
-    if List.Count = 4 then
+    if List.Count = 5 then
     begin
       Config.PhpVersion := List.Strings[0];
-      Config.PhpIni := List.Strings[1];
+      Id := StrToIntDef(List.Strings[1], 0);
 
-      if BoolFromString(List.Strings[2], Config.PhpSecure) then
-        Result := BoolFromString(List.Strings[3], Config.PhpCompat);
+      {0 will be set for versions earlier than 5.2.7, so
+      we must not overwrite the existing value}
+      if Id <> 0 then
+        Config.PhpId := Id;
+
+      Config.PhpIni := List.Strings[2];
+
+      if BoolFromString(List.Strings[3], Config.PhpSecure) then
+        Result := BoolFromString(List.Strings[4], Config.PhpCompat);
 
     end;
 
@@ -2957,17 +3018,24 @@ end;
 function GetPhpError(Config: TConfigRec): String;
 var
   CommonErrors: String;
+  VersionError: Boolean;
   ShowIni: Boolean;
 
 begin
+
+  CommonErrors := GetCommonErrors(Config, VersionError, ShowIni);
+
+  if VersionError and (Config.ExitCode = 0) then
+  begin
+    Result := CommonErrors;
+    Exit;
+  end;
 
   Result := 'The PHP exe file you specified did not run correctly';
   FormatExitCode(Result, Config);
   Result := FormatError(Result, Config.PhpExe);
 
-  CommonErrors := GetCommonErrors(Config, ShowIni);
-
-  {Version will not be empty if we got the check data}
+  {Version will not be empty if we got the config data}
   if ShowIni and (Config.PhpVersion <> '') then
     AddPara(Result, GetPhpIni(Config, False));
 
@@ -3089,6 +3157,37 @@ begin
     Name := Format('%s\%s\AutoRun', [GetHiveName(Hive), Key]);
     Result := True;
   end;
+
+end;
+
+
+{Sets version info from the php.exe VersionInfo data. This is called at the
+start of the php check routines and is used for silent installs where we might
+not have control of MessageBoxes popping up. The Config values are later
+overwritten from values obtained from PHP itself, using PHP_VERSION_ID that is
+availabe from 5.2.7}
+procedure SetPhpVersionInfo(var Config: TConfigRec);
+var
+  VersionMS: Cardinal;
+  VersionLS: Cardinal;
+  Major: Integer;
+  Minor: Integer;
+  Release: Integer;
+
+begin
+
+  {The data may not exist - Cygwin for example}
+  if GetVersionNumbers(Config.PhpExe, VersionMS, VersionLS) then
+  begin
+    Major := (VersionMS shr 16) and $ffff;
+    Minor := VersionMS and $ffff;
+    Release := (VersionLS shr 16) and $ffff;
+
+    Config.PhpVersion := Format('%d.%d.%d', [Major, Minor, Release]);
+    Config.PhpId := (Major * 10000) + (Minor * 100) + Release;
+  end;
+
+  Debug(Format('Config: version=%s, id=%d', [Config.PhpVersion, Config.PhpId]));
 
 end;
 
