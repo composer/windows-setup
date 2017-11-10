@@ -123,19 +123,19 @@ FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a comman
 
 type
   TConfigRec = record
-    PhpExe      : String;
-    PhpCalls    : Integer;
-    PhpVersion  : String;
-    PhpId       : Integer;
-    PhpIni      : String;
-    PhpSecure   : Boolean;
-    PhpCompat   : Boolean;
-    ExitCode    : Integer;
-    StatusCode  : Integer;
-    StdOut      : TArrayOfString;
-    StdErr      : TArrayOfString;
-    Output      : String;
-    Message     : String;
+    PhpExe      : String;         {The full file name of the selected php.exe}
+    PhpCalls    : Integer;        {The number of calls made, used for error handling}
+    PhpVersion  : String;         {The php version}
+    PhpId       : Integer;        {The php version id, as PHP_VERSION_ID}
+    PhpIni      : String;         {The php.ini file in use}
+    PhpSecure   : Boolean;        {If openssl if enabled}
+    PhpCompat   : Boolean;        {If php meets minimum Composer requirements}
+    ExitCode    : Integer;        {The exit code of the last call}
+    StatusCode  : Integer;        {The status/error code from the last call}
+    StdOut      : TArrayOfString; {Lines read from stdout file}
+    StdErr      : TArrayOfString; {Lines read from stderr file}
+    Output      : String;         {Intermediate value to be used in messages}
+    Message     : String;         {The message to be shown to the user}
   end;
 
 type
@@ -375,9 +375,9 @@ procedure InitPathParams(var Params: TParamsRec); forward;
 procedure InitSetData(); forward;
 
 {Common functions}
-procedure AddPhpParam(const Value: String; var Params: String); forward;
 procedure AddLine(var Existing: String; const Value: String); forward;
 procedure AddPara(var Existing: String; const Value: String); forward;
+procedure AddParam(var Params: String; const Value: String); forward;
 procedure AddStr(var Existing: String; const Value: String); forward;
 function BoolFromString(Input: String; var Value: Boolean): Boolean; forward;
 function ConfigInit(Exe: String): TConfigRec; forward;
@@ -389,7 +389,7 @@ procedure DebugPageName(Id: Integer); forward;
 function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean; forward;
 function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
-function GetExecError(StatusCode: Integer; Config: TConfigRec): String; forward;
+function GetExecError(Config: TConfigRec): String; forward;
 function GetExecParams(Config: TConfigRec; Script, Args, Ini: String): String; forward;
 function GetRegHive: Integer; forward;
 function GetRunPhpError(ExitCode: Integer): String; forward;
@@ -491,11 +491,11 @@ function IniHasMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward
 procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec); forward;
 
 {Composer installer functions}
+function ComposerPharMissing: Boolean; forward;
 function GetInstallerArgs(Config: TConfigRec): String; forward;
 function GetInstallerError(Config: TConfigRec): String; forward;
-procedure MergeErrorOutput(var Config: TConfigRec); forward;
+function GetInstallerOutput(Config: TConfigRec): String; forward;
 procedure RunInstaller(var Config: TConfigRec); forward;
-procedure ParseInstallerOutput(StatusCode: Integer; var Config: TConfigRec); forward;
 
 {Custom page functions}
 function EnvironmentPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
@@ -1081,17 +1081,6 @@ end;
 
 {*************** Common functions ***************}
 
-procedure AddPhpParam(const Value: String; var Params: String);
-begin
-
-  if Params = '' then
-    Params := '--';
-
-  Params := Params + ' --' + Value;
-
-end;
-
-
 procedure AddLine(var Existing: String; const Value: String);
 begin
 
@@ -1116,6 +1105,22 @@ begin
   end;
 
   AddStr(Existing, Value);
+
+end;
+
+
+{Adds a value separated by a space to a string of params. Note that the
+value is expected to be escaped}
+procedure AddParam(var Params: String; const Value: String);
+begin
+
+  if Params <> '' then
+  begin
+    Params := TrimRight(Params);
+    Params := Params + #32;
+  end;
+
+  AddStr(Params, Trim(Value));
 
 end;
 
@@ -1155,10 +1160,6 @@ begin
   Result.PhpCompat := False;
 
   ConfigSetExec(Result);
-
-  {Important to reset PhpCalls}
-  Dec(Result.PhpCalls);
-
   GModIniRec := ModIni;
 
 end;
@@ -1167,7 +1168,6 @@ end;
 procedure ConfigSetExec(var Config: TConfigRec);
 begin
 
-  Inc(Config.PhpCalls);
   Config.ExitCode := 0;
   Config.StatusCode := ERR_SUCCESS;
   SetArrayLength(Config.StdOut, 0);
@@ -1263,6 +1263,9 @@ begin
     Exit;
   end;
 
+  {Increment calls}
+  Inc(Config.PhpCalls);
+
   {Put the output into Config}
   OutputReadStdFiles(Config);
 
@@ -1284,7 +1287,7 @@ begin
 end;
 
 
-function GetExecError(StatusCode: Integer; Config: TConfigRec): String;
+function GetExecError(Config: TConfigRec): String;
 var
   Filename: String;
   Prog: String;
@@ -1293,7 +1296,7 @@ var
 
 begin
 
-  if StatusCode = ERR_RUN_CMD then
+  if Config.StatusCode = ERR_RUN_CMD then
   begin
     Filename := GCmdExe;
     Prog := 'The command interpreter';
@@ -1323,18 +1326,25 @@ var
 
 begin
 
-  if Ini = '' then
-    Params := ArgCmdModule(Config.PhpExe)
-  else
-    Params := Format('%s -c %s', [ArgCmdModule(Config.PhpExe), ArgCmd(Ini)]);
+  Params := ArgCmdModule(Config.PhpExe);
 
-  Params := Format('%s %s', [Params, ArgCmd(Script)]);
+  {Add the ini overrides to keep errors on stderr}
+  AddParam(Params, '-d error_reporting=E_ALL');
+  AddParam(Params, '-d display_errors=Off');
+  AddParam(Params, '-d display_startup_errors=Off');
+  AddParam(Params, '-d error_log=');
+  AddParam(Params, '-d log_errors=On');
+
+  if Ini <> '' then
+    AddParam(Params, Format('-c %s', [ArgCmd(Ini)]));
+
+  AddParam(Params, ArgCmd(Script));
 
   if Args <> '' then
-    AddStr(Params, #32 + Args);
+    AddParam(Params, Args);
 
   {Always use the full path for the output streams, in case the directory is changed}
-  AddStr(Params, Format(' > %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]));
+  AddParam(Params, Format('> %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]));
 
   Result := Format('/c "%s"', [Params]);
 
@@ -1403,26 +1413,24 @@ end;
 
 
 procedure SetError(StatusCode: Integer; var Config: TConfigRec);
-var
-  Message: String;
-
 begin
+
+  {Must be first}
+  Config.StatusCode := StatusCode;
 
   case StatusCode of
     ERR_RUN_PHP,
-    ERR_RUN_CMD: Message := GetExecError(StatusCode, Config);
-    ERR_CHECK_PHP: Message := GetPhpError(Config);
-    ERR_CHECK_PATH: Message := Config.Output;
+    ERR_RUN_CMD: Config.Message := GetExecError(Config);
+    ERR_CHECK_PHP: Config.Message := GetPhpError(Config);
+    ERR_CHECK_PATH: Config.Message := Config.Output;
 
     ERR_INSTALL_WARNINGS,
-    ERR_INSTALL_ERRORS: Message := Config.Output;
+    ERR_INSTALL_ERRORS: Config.Message := GetInstallerOutput(Config);
 
-    ERR_INSTALL_OUTPUT: Message := GetInstallerError(Config);
+    ERR_INSTALL_OUTPUT: Config.Message := GetInstallerError(Config);
   end;
 
-  Config.Message := Message;
-  Config.StatusCode := StatusCode;
-  Debug(Format('Error: %s%s%s', [GetStatusText(StatusCode), LF, Message]));
+  Debug(Format('Error: %s%s%s', [GetStatusText(StatusCode), LF, Config.Message]));
 
 end;
 
@@ -2809,8 +2817,8 @@ begin
   end;
 
   {Everthing ok}
-  Debug(Format('Config: version=%s, ini=%s, tls=%d, compat=%d', [Config.PhpVersion,
-    Config.PhpIni, Config.PhpSecure, Config.PhpCompat]));
+  Debug(Format('Config: version=%s, id=%d, ini=%s, tls=%d, compat=%d', [Config.PhpVersion,
+    Config.PhpId, Config.PhpIni, Config.PhpSecure, Config.PhpCompat]));
 
   {Check for old php version}
   if not CheckPhpVersion(GConfigRec) then
@@ -3035,8 +3043,7 @@ begin
   FormatExitCode(Result, Config);
   Result := FormatError(Result, Config.PhpExe);
 
-  {Version will not be empty if we got the config data}
-  if ShowIni and (Config.PhpVersion <> '') then
+  if ShowIni then
     AddPara(Result, GetPhpIni(Config, False));
 
   if CommonErrors <> '' then
@@ -3074,9 +3081,9 @@ end;
 
 
 {Program output from stdout should contain a single details line, which is
-extracted if found. If something is not set up correctly, either stdout or
-stderr will contain error messages or warnings. Any unexpected output is placed
-in Config.Output as a string.}
+extracted if found. If something is not set up correctly stderr will contain
+error messages or warnings. Any unexpected output is placed in Config.Output
+as a string.}
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec);
 var
   Found: Boolean;
@@ -3120,8 +3127,10 @@ begin
 
   end;
 
+  Output := Trim(Output);
+
   {Add any error output}
-  AddLine(Output, OutputFromArray(Config.StdErr));
+  AddPara(Output, OutputFromArray(Config.StdErr));
 
   {Set the stripped/merged output as a single string}
   Config.Output := Trim(Output);
@@ -3162,10 +3171,8 @@ end;
 
 
 {Sets version info from the php.exe VersionInfo data. This is called at the
-start of the php check routines and is used for silent installs where we might
-not have control of MessageBoxes popping up. The Config values are later
-overwritten from values obtained from PHP itself, using PHP_VERSION_ID that is
-availabe from 5.2.7}
+start of the php check routines. The Config values are later overwritten from
+values obtained from PHP itself, using PHP_VERSION_ID that is availabe from 5.2.7}
 procedure SetPhpVersionInfo(var Config: TConfigRec);
 var
   VersionMS: Cardinal;
@@ -3533,73 +3540,94 @@ end;
 
 {*************** Composer installer functions ***************}
 
+function ComposerPharMissing: Boolean;
+begin
+  Result := not FileExists(GTmpDir + '\composer.phar');
+end;
+
+
 function GetInstallerArgs(Config: TConfigRec): String;
 begin
 
-  Result := '';
-  AddPhpParam('no-ansi', Result);
-  AddPhpParam('quiet', Result);
+  Result := '--';
+  AddParam(Result, '--no-ansi');
+  AddParam(Result, '--quiet');
 
   {Important to check both these values}
   if not Config.PhpSecure and GFlags.DisableTls then
-    AddPhpParam('disable-tls', Result);
+    AddParam(Result, '--disable-tls');
 
 end;
 
 
 function GetInstallerError(Config: TConfigRec): String;
+var
+  Output : String;
+
 begin
 
   Result := 'The Composer installer script did not run correctly';
   FormatExitCode(Result, Config);
 
-  {This error is set in the unlikely event that the phar is missing}
-  if Config.ExitCode = 0 then
+  {Deal with missing phar first}
+  if (Config.ExitCode = 0) and ComposerPharMissing() then
   begin
     AddStr(Result, ' because composer.phar was not downloaded.');
     Exit;
   end;
 
-  MergeErrorOutput(Config);
+  {We will either have stderr output, or no stdout to read}
+  Output := OutputFromArray(Config.StdErr)
 
-  {In theory we should always have output to show}
-  if Config.Output <> '' then
+  if Output <> '' then
   begin
     AddStr(Result, ':');
-    AddPara(Result, Config.Output);
+    AddPara(Result, Output);
   end
   else
   begin
 
     if Config.ExitCode = 1 then
+      {We were expecting Composer installer errors}
       AddStr(Result, ' because no output was returned.')
     else
       AddStr(Result, ' and no output was returned.');
   end;
 
-  Config.Output := TrimRight(Config.Output);
-  AddStr(Config.Output, LF);
+  Result := TrimRight(Result);
+  AddStr(Result, LF);
 
 end;
 
 
-procedure MergeErrorOutput(var Config: TConfigRec);
+{Parses stdout lines to a string}
+function GetInstallerOutput(Config: TConfigRec): String;
 var
-  Index: Integer;
+  Count: Integer;
+  I: Integer;
+  Line: String;
 
 begin
 
-  if Config.Output = '' then
-    Config.Output := OutputFromArray(Config.StdErr)
-  else
-  begin
-    {We already have an error from stdout, but there might be more info in
-    stderr, particulaly if the installer script path is not present in stdout}
-    Index := Pos(GTmpDir + '\' + PHP_INSTALLER, Config.Output);
+  Result := '';
+  Count := GetArrayLength(Config.StdOut);
 
-    if Index = 0 then
-      AddPara(Config.Output, OutputFromArray(Config.StdErr));
+  for I := 0 to Count - 1 do
+  begin
+
+    Line := Config.StdOut[I];
+
+    {This relates to using the command-line -d option}
+    if Pos('If you can not modify the ini', Line) <> 0 then
+      Continue;
+
+    AddLine(Result, Line);
   end;
+
+  Result := Trim(Result);
+
+  if Result <> '' then
+    AddStr(Result, LF);
 
 end;
 
@@ -3626,6 +3654,14 @@ begin
   if not Success then
     Exit;
 
+  {Bail out if we have stderr output}
+  if GetArrayLength(Config.StdErr) > 0 then
+  begin
+    Status := ERR_INSTALL_OUTPUT;
+    SetError(Status, Config);
+    Exit;
+  end;
+
   {Set Status depending on the ExitCode}
   case Config.ExitCode of
     0: Status := ERR_SUCCESS;
@@ -3641,10 +3677,10 @@ begin
     if GetArrayLength(Config.StdOut) > 0 then
       Status := ERR_INSTALL_WARNINGS;
 
-    {Check in case composer.phar has not been created. Although very
-    unlikely, it has been reported and not trapping this would cause setup to
-    complain about not having a file to install}
-    if not FileExists(GTmpDir + '\composer.phar') then
+    {Check in case composer.phar has not been created. Although this is checked
+    by the installer script, not trapping this here would cause Inno to show an
+    error about not having a file to install}
+    if ComposerPharMissing() then
       Status := ERR_INSTALL_OUTPUT;
 
   end;
@@ -3657,47 +3693,10 @@ begin
     if GetArrayLength(Config.StdOut) = 0 then
       Status := ERR_INSTALL_OUTPUT;
 
-    {If there are errors on stderr then we have PHP errors}
-    if GetArrayLength(Config.StdErr) > 0 then
-      Status := ERR_INSTALL_OUTPUT;
-
   end;
-
-  ParseInstallerOutput(Status, Config);
 
   if Status <> ERR_SUCCESS then
     SetError(Status, Config);
-
-end;
-
-
-{Write stdout lines to Config.Output}
-procedure ParseInstallerOutput(StatusCode: Integer; var Config: TConfigRec);
-var
-  Count: Integer;
-  I: Integer;
-  Line: String;
-
-begin
-
-  Count := GetArrayLength(Config.StdOut);
-
-  for I := 0 to Count - 1 do
-  begin
-
-    Line := Config.StdOut[I];
-
-    {This relates to using the command-line -d option}
-    if Pos('If you can not modify the ini', Line) <> 0 then
-      Continue;
-
-    AddLine(Config.Output, Line);
-  end;
-
-  Config.Output := Trim(Config.Output);
-
-  if Config.Output <> '' then
-    AddStr(Config.Output, LF);
 
 end;
 

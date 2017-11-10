@@ -1,6 +1,7 @@
 ## v4.8.0
 Not yet released
 
+* Changed error reporting by forcing all errors to stderr with ini overrides.
 * Changed detection of old PHP versions for better error handling.
 * Fixed argument escaping to handle unusual path characters.
 * Fixed shell proxy to handle `cygdrive` prefix if it has been changed by the user (thanks to @DRSDavidSoft).
@@ -12,7 +13,7 @@ Not yet released
 
 * Stopped uninstall removing `Composer\vendor\bin` from the user path if there is another composer files directory in the path (ie from a subseqent Devloper mode installation).
 * Improved shell proxy handling, in case of `CDPATH` conflicts.
-* Improved error reporting, making use of stderr now that PHP uses it better.
+* Improved error reporting by making use of stderr.
 * Added output from stdout and stderr to the log file for better troubleshooting.
 * Unattended `SYSTEM` installations no longer write data to the system user profile.
 
