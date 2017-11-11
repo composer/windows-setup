@@ -1376,9 +1376,10 @@ begin
   Result := '';
   UintCode := ExitCode;
   Suffix := ' Try reinstalling the program to fix this problem.';
+  AddStr(Suffix, ' Make sure you have installed the appropriate Visual C++ Redistributable.');
 
   if ExitCode > 0 then
-    Result := SysErrorMessage(ExitCode)
+    Result := Format('Reported error: %s', [SysErrorMessage(ExitCode)])
   else if UintCode = $C0000135 then
     {STATUS_DLL_NOT_FOUND}
     Result := 'The program cannot start because a dll was not found.' + Suffix;

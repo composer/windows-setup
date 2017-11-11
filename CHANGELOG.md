@@ -1,5 +1,5 @@
 ## v4.8.0
-Not yet released
+2017-11-11
 
 * Changed error reporting by forcing all errors to stderr with ini overrides.
 * Changed detection of old PHP versions for better error handling.

@@ -5,6 +5,7 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 ## Contents
 * [About](#About)
 * [Details](#Details)
+* [Php Ini File](#Php-Ini_File)
 * [Troubleshooting](#Troubleshooting)
 * [Uninstalling](#Uninstalling)
 * [Install Locations](#Locations)
@@ -39,7 +40,7 @@ searches common locations on your computer and presents you with its findings. I
 will display this value. If not, or you want to choose a different PHP, you must select from the list or hunt around manually.
 
 The installer will then check that PHP and your path are set up correctly. If it finds any errors it will give you
-the chance to fix them. It will also offer to either create or modify the `php.ini` file if required settings do not exist.
+the chance to fix them. It will also offer to either create or modify the `php.ini` file if required settings do not exist. See [Php Ini File](#Php-Ini-File) for more information.
 
 Next, the installer will ask if you need a proxy server to connect to the internet. If it finds any values in your
 *Internet Settings* or your environment, then the proxy url will be displayed.
@@ -47,6 +48,15 @@ Next, the installer will ask if you need a proxy server to connect to the intern
 After you have reviewed and accepted your settings, the installer will download Composer and set everything up. If your
 environment has been changed, it is important to close your current terminal and open a new one so that the changes get
 loaded. The installer will remind you if this is the case.
+
+<a name="Php-Ini-File"></a>
+## Php Ini File
+Composer-Setup will either create a new `php.ini` or modify an existing file if any settings needed by Composer are missing:
+
+* `allow_url_fopen` set to on
+* `open_ssl` and `mbstring` extensions enabled
+
+When creating a new file, the _php.ini-production_ file is used with `extension_dir` and `date.timezone` values appropriately set. When modifying an existing file, a backup is created in the same directory, named `php.ini~orig`.
 
 <a name="Troubleshooting"></a>
 ## Troubleshooting
