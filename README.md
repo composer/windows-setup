@@ -5,7 +5,7 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 ## Contents
 * [About](#About)
 * [Details](#Details)
-* [Php Ini File](#Php-Ini_File)
+* [Php Ini File](#Php-Ini-File)
 * [Troubleshooting](#Troubleshooting)
 * [Uninstalling](#Uninstalling)
 * [Install Locations](#Locations)
