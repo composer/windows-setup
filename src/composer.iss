@@ -2852,35 +2852,39 @@ end;
 
 
 function GetCommonErrors(Config: TConfigRec; var VersionError, ShowIni: Boolean): String;
+var
+  CanShowIni: Boolean;
+
 begin
 
   Result := '';
   VersionError := False;
+  ShowIni := False;
+
+  {Only show the ini if one has been used and we have its location. This stops
+  unhelpful messages about having to create one if something has gone wrong}
+  CanShowIni := Config.PhpIni <> '';
 
   if GetErrorVersion(Result, Config) then
   begin
     VersionError := True;
-    ShowIni := False;
     Exit;
   end;
 
   if GetErrorExtDirectory(Result, Config) then
   begin
-    ShowIni := True;
+    ShowIni := CanShowIni;
     Exit;
   end;
 
   if GetErrorExtDuplicate(Result, Config) then
   begin
-    ShowIni := True;
+    ShowIni := CanShowIni;
     Exit;
   end;
 
   if GetErrorAutorun(Result, Config) then
-  begin
-    ShowIni := False;
     Exit;
-  end;
 
 end;
 
