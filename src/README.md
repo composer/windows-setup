@@ -54,9 +54,13 @@ The following instructions relate to [Certum CA](https://en.sklep.certum.pl), wh
 
 From 2017 Certum can only issue certificates using a smart card reader. If you purchase their card-reader package, you can install the software from the USB stick, which  also contains helpful instruction manuals. The main interface is the `proCertumCardManager` application. Also included is the `cryptoCertumScanner` utility which runs at Start-up and is added to the system tray. This does not seem to be needed for simple code signing, so it is best to remove it from Start-up.
 
-Use Chrome to create your certificate, from the _Activate Certificates_ page in your account. You will need to download and run a Certum-provided Java plugin from the browser in order to create the key pair and you must have the card-reader inserted as it stores this on the card.
+Once you have bought the certificate you need to activate it. You need the Java runtime installed on your system and a web browser that allows you to run a `.jnlp` web start file (Chrome, for example). You may also have to set the appropriate level of security from the Java Control Panel item to allow you to run it.
 
-Once the certificate has been activated, go to the _Manage Certificates_ page and select `Save binary` to download the `.cer` file. Open the `proCertumCardManager` and import this file on to the reader, then click to register the certificate in the system. This will put it in the Windows Certificate Store for the Current User, under Personal.
+Insert the card-reader, go to the _Activate Certificates_ page in your account and follow the instructions to generate and store a key-pair on the card reader. You then need to verify your email and provide identification documentation.
+
+Once the certificate has been activated, go to the _Manage Certificates_ page and select `Save binary` to download the `.cer` file (note that this works in any browser). Open the `proCertumCardManager`, read the card and choose your profile - probably the Common profile. Click _Import certificate_ to add this file to the reader.
+
+To register the certificate in the Windows Certificate Store, click _Show certificate details_ then _Install Certificate_. Choose Current User for the store location and let the system automatically choose the actual store (which will be Personal). This makes life easy when it comes to invoking `signtool.exe`.
 
 To install an already activated certificate from the card reader, open the `proCertumCardManager`, select the certificate then click to register it, as above.
 
