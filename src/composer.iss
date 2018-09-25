@@ -362,7 +362,7 @@ const
   ERR_CHECK_PATH = 201;
   ERR_INSTALL_WARNINGS = 300;
   ERR_INSTALL_ERRORS = 301;
-  ERR_INSTALL_OUTPUT = 302;
+  ERR_INSTALL_UNEXPECTED = 302;
 
 function SetEnvironmentVariable (Name: String; Value: String): LongBool;
   external 'SetEnvironmentVariableW@kernel32.dll stdcall delayload';
@@ -493,9 +493,11 @@ procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec); forward;
 
 {Composer installer functions}
 function ComposerPharMissing: Boolean; forward;
+function GetComposerPharPath: String; forward;
 function GetInstallerArgs(Config: TConfigRec): String; forward;
-function GetInstallerError(Config: TConfigRec): String; forward;
-function GetInstallerOutput(Config: TConfigRec): String; forward;
+function GetInstallerErrors(Config: TConfigRec): String; forward;
+function GetInstallerUnexpected(Config: TConfigRec): String; forward;
+function GetInstallerWarnings(Config: TConfigRec): String; forward;
 procedure RunInstaller(var Config: TConfigRec); forward;
 
 {Custom page functions}
@@ -1082,6 +1084,8 @@ end;
 
 {*************** Common functions ***************}
 
+{Adds a value to an existing string, separated with a linefeed.
+All existing trailing space and linefeeds are removed first}
 procedure AddLine(var Existing: String; const Value: String);
 begin
 
@@ -1096,6 +1100,21 @@ begin
 end;
 
 
+{Adds a value to an existing string, separated with a linefeed.
+This method preserves existing trailing space and linefeeds}
+procedure AddLineRaw(var Existing: String; const Value: String);
+begin
+
+  if Existing <> '' then
+    Existing := Existing + LF;
+
+  AddStr(Existing, Value);
+
+end;
+
+
+{Adds a value to an existing string, separated with two linefeeds.
+All existing trailing space and linefeeds are removed first}
 procedure AddPara(var Existing: String; const Value: String);
 begin
 
@@ -1396,14 +1415,14 @@ begin
 
   case Status of
 
-    ERR_SUCCESS:          Result := 'ERR_SUCCESS';
-    ERR_RUN_PHP:          Result := 'ERR_RUN_PHP';
-    ERR_RUN_CMD:          Result := 'ERR_RUN_CMD';
-    ERR_CHECK_PHP:        Result := 'ERR_CHECK_PHP';
-    ERR_CHECK_PATH:       Result := 'ERR_CHECK_PATH';
-    ERR_INSTALL_WARNINGS: Result := 'ERR_INSTALL_WARNINGS';
-    ERR_INSTALL_ERRORS:   Result := 'ERR_INSTALL_ERRORS';
-    ERR_INSTALL_OUTPUT:   Result := 'ERR_INSTALL_OUTPUT';
+    ERR_SUCCESS:            Result := 'ERR_SUCCESS';
+    ERR_RUN_PHP:            Result := 'ERR_RUN_PHP';
+    ERR_RUN_CMD:            Result := 'ERR_RUN_CMD';
+    ERR_CHECK_PHP:          Result := 'ERR_CHECK_PHP';
+    ERR_CHECK_PATH:         Result := 'ERR_CHECK_PATH';
+    ERR_INSTALL_WARNINGS:   Result := 'ERR_INSTALL_WARNINGS';
+    ERR_INSTALL_ERRORS:     Result := 'ERR_INSTALL_ERRORS';
+    ERR_INSTALL_UNEXPECTED: Result := 'ERR_INSTALL_UNEXPECTED';
 
   else
     Result := 'ERR_UNKNOWN';
@@ -1423,13 +1442,13 @@ begin
   case StatusCode of
     ERR_RUN_PHP,
     ERR_RUN_CMD: Config.Message := GetExecError(Config);
+
     ERR_CHECK_PHP: Config.Message := GetPhpError(Config);
     ERR_CHECK_PATH: Config.Message := Config.Output;
 
-    ERR_INSTALL_WARNINGS,
-    ERR_INSTALL_ERRORS: Config.Message := GetInstallerOutput(Config);
-
-    ERR_INSTALL_OUTPUT: Config.Message := GetInstallerError(Config);
+    ERR_INSTALL_WARNINGS: Config.Message := GetInstallerWarnings(Config);
+    ERR_INSTALL_ERRORS: Config.Message := GetInstallerErrors(Config);
+    ERR_INSTALL_UNEXPECTED: Config.Message := GetInstallerUnexpected(Config);
   end;
 
   Debug(Format('Error: %s%s%s', [GetStatusText(StatusCode), LF, Config.Message]));
@@ -1554,7 +1573,7 @@ begin
   Count := GetArrayLength(Items);
 
   for I := 0 to Count - 1 do
-    AddLine(Result, Items[I]);
+    AddLineRaw(Result, Items[I]);
 
   Result := Trim(Result);
 
@@ -2923,7 +2942,8 @@ begin
   {The old wrong extension_dir problem}
   Result := False;
 
-  if Pos('load dynamic library', Config.Output) = 0 then
+  {Check for startup errors and errors loading zend extensions}
+  if (Pos('dynamic library', Config.Output) = 0) and (Pos('loading ext\', Config.Output) = 0) then
     Exit;
 
   AddStr(Message, 'A setting in your php.ini could be causing the problem:');
@@ -3143,7 +3163,7 @@ begin
 
     end;
 
-    AddLine(Output, Line);
+    AddLineRaw(Output, Line);
 
   end;
 
@@ -3609,7 +3629,13 @@ end;
 
 function ComposerPharMissing: Boolean;
 begin
-  Result := not FileExists(GTmpDir + '\composer.phar');
+  Result := not FileExists(GetComposerPharPath());
+end;
+
+
+function GetComposerPharPath: String;
+begin
+  Result := GTmpDir + '\composer.phar';
 end;
 
 
@@ -3627,7 +3653,30 @@ begin
 end;
 
 
-function GetInstallerError(Config: TConfigRec): String;
+{Formats an error message from stdout error messages}
+function GetInstallerErrors(Config: TConfigRec): String;
+var
+  Output: String;
+
+begin
+
+  Result := 'The Composer installer script was not successful';
+  FormatExitCode(Result, Config);
+  AddStr(Result, '.');
+
+  Output := OutputFromArray(Config.StdOut);
+
+  AddPara(Result, 'Script Output:');
+  AddLine(Result, Output);
+
+  Result := TrimRight(Result);
+  AddStr(Result, LF);
+
+end;
+
+
+{Formats an error message for unexpected installer behaviour}
+function GetInstallerUnexpected(Config: TConfigRec): String;
 var
   Output : String;
 
@@ -3636,20 +3685,21 @@ begin
   Result := 'The Composer installer script did not run correctly';
   FormatExitCode(Result, Config);
 
-  {Deal with missing phar first}
+  {Failsafe - deal with missing phar/wrong exit code first}
   if (Config.ExitCode = 0) and ComposerPharMissing() then
   begin
     AddStr(Result, ' because composer.phar was not downloaded.');
     Exit;
   end;
 
-  {We will either have stderr output, or no stdout to read}
+  {We will either have stderr output, or there was no stdout to read}
   Output := OutputFromArray(Config.StdErr)
 
   if Output <> '' then
   begin
-    AddStr(Result, ':');
-    AddPara(Result, Output);
+    AddStr(Result, '.');
+    AddPara(Result, 'Script Output:');
+    AddLine(Result, Output);
   end
   else
   begin
@@ -3667,8 +3717,8 @@ begin
 end;
 
 
-{Parses stdout lines to a string}
-function GetInstallerOutput(Config: TConfigRec): String;
+{Parses warnings from stdout lines to a string}
+function GetInstallerWarnings(Config: TConfigRec): String;
 var
   Count: Integer;
   I: Integer;
@@ -3685,16 +3735,14 @@ begin
     Line := Config.StdOut[I];
 
     {This relates to using the command-line -d option}
-    if Pos('If you can not modify the ini', Line) <> 0 then
+    if Pos('php -d ', Line) <> 0 then
       Continue;
 
-    AddLine(Result, Line);
+    AddLineRaw(Result, Line);
   end;
 
   Result := Trim(Result);
-
-  if Result <> '' then
-    AddStr(Result, LF);
+  AddStr(Result, LF);
 
 end;
 
@@ -3711,6 +3759,7 @@ begin
 
   Debug('Running Composer installer script');
   Script := PHP_INSTALLER;
+  DeleteFile(GetComposerPharPath());
   Args := GetInstallerArgs(Config);
 
   EnvSet := ProxyEnvSet();
@@ -3724,7 +3773,7 @@ begin
   {Bail out if we have stderr output}
   if GetArrayLength(Config.StdErr) > 0 then
   begin
-    Status := ERR_INSTALL_OUTPUT;
+    Status := ERR_INSTALL_UNEXPECTED;
     SetError(Status, Config);
     Exit;
   end;
@@ -3734,7 +3783,7 @@ begin
     0: Status := ERR_SUCCESS;
     1: Status := ERR_INSTALL_ERRORS;
   else
-    Status := ERR_INSTALL_OUTPUT;
+    Status := ERR_INSTALL_UNEXPECTED;
   end;
 
   if Status = ERR_SUCCESS then
@@ -3744,11 +3793,11 @@ begin
     if GetArrayLength(Config.StdOut) > 0 then
       Status := ERR_INSTALL_WARNINGS;
 
-    {Check in case composer.phar has not been created. Although this is checked
-    by the installer script, not trapping this here would cause Inno to show an
-    error about not having a file to install}
+    {Failsafe check in case composer.phar has not been created. Although this is
+    checked by the installer script (which should have exited 1), not trapping this
+    here would cause Inno to show an error about not having a file to install}
     if ComposerPharMissing() then
-      Status := ERR_INSTALL_OUTPUT;
+      Status := ERR_INSTALL_UNEXPECTED;
 
   end;
 
@@ -3758,7 +3807,7 @@ begin
     {Check in case we have no output. Although very unlikely, it has been
     reported and not trapping this would leave the user with no information}
     if GetArrayLength(Config.StdOut) = 0 then
-      Status := ERR_INSTALL_OUTPUT;
+      Status := ERR_INSTALL_UNEXPECTED;
 
   end;
 
@@ -3827,7 +3876,7 @@ begin
     Page.Caption := 'Composer Installer Error';
     Page.Description := 'Unable to continue with installation';
 
-    if GConfigRec.StatusCode = ERR_INSTALL_OUTPUT then
+    if GConfigRec.StatusCode = ERR_INSTALL_UNEXPECTED then
       Text.Caption := 'An error occurred. Clicking Retry may resolve this issue.'
     else
       Text.Caption := 'Please review and fix the issues listed below then try again.';
