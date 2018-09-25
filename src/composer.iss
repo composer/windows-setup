@@ -475,6 +475,7 @@ function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec); forward;
 function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
 function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean; forward;
+procedure ReportIniEnvironment; forward;
 procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
 {Ini file functions}
@@ -2715,6 +2716,7 @@ begin
   GConfigRec := ConfigInit(Filename);
   Debug('Checking selected php: ' + Filename);
 
+  ReportIniEnvironment();
   SetPhpVersionInfo(GConfigRec);
 
   {Bail out on old php versions}
@@ -3067,6 +3069,7 @@ end;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String;
 var
   Spacing: String;
+  EnvIni: String;
 
 begin
 
@@ -3080,6 +3083,18 @@ begin
       Spacing := #32;
 
     Result := Format('The php.ini used by your command-line PHP is:%s%s', [Spacing, Config.PhpIni]);
+
+    {Check for PHPRC}
+    EnvIni := GetEnv('PHPRC');
+
+    if (EnvIni <> '') and FileOrDirExists(EnvIni) then
+    begin
+      if Indent then
+        Spacing := LF + TAB;
+
+      AddStr(Result, Format('%s(from PHPRC environment variable)', [Spacing]));
+    end;
+
   end;
 
 end;
@@ -3174,6 +3189,51 @@ begin
 
 end;
 
+{Report PHPRC and PHP_INI_SCAN_DIR values since they could be helpful when
+troubleshooting errors}
+procedure ReportIniEnvironment;
+var
+  Name: String;
+  Env: String;
+  Status: String;
+  Msg: String;
+
+begin
+
+  {PHPRC - can be a file or directory}
+  Name := 'PHPRC';
+  Env := GetEnv(Name);
+  Msg := Format('Env: %s=%s', [Name, Env]);
+
+  if Env <> '' then
+  begin
+    if FileOrDirExists(Env) then
+      Status := 'exists'
+    else
+      Status := 'missing';
+
+    AddStr(Msg, Format(' [%s]', [Status]));
+  end;
+
+  {PHP_INI_SCAN_DIR - can be a directory or a list of directories}
+  Name := 'PHP_INI_SCAN_DIR';
+  Env := GetEnv(Name);
+  AddStr(Msg, Format(', %s=%s', [Name, Env]));
+
+  if (Env <> '') and (Pos(';', Env) = 0) then
+  begin
+    {We only check if we have a single directory}
+    if DirExists(Env) then
+      Status := 'exists'
+    else
+      Status := 'missing';
+
+    AddStr(Msg, Format(' [%s]', [Status]));
+  end;
+
+  Debug(Msg);
+
+end;
 
 {Sets version info from the php.exe VersionInfo data. This is called at the
 start of the php check routines. The Config values are later overwritten from
@@ -3187,6 +3247,8 @@ var
   Release: Integer;
 
 begin
+
+  Debug('Reading VersionInfo data from exe');
 
   {The data may not exist - Cygwin for example}
   if GetVersionNumbers(Config.PhpExe, VersionMS, VersionLS) then

@@ -9,7 +9,7 @@
 * values and ending with an eol.
 *
 * The values required are 0 or 1, signifying whether modification is required,
-* and an infomrational status message, which may contain an error.
+* and an informational status message, which may contain an error.
 */
 
 $PHP_CHECK_ID = '<ComposerSetup:>';
@@ -122,6 +122,12 @@ class IniChecker
         }
 
         if ($srcIni = strval(php_ini_loaded_file())) {
+            // We need the ini to be in the php directory
+            if (strtolower($this->phpDir) !== strtolower(dirname($srcIni))) {
+                $this->writeError('Loaded ini is not in php directory');
+                return;
+            }
+
             // We must save a tmp backup
             if (!copy($srcIni, $this->origIni)) {
                 $this->writeError('Failed to copy source ini: '.$srcIni);
