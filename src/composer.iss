@@ -128,7 +128,9 @@ type
     PhpVersion  : String;         {The php version}
     PhpId       : Integer;        {The php version id, as PHP_VERSION_ID}
     PhpIni      : String;         {The php.ini file in use}
-    PhpSecure   : Boolean;        {If openssl if enabled}
+    PhpSecure   : Boolean;        {If openssl is enabled}
+    PhpCafile   : String;         {The openssl.cafile ini value, if openssl enabled}
+    PhpCapath   : String;         {The openssl.capath ini value, if openssl enabled}
     PhpCompat   : Boolean;        {If php meets minimum Composer requirements}
     ExitCode    : Integer;        {The exit code of the last call}
     StatusCode  : Integer;        {The status/error code from the last call}
@@ -493,12 +495,19 @@ procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec); forward;
 
 {Composer installer functions}
 function ComposerPharMissing: Boolean; forward;
+function FormatCertLocation(Prefix, Name, Source, Location: String): String; forward;
+function GetCertLocation(Config: TConfigRec; var IsFile: Boolean): String; forward;
 function GetComposerPharPath: String; forward;
+function GetErrorCertificateVerify(Config: TConfigRec; Reason: String): String; forward;
+function GetErrorProxy(var Message: String; Config: TConfigRec): Boolean; forward;
+function GetErrorSSL(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetInstallerArgs(Config: TConfigRec): String; forward;
+function GetInstallerCommonErrors(Config: TConfigRec): String; forward;
 function GetInstallerErrors(Config: TConfigRec): String; forward;
 function GetInstallerUnexpected(Config: TConfigRec): String; forward;
 function GetInstallerWarnings(Config: TConfigRec): String; forward;
 procedure RunInstaller(var Config: TConfigRec); forward;
+procedure SetErrorsSSL(Config: TConfigRec; ReasonList: TStringList); forward;
 
 {Custom page functions}
 function EnvironmentPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
@@ -2839,8 +2848,8 @@ begin
   end;
 
   {Everthing ok}
-  Debug(Format('Config: version=%s, id=%d, ini=%s, tls=%d, compat=%d', [Config.PhpVersion,
-    Config.PhpId, Config.PhpIni, Config.PhpSecure, Config.PhpCompat]));
+  Debug(Format('Config: version=%s, id=%d, ini=%s, tls=%d, cafile=%s, capath=%s, compat=%d', [Config.PhpVersion,
+    Config.PhpId, Config.PhpIni, Config.PhpSecure, Config.PhpCafile, Config.PhpCapath, Config.PhpCompat]));
 
   {Check for old php version}
   if not CheckPhpVersion(GConfigRec) then
@@ -3015,7 +3024,7 @@ end;
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean;
 var
   List: TStringList;
-  Id : Integer;
+  Id: Integer;
 
 begin
 
@@ -3026,7 +3035,7 @@ begin
   try
     List.Text := Details;
 
-    if List.Count = 5 then
+    if List.Count = 7 then
     begin
       Config.PhpVersion := List.Strings[0];
       Id := StrToIntDef(List.Strings[1], 0);
@@ -3038,9 +3047,13 @@ begin
 
       Config.PhpIni := List.Strings[2];
 
-      if BoolFromString(List.Strings[3], Config.PhpSecure) then
-        Result := BoolFromString(List.Strings[4], Config.PhpCompat);
+      if not BoolFromString(List.Strings[3], Config.PhpSecure) then
+        Exit;
 
+      Config.PhpCafile := List.Strings[4];
+      Config.PhpCapath := List.Strings[5];
+
+      Result := BoolFromString(List.Strings[6], Config.PhpCompat);
     end;
 
   finally
@@ -3633,9 +3646,165 @@ begin
 end;
 
 
+{Used by GetCertLocation to format the certificate location message}
+function FormatCertLocation(Prefix, Name, Source, Location: String): String;
+begin
+  Result := Format(Prefix, [Name, Source]);
+  AddLine(Result, Location);
+end;
+
+
+{Searches for certificate location, as Composer, and returns a formatted message}
+function GetCertLocation(Config: TConfigRec; var IsFile: Boolean): String;
+var
+  Prefix: String;
+  Name: String;
+  Source: String;
+  Location: String;
+
+begin
+
+  Result := '';
+  Prefix := 'Certificate location [from %s %s]:';
+
+  {Environment variables first}
+  Source := 'environment variable';
+
+  IsFile := True;
+  Name := 'SSL_CERT_FILE';
+  Location := GetEnv(Name);
+
+  if (Location <> '') and FileExists(Location) then
+  begin
+    Result := FormatCertLocation(Prefix, Name, Source, Location);
+    Exit;
+  end;
+
+  IsFile := False;
+  Name := 'SSL_CERT_DIR';
+  Location := GetEnv(Name);
+
+  if (Location <> '') and DirExists(Location) then
+  begin
+    Result := FormatCertLocation(Prefix, Name, Source, Location);
+    Exit;
+  end;
+
+  {Ini settings second, stored in Config record}
+  Source := 'ini setting';
+
+  IsFile := True;
+  Name := 'openssl.cafile';
+  Location := Config.PhpCafile;
+
+  if (Location <> '') and FileExists(Location) then
+  begin
+    Result := FormatCertLocation(Prefix, Name, Source, Location);
+    AddPara(Result, GetPhpIni(Config, False));
+    Exit;
+  end;
+
+  IsFile := False;
+  Name := 'openssl.capath';
+  Location := Config.PhpCapath;
+
+  if (Location <> '') and DirExists(Location) then
+  begin
+    Result := FormatCertLocation(Prefix, Name, Source, Location);
+    AddPara(Result, GetPhpIni(Config, False));
+    Exit;
+  end;
+
+end;
+
+
 function GetComposerPharPath: String;
 begin
   Result := GTmpDir + '\composer.phar';
+end;
+
+
+{Reports certificate errors and shows location}
+function GetErrorCertificateVerify(Config: TConfigRec; Reason: String): String;
+var
+  Location: String;
+  IsFile: Boolean;
+  Problem: String;
+
+begin
+
+  Result := '';
+  Location := GetCertLocation(Config, IsFile);
+
+  if (Location <> '') and IsFile then
+    Problem := 'may be out of date'
+  else
+    Problem := 'either cannot be found or may be out of date';
+
+  AddStr(Result, Format('OpenSSL failed with a %s%s%s error.', [#39, Reason, #39]));
+  AddStr(Result, ' This indicates a problem with the Certificate Authority file(s)');
+  AddStr(Result, Format(' on your system, which %s.', [Problem]));
+
+  if Location <> '' then
+    AddPara(Result, Location);
+
+end;
+
+
+{A very basic method to highlight possible proxy errors}
+function GetErrorProxy(var Message: String; Config: TConfigRec): Boolean;
+begin
+
+  Result := False;
+
+  if Pos('actively refused it', Config.Output) = 0 then
+    Exit;
+
+  {See if we are using a proxy}
+  if (GProxyInfo.Status <> PROXY_NONE) or (GProxyInfo.UserUrl <> '') then
+    AddStr(Message, 'Your proxy settings may be causing this error.')
+  else
+    AddStr(Message, 'A proxy or firewall may be causing this error.');
+
+  Result := True;
+
+end;
+
+
+{Attempts to provide information about OpenSSL errors - a work in progress}
+function GetErrorSSL(var Message: String; Config: TConfigRec): Boolean;
+var
+  List: TStringList;
+  I: Integer;
+  Reason: String;
+
+begin
+
+  Result := False;
+
+  List := TStringList.Create;
+  SetErrorsSSL(Config, List);
+
+  try
+
+    for I := 0 to List.Count - 1 do
+    begin
+
+      Reason := List.Strings[I];
+
+      if Reason = 'certificate verify failed' then
+      begin
+        AddStr(Message, GetErrorCertificateVerify(Config, Reason));
+        Result := True;
+        Exit;
+      end;
+
+    end;
+
+  finally
+    List.Free;
+  end;
+
 end;
 
 
@@ -3653,21 +3822,47 @@ begin
 end;
 
 
+function GetInstallerCommonErrors(Config: TConfigRec): String;
+begin
+
+  Result := '';
+
+  if GetErrorSSL(Result, Config) then
+    Exit;
+
+  if GetErrorProxy(Result, Config) then
+    Exit;
+
+end;
+
+
 {Formats an error message from stdout error messages}
 function GetInstallerErrors(Config: TConfigRec): String;
 var
-  Output: String;
+  CommonErrors: String;
 
 begin
 
-  Result := 'The Composer installer script was not successful';
-  FormatExitCode(Result, Config);
-  AddStr(Result, '.');
+  {Put stdout in Config.Output, which is also used for common errors}
+  Config.Output := Trim(OutputFromArray(Config.StdOut));
 
-  Output := OutputFromArray(Config.StdOut);
+  {Just show script output if it is returning platform errors}
+  if Pos('Some settings', Config.Output) = 1 then
+    Result := Config.Output
+  else
+  begin
+    CommonErrors := GetInstallerCommonErrors(Config);
 
-  AddPara(Result, 'Script Output:');
-  AddLine(Result, Output);
+    Result := 'The Composer installer script was not successful';
+    FormatExitCode(Result, Config);
+    AddStr(Result, '.');
+
+    if CommonErrors <> '' then
+      AddPara(Result, CommonErrors);
+
+    AddPara(Result, 'Script Output:');
+    AddLine(Result, Config.Output);
+  end;
 
   Result := TrimRight(Result);
   AddStr(Result, LF);
@@ -3693,7 +3888,7 @@ begin
   end;
 
   {We will either have stderr output, or there was no stdout to read}
-  Output := OutputFromArray(Config.StdErr)
+  Output := Trim(OutputFromArray(Config.StdErr));
 
   if Output <> '' then
   begin
@@ -3816,9 +4011,55 @@ begin
 
 end;
 
+{Parses output and returns a list of error "reasons from OpenSSL error messages.
+The format is error:[error code]:[library name]:[function name]:[reason string]}
+procedure SetErrorsSSL(Config: TConfigRec; ReasonList: TStringList);
+var
+  Count: Integer;
+  I: Integer;
+  List: TStringList;
+  Line: String;
+  Found: Boolean;
+
+begin
+
+  Count := GetArrayLength(Config.Stdout);
+  Found := False;
+  List := TStringList.Create;
+
+  try
+
+    for I := 0 to Count - 1 do
+    begin
+
+      Line := Config.StdOut[I];
+
+      if not Found then
+      begin
+        if Pos('OpenSSL Error', Line) <> 0 then
+          Found := True;
+
+        Continue;
+      end;
+
+      StringChangeEx(Line, ':', #13, True);
+      List.Text := Line;
+
+      if (List.Count <> 5) or (List[0] <> 'error') then
+        Break;
+
+      ReasonList.Add(List[4]);
+
+    end;
+
+  finally
+    List.Free;
+  end;
+
+end;
+
 
 {*************** Custom page functions ***************}
-
 
 function EnvironmentPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
 var
