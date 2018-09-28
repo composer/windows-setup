@@ -1,3 +1,12 @@
+## v4.9.0
+2018-09-28
+
+* Improved installer error reporting to show common OpenSSL and proxy errors.
+* Stopped ini-handling from modifying an ini file if it is not in the php.exe directory.
+* Added PHPRC detection, which is reported if used.
+* Updated to latest installer script, including certificate data from Wed Jun 20 03:12:06 2018 GMT.
+
+
 ## v4.8.0
 2017-11-11
 
@@ -66,8 +75,7 @@ and loaded with `/LOADINF`. For uninstall `/DELETE=local` will remove only local
 Inno Setup documentation.
 * Changed Settings page to display a list of existing php installations. The following system drive and user profile directories are searched first: `\php*`, `\php\php*`, `\bin\php*`, `\bin\php\php*`. Then it looks for specific (xampp, wamp, PhpEd) locations.
 * Simpler error handling introduced, which recognizes common PHP errors and displays all php output received.
-* Added a Proxy page for the user to enter an `http_proxy` value, with a value pre-entered if a proxy is found in any registry Internet
-Settings. The variable is then set in the User environment (but not deleted on Uninstall). The Proxy page is also shown if `http_proxy` is already set or passed in as a param.
+* Added a Proxy page for the user to enter an `http_proxy` value, with a value pre-entered if a proxy is found in any registry Internet Settings. The variable is then set in the User environment (but not deleted on Uninstall). The Proxy page is also shown if `http_proxy` is already set or passed in as a param.
 * Added a Security page for when openssl is disabled, with the option to not use it. Sets `disable-tls` flag for installer script
 * Added installation logging, stored as `Setup Log YYYY-MM-DD #nnn.txt` in the users temp directory. For admin installs, the log is deleted on reboot.
 * Removed Shell Menus feature to simplify the setup and further development.
