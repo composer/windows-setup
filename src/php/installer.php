@@ -1352,7 +1352,7 @@ class HttpClient {
             }
 
             $options['http'] = array(
-                'proxy'           => $proxyURL,
+                'proxy' => $proxyURL,
             );
 
             // enabled request_fulluri unless it is explicitly disabled
@@ -1373,9 +1373,9 @@ class HttpClient {
 
 
             if (isset($proxy['user'])) {
-                $auth = urldecode($proxy['user']);
+                $auth = rawurldecode($proxy['user']);
                 if (isset($proxy['pass'])) {
-                    $auth .= ':' . urldecode($proxy['pass']);
+                    $auth .= ':' . rawurldecode($proxy['pass']);
                 }
                 $auth = base64_encode($auth);
 
