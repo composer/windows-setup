@@ -1,3 +1,9 @@
+## v4.10.0
+2019-01-23
+* Updated to latest installer script, including certificate data from Wed Jan 23 04:12:09 2019 GMT.
+* Fixed POSIX incompatibility in shim script.
+
+
 ## v4.9.0
 2018-09-28
 
