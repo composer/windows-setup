@@ -6,6 +6,7 @@
 #define AppInstallName "ComposerSetup"
 #define AppDescription "Composer - Php Dependency Manager"
 #define AppUrl "getcomposer.org"
+#define AppYear GetDateTimeString('yyyy', '', '');
 
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
@@ -33,7 +34,7 @@ AppId={{7315AF68-E777-496A-A6A2-4763A98ED35A}
 AppName=Composer
 AppVerName=Composer
 AppPublisher={#AppUrl}
-AppCopyright=Copyright (C) 2012-2017 John Stevenson
+AppCopyright=Copyright (C) 2012-{#AppYear} John Stevenson
 
 ; compile directives
 Compression=lzma
