@@ -1,3 +1,6 @@
+## Unreleased
+* Improved search for common PHP locations.
+
 ## v4.10.0
 2019-02-04
 * Updated to latest installer script, including certificate data from Wed Jan 23 04:12:09 2019 GMT.
