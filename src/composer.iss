@@ -410,8 +410,9 @@ function OutputFromFile(Filename: String; var Output: TArrayOfString): String; f
 procedure OutputReadStdFiles(var Config: TConfigRec); forward;
 
 {Find PHP functions}
-procedure CheckLocation(Path: String; ResultList: TStringList); forward;
-procedure CheckWildcardLocation(Path: String; ResultList: TStringList); forward;
+procedure CheckAllLocations(Path: String; ResultList: TStringList); forward;
+procedure CheckPhpLocation(Path: String; ResultList: TStringList); forward;
+procedure CheckWildcardLocations(QueryPath, EndPath: String; ResultList: TStringList); forward;
 procedure GetCommonLocations(List: TStringList); forward;
 procedure SetPhpLocations; forward;
 
@@ -1617,7 +1618,40 @@ end;
 
 {*************** Find PHP functions ***************}
 
-procedure CheckLocation(Path: String; ResultList: TStringList);
+procedure CheckAllLocations(Path: String; ResultList: TStringList);
+var
+  Index: Integer;
+  QueryPath: String;
+  EndPath: String;
+
+begin
+
+  Index := Pos('*', Path);
+
+  if Index = 0 then
+    CheckPhpLocation(Path, ResultList)
+  else
+  begin
+    {Separate the wildcard and any additional parts}
+    QueryPath := Copy(Path, 1, Index);
+    EndPath := Copy(Path, Index + 1, MaxInt);
+
+    Index := Pos('\', EndPath);
+
+    if Index > 1 then
+    begin
+      {The wildcard is not at the end of a path segment}
+      QueryPath := QueryPath + Copy(EndPath, 1, Index - 1);
+      EndPath := Copy(EndPath, Index, MaxInt);
+    end;
+
+    CheckWildcardLocations(QueryPath, EndPath, ResultList);
+  end;
+
+end;
+
+
+procedure CheckPhpLocation(Path: String; ResultList: TStringList);
 var
   Exe: String;
 
@@ -1631,25 +1665,31 @@ begin
 end;
 
 
-procedure CheckWildcardLocation(Path: String; ResultList: TStringList);
+procedure CheckWildcardLocations(QueryPath, EndPath: String; ResultList: TStringList);
 var
   FindRec: TFindRec;
-  BasePath: String;
+  Path: String;
 
 begin
 
   try
-    BasePath := ExtractFilePath(Path);
+    Path := ExtractFilePath(QueryPath);
 
-    if FindFirst(Path, FindRec) then
+    if FindFirst(QueryPath, FindRec) then
     begin
 
       repeat
 
         if FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY <> 0 then
         begin
-          if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
-            CheckLocation(BasePath + FindRec.Name, ResultList);
+          if (FindRec.Name = '.') or (FindRec.Name = '..') then
+            Continue;
+
+          if EndPath = '' then
+            CheckPhpLocation(Path + FindRec.Name, ResultList)
+          else
+            CheckAllLocations(Path + FindRec.Name + EndPath, ResultList);
+
         end;
 
       until not FindNext(FindRec);
@@ -1660,7 +1700,6 @@ begin
   end;
 
 end;
-
 
 procedure GetCommonLocations(List: TStringList);
 var
@@ -1697,13 +1736,10 @@ begin
   List.Add(UserBin + PhpFolder);
 
   {Program Files}
-  if not IsWin64 then
-    Pf32 := ExpandConstant('{pf}')
-  else
-  begin
-    Pf32 := ExpandConstant('{pf32}');
+  Pf32 := ExpandConstant('{pf32}');
+
+  if IsWin64 then
     Pf64 := ExpandConstant('{pf64}');
-  end;
 
   List.Add(Pf32 + RootFolder);
   List.Add(Pf32 + PhpFolder);
@@ -1718,12 +1754,16 @@ begin
   List.Add(System + '\xampp\php');
 
   {Wamp Server}
-  List.Add(System + '\wamp64\bin\php\php*');
   List.Add(System + '\wamp\bin\php\php*');
 
+  if IsWin64 then
+    List.Add(System + '\wamp64\bin\php\php*');
+
   {Cygwin}
-  List.Add(System + '\cygwin64\bin');
   List.Add(System + '\cygwin\bin');
+
+  if IsWin64 then
+    List.Add(System + '\cygwin64\bin');
 
   {Nusphere}
   List.Add(Pf32 + '\NuSphere\PhpEd\php*');
@@ -1741,7 +1781,6 @@ procedure SetPhpLocations;
 var
   Locations: TStringList;
   I: Integer;
-  Path: String;
 
 begin
 
@@ -1757,15 +1796,7 @@ begin
     GetCommonLocations(Locations);
 
     for I := 0 to Locations.Count - 1 do
-    begin
-      Path := Locations.Strings[I];
-
-      if Pos('*', Path) = 0 then
-        CheckLocation(Path, GPhpList)
-      else
-        CheckWildcardLocation(Path, GPhpList);
-
-    end;
+      CheckAllLocations(Locations.Strings[I], GPhpList);
 
   finally
     Locations.Free;
