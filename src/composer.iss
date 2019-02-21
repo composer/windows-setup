@@ -1711,6 +1711,7 @@ var
   UserBin: String;
   Pf32: String;
   Pf64: String;
+  Path: String;
 
 begin
 
@@ -1753,6 +1754,10 @@ begin
   {Xampp}
   List.Add(System + '\xampp\php');
 
+  {Just in case they ever release a 64-bit version}
+  if IsWin64 then
+    List.Add(System + '\xampp64\php');
+
   {Wamp Server}
   List.Add(System + '\wamp\bin\php\php*');
 
@@ -1772,7 +1777,15 @@ begin
     List.Add(Pf64 + '\NuSphere\PhpEd\php*');
 
   {Chocolatey}
-  List.Add(System + '\tools\php*');
+  Path := GetEnv('ChocolateyToolsLocation');
+
+  if Path = '' then
+    Path := System + '\tools';
+
+  List.Add(AddBackslash(Path) + 'php*')
+
+  {EasyPhp}
+  List.Add(Pf32 + '\EasyPHP*\*binaries\php\php*');
 
 end;
 
