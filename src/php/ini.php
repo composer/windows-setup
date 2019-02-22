@@ -230,10 +230,10 @@ class IniChecker
 
         // date.timezone
         if ($set = $this->iniGet('date.timezone', $value)) {
-            $set = (bool) $value || PHP_MAJOR_VERSION >= 7;
+            $set = (bool) $value;
         }
 
-        if (!$set) {
+        if (!$set && PHP_MAJOR_VERSION < 7) {
             $this->iniSet('date.timezone', 'UTC');
         }
 
