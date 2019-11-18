@@ -262,17 +262,29 @@ class IniChecker
         }
 
         foreach ($extensions as $name) {
-            $dll = 'php_'.$name.'.dll';
+            $dll = $this->extensionGetDllName($name);
             $path = $extDir.'/'.$dll;
 
             if (!file_exists($path)) {
                 $this->writeError('Unable to find extension: '.$path);
                 return false;
             }
-            $this->iniSet('extension', $dll);
+            $this->iniSet('extension', $name);
         }
 
         return true;
+    }
+
+    /**
+     * Returns the extension dll name
+     *
+     * @param string $name The name of the extension
+     *
+     * @return string The file name
+     */
+    private function extensionGetDllName($name)
+    {
+        return 'php_'.$name.'.dll';
     }
 
     /**
@@ -329,7 +341,17 @@ class IniChecker
     {
         $match = $this->iniFindExisting($name, $value);
 
-        $format = $name === 'extension' ? '%s=%s' : '%s = %s';
+        if ($name === 'extension') {
+            $format = '%s=%s';
+
+            // Use the dll name for < PHP7.2
+            if (PHP_VERSION_ID < 70200) {
+                $value = $this->extensionGetDllName($value);
+            }
+        } else {
+            $format = '%s = %s';
+        }
+
         $line = sprintf($format, $name, $value);
 
         if (!empty($match)) {
@@ -358,8 +380,9 @@ class IniChecker
         $result = array();
 
         if ($name === 'extension') {
-            $format = '/^\s*;?\s*%s\s*=\s*%s.*$/mi';
-            $regex = sprintf($format, $name, $value);
+            $dll = $this->extensionGetDllName($value);
+            $format = '/^\s*;?\s*extension\s*=\s*(?:%s|%s)\s*$/mi';
+            $regex = sprintf($format, $value, $dll);
         } else {
             $format = '/^\s*;?\s*%s\s*=.*$/mi';
             $regex = sprintf($format, $name);
@@ -380,7 +403,7 @@ class IniChecker
                 $active = true;
                 $result = $match;
             } elseif (!$active) {
-                // Nothing active, store it so we have last entry
+                // Nothing active, store it so we have the last inactive entry
                 $result = $match;
             }
         }
