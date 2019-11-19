@@ -387,16 +387,29 @@ begin
 
     SetLength(Expanded, ResSize);
 
-    if ExpandEnvironmentStrings(Path, Expanded, ResSize) = ResSize then
-      Path := TrimRight(Expanded)
-    else
+    if ExpandEnvironmentStrings(Path, Expanded, ResSize) <> ResSize then
+      Exit;
+
+    Path := TrimRight(Expanded);
+
+    {Check for %PATH% or something else that expands to a path-separated list.
+    See: https://github.com/composer/windows-setup/issues/92}
+    if Pos(';', Path) <> 0 then
       Exit;
 
   end;
 
-  {Check that we are a suitable path to expand, or a UNC name - not a complete check}
+  {Check that we are a suitable path to expand (^[A-Z]:.*), or a UNC name (^\\.*) - not a complete check}
   if (Length(Path) >= 3) and (Path[2] = ':') and (Uppercase(Path[1]) >= 'A') and (Uppercase(Path[1]) <= 'Z') then
-    Path := ExpandUNCFileName(Path)
+  begin
+    Path := ExpandUNCFileName(Path);
+
+    {Inno versions < 6 did not handle long paths (> 259 characters) and returned garbage, as per above issue.
+    Check any way, otherwise we will crash}
+    if Pos(#0, Path) <> 0 then
+      Exit;
+
+  end
   else if (Length(Path) < 3) or (Pos('\\', Path) <> 1) then
     Exit;
 
