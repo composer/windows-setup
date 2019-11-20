@@ -1807,8 +1807,11 @@ procedure SetPhpLocations;
 var
   Locations: TStringList;
   I: Integer;
+  S: String;
 
 begin
+
+  Debug('Searching for Php in common locations');
 
   {First create our global}
   GPhpList := TStringList.Create;
@@ -1826,6 +1829,19 @@ begin
 
   finally
     Locations.Free;
+  end;
+
+  if GPhpList.Count = 0 then
+    Debug('Php not found in common locations')
+  else
+  begin
+
+    if GPhpList.Count = 1 then
+      S := 'location'
+    else
+      S := 'locations';
+
+    Debug(Format('Php found in %d %s', [GPhpList.Count, S]));
   end;
 
 end;
