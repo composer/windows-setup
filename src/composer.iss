@@ -12,7 +12,6 @@
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
 #define RunPhp "runphp.exe"
-#define RunTest "runtest.bat"
 #define DllData "userdata.dll"
 
 #define PhpCheck "check.php"
@@ -85,7 +84,6 @@ Name: {code:GetBinDir}; Permissions: users-modify; Check: CheckPermisions;
 
 [Files]
 ; files to extract must be first
-Source: {#RunTest}; Flags: dontcopy;
 Source: php\{#PhpCheck}; Flags: dontcopy;
 Source: php\{#PhpInstaller}; Flags: dontcopy;
 Source: php\{#PhpIni}; Flags: dontcopy;
@@ -216,7 +214,6 @@ type
     StdErr    : String;
     Ini       : String;
     IniBackup : String;
-    RunTest   : String;
   end;
 
 type
@@ -356,7 +353,6 @@ const
   PHP_INI = '{#PhpIni}';
   PHP_INSTALLER = '{#PhpInstaller}';
   CMD_SHELL = '{#CmdShell}';
-  RUN_TEST = '{#RunTest}';
 
   PATH_NONE = 0;
   PATH_OK = 1;
@@ -437,7 +433,6 @@ function IsSystemUser: Boolean; forward;
 procedure RemoveSystemUserData; forward;
 procedure SaveInfData; forward;
 function UnixifyShellFile(const Filename: String; var Error: String): Boolean; forward;
-procedure WinifyTestFile(const Filename: String); forward;
 
 {Path retrieve functions}
 function GetPathData(var Rec: TPathInfo): Boolean; forward;
@@ -534,7 +529,6 @@ procedure SetErrorsSSL(Config: TConfigRec; ReasonList: TStringList); forward;
 
 {Custom page functions}
 function EnvironmentPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
-procedure EnvironmentTestClick(Sender: TObject); forward;
 procedure ErrorInstallerUpdate; forward;
 procedure ErrorSettingsUpdate; forward;
 function GetBase(Control: TWinControl): Integer; forward;
@@ -589,7 +583,6 @@ begin
   ExtractTemporaryFile(PHP_INSTALLER);
   ExtractTemporaryFile(PHP_INI);
   ExtractTemporaryFile(CMD_SHELL);
-  ExtractTemporaryFile(RUN_TEST);
 
   {Set full filenames, but not for php scripts that we run because it breaks
   cygwin php. Also, the PHP_CHECK script must not have a path, otherwise it
@@ -601,7 +594,6 @@ begin
   GTmpFile.StdErr := GTmpDir + '\stderr.txt';
   GTmpFile.Ini := GTmpDir + '\php.ini';
   GTmpFile.IniBackup := GTmpDir + '\php.ini.backup';
-  GTmpFile.RunTest := GTmpDir + '\' + RUN_TEST;
 
   {Set our initial data}
   InitSetData();
@@ -723,11 +715,6 @@ begin
       ShowErrorIfSilent();
     end;
 
-  end
-  else if CurPageID = GPages.Environment.ID then
-  begin
-    {This page will only be called once}
-    WinifyTestFile(GTmpFile.RunTest);
   end;
 
   DebugPageName(CurPageID);
@@ -2063,39 +2050,6 @@ begin
   end;
 
   Result := True;
-
-end;
-
-
-procedure WinifyTestFile(const Filename: String);
-var
-  Error: String;
-  Lines: TArrayOfString;
-  S: AnsiString;
-  I: Integer;
-
-begin
-
-  S := '';
-
-  Debug('Writing Windows line-endings to ' + Filename);
-
-  if not LoadStringsFromFile(Filename, Lines) then
-  begin
-    Error := 'Unable to open ' + Filename;
-    Debug(Error);
-    Exit;
-  end;
-
-  for I := 0 to GetArrayLength(Lines) - 1 do
-    S := S + Lines[I] + LF;
-
-  if not SaveStringToFile(Filename, S, False) then
-  begin
-    Error := 'Unable to write to ' + Filename;
-    Debug(Error);
-    Exit;
-  end;
 
 end;
 
@@ -4556,7 +4510,6 @@ var
   Heading: TNewStaticText;
   Text: TNewStaticText;
   Text2: TNewStaticText;
-  Test: TNewButton;
   Base: Integer;
   S: String;
 
@@ -4587,16 +4540,6 @@ begin
 
   Base := GetBase(Text);
 
-  Test := TNewButton.Create(Result);
-  Test.Top := Base + ScaleY(15);
-  Test.Width := ScaleX(120);
-  Test.Height := ScaleY(23);
-  Test.Caption := 'Test Composer now';
-  Test.OnClick := @EnvironmentTestClick;
-  Test.Parent := Result.Surface;
-
-  Base := GetBase(Test);
-
   Text2 := TNewStaticText.Create(Result);
   Text2.Top := Base + ScaleY(15);
   Text2.WordWrap := True;
@@ -4604,28 +4547,13 @@ begin
   Text2.Width := Result.SurfaceWidth;
   Text2.Parent := Result.Surface;
 
-  S := 'If the test failed, you will have to do one of the following after Setup has finished:';
+  S := 'If this does not work, you will have to do one of the following:';
   AddPara(S, TAB + '- Close all File Explorer windows, then open a new terminal. OR');
   AddLine(S, TAB + '- Logoff and Logon again, then open a new terminal.');
-  AddPara(S,'If the above solutions do not work, you will need to restart your computer.');
+  AddPara(S,'As a last resort, you may need to restart your computer.');
 
   Text2.Caption := S;
   WizardForm.AdjustLabelHeight(Text2);
-end;
-
-
-procedure EnvironmentTestClick(Sender: TObject);
-var
-  ErrorCode: Integer;
-begin
-
-  try
-    ShellExecAsOriginalUser('', GTmpFile.RunTest, '', GetEnv('USERPROFILE'), SW_SHOW, ewWaitUntilTerminated, ErrorCode);
-  except
-    {This situation is extremely unlikely, according the the Inno help}
-    ShowErrorMessage('Internal error: Unable to run the test at this time.');
-  end;
-
 end;
 
 
