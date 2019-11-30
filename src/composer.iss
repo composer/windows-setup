@@ -259,7 +259,6 @@ type
     LastDevDir    : String;   {The last destination selected in dev mode}
     LastFolder    : String;   {The last folder used in the file browser}
     SettingsError : Boolean;  {Set if we have errors, to make ShouldSkipPage work}
-    DisableTls    : Boolean;  {Set if the user has chosen to disable tls}
     EnvChanged    : Boolean;  {Set if we have altered the environment}
     Completed     : Boolean;  {Flags that we have succesfully completed the install}
   end;
@@ -271,7 +270,6 @@ type
     ProgressSettings  : TOutputProgressWizardPage;
     ErrorSettings     : TWizardPage;
     Ini               : TWizardPage;
-    Security          : TWizardPage;
     Proxy             : TWizardPage;
     ProgressInstaller : TOutputProgressWizardPage;
     ErrorInstaller    : TWizardPage;
@@ -302,14 +300,6 @@ type
   end;
 
 type
-  TSecurityPageRec = record
-    Text      : TNewStaticText;
-    Ini       : TNewStaticText;
-    Checkbox  : TNewCheckbox;
-    Info      : TNewStaticText;
-end;
-
-type
   TProxyPageRec = record
     Checkbox  : TNewCheckbox;
     Text      : TNewStaticText;
@@ -337,7 +327,6 @@ var
   GOptionsPage: TOptionsPageRec;   {contains Options page controls}
   GIniPage: TIniPageRec;           {contains Ini page controls}
   GSettingsPage: TSettingsPageRec; {contains Settings page controls}
-  GSecurityPage: TSecurityPageRec; {contains Security page controls}
   GProxyPage: TProxyPageRec;       {contains Proxy page controls}
 
 
@@ -552,9 +541,6 @@ function ProxyPageGetText(var Info: String): String; forward;
 procedure ProxyPageResetIgnore; forward;
 procedure ProxyPageUpdate; forward;
 procedure ProxyPageRefresh; forward;
-procedure SecurityCheckboxClick(Sender: TObject); forward;
-function SecurityPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
-procedure SecurityPageUpdate; forward;
 procedure SettingsBrowseClick(Sender: TObject); forward;
 function SettingsCheckSelected: Boolean; forward;
 procedure SettingsComboChange(Sender: TObject); forward;
@@ -637,10 +623,7 @@ begin
   GPages.Ini := IniPageCreate(GPages.ErrorSettings.ID,
     'PHP Configuration Error', '');
 
-  GPages.Security := SecurityPageCreate(GPages.Ini.ID,
-    'Composer Security Warning', 'Choose one of the following options.');
-
-  GPages.Proxy := ProxyPageCreate(GPages.Security.ID,
+  GPages.Proxy := ProxyPageCreate(GPages.Ini.ID,
     'Proxy Settings', 'Choose if you need to use a proxy.');
 
   GPages.ProgressInstaller := CreateOutputProgressPage('Downloading Composer', 'Please wait');
@@ -676,15 +659,6 @@ begin
     ErrorSettingsUpdate();
     WizardForm.ActiveControl := nil;
     WizardForm.NextButton.Enabled := False;
-    ShowErrorIfSilent();
-
-  end
-  else if CurPageID = GPages.Security.ID then
-  begin
-
-    SecurityPageUpdate();
-    WizardForm.NextButton.Enabled := GSecurityPage.Checkbox.Checked;
-    WizardForm.ActiveControl := nil;
     ShowErrorIfSilent();
 
   end
@@ -733,8 +707,6 @@ begin
     Result := not GFlags.SettingsError
   else if PageID = GPages.Ini.ID then
     Result := not GModIniRec.Active
-  else if PageID = GPages.Security.ID then
-    Result := GConfigRec.PhpSecure
   else if PageID = GPages.ErrorInstaller.ID then
     Result := GConfigRec.StatusCode = ERR_SUCCESS
   else if PageID = GPages.Environment.ID then
@@ -995,7 +967,6 @@ begin
   GFlags.DevInstall := False;
   GFlags.LastFolder := '';
   GFlags.SettingsError := False;
-  GFlags.DisableTls := False;
   GFlags.EnvChanged := False;
   GFlags.Completed := False;
 
@@ -1287,7 +1258,6 @@ begin
     GPages.ProgressSettings.ID : Name := 'Running Settings Check';
     GPages.ErrorSettings.ID    : Name := 'Settings Errors';
     GPages.Ini.ID              : Name := 'PHP Configuration Error';
-    GPages.Security.ID         : Name := 'Security Warning';
     GPages.Proxy.ID            : Name := 'Proxy Settings';
     GPages.ProgressInstaller.ID: Name := 'Running Composer Install';
     GPages.ErrorInstaller.ID   : Name := 'Composer Install Errors';
@@ -4259,10 +4229,6 @@ begin
   AddParam(Result, '--no-ansi');
   AddParam(Result, '--quiet');
 
-  {Important to check both these values}
-  if not Config.PhpSecure and GFlags.DisableTls then
-    AddParam(Result, '--disable-tls');
-
 end;
 
 
@@ -5211,89 +5177,6 @@ begin
 end;
 
 
-procedure SecurityCheckboxClick(Sender: TObject);
-begin
-  WizardForm.NextButton.Enabled := GSecurityPage.Checkbox.Checked;
-  GFlags.DisableTls := GSecurityPage.Checkbox.Checked;
-  GSecurityPage.Info.Visible := GSecurityPage.Checkbox.Checked;
-end;
-
-
-function SecurityPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
-var
-  Base: Integer;
-  S: String;
-
-begin
-
-  Result := CreateCustomPage(Id, Caption, Description);
-
-  GSecurityPage.Text := TNewStaticText.Create(Result);
-  GSecurityPage.Text.Width := Result.SurfaceWidth;
-  GSecurityPage.Text.WordWrap := True;
-  GSecurityPage.Text.AutoSize := True;
-  S := 'The openssl extension is missing from the PHP version you specified.';
-  S := S + ' This means that secure HTTPS transfers are not possible.';
-  GSecurityPage.Text.Caption := S;
-  GSecurityPage.Text.Parent := Result.Surface;
-
-  Base := GetBase(GSecurityPage.Text);
-
-  GSecurityPage.Ini := TNewStaticText.Create(Result);
-  GSecurityPage.Ini.Top := Base + ScaleY(15);
-  GSecurityPage.Ini.Width := Result.SurfaceWidth;
-  GSecurityPage.Ini.WordWrap := True;
-  GSecurityPage.Ini.AutoSize := True;
-  GSecurityPage.Ini.Caption := '';
-  GSecurityPage.Ini.Parent := Result.Surface;
-
-  Base := GetBase(GSecurityPage.Ini);
-
-  GSecurityPage.Checkbox := TNewCheckbox.Create(Result);
-  GSecurityPage.Checkbox.Top := Base + ScaleY(75);
-  GSecurityPage.Checkbox.Width := Result.SurfaceWidth;
-  GSecurityPage.Checkbox.Caption := 'Disable this requirement - this option is not recommended';
-  GSecurityPage.Checkbox.Enabled := True;
-  GSecurityPage.Checkbox.OnClick := @SecurityCheckboxClick;
-  GSecurityPage.Checkbox.Parent := Result.Surface;
-
-  Base := GetBase(GSecurityPage.Checkbox);
-
-  GSecurityPage.Info := TNewStaticText.Create(Result);
-  GSecurityPage.Info.Top := Base + ScaleY(5);
-  GSecurityPage.Info.Width := Result.SurfaceWidth;
-  GSecurityPage.Info.WordWrap := True;
-  GSecurityPage.Info.AutoSize := True;
-  S := 'Your computer could be vulnerable to MITM attacks which may result';
-  S := S + ' in the installation or execution of arbitrary code.';
-  S := S + LF2
-  S := S + 'You will have to modify a config file before you can use Composer.';
-  GSecurityPage.Info.Caption := S;
-  GSecurityPage.Info.Visible := False;
-  GSecurityPage.Info.Parent := Result.Surface;
-
-end;
-
-
-procedure SecurityPageUpdate;
-var
-  S: String;
-
-begin
-
-  S := 'The recommended option is to enable the extension in your php.ini,';
-  S := S + ' then click Back and try again. ' + GetPhpIni(GConfigRec, True);
-
-  GSecurityPage.Ini.Caption := S;
-  GSecurityPage.Checkbox.Checked := GFlags.DisableTls;
-
-  {Report action for logging when silent}
-  if WizardSilent then
-    Debug(Format('Error: openssl is not enabled for %s.', [GConfigRec.PhpExe]));
-
-end;
-
-
 procedure SettingsBrowseClick(Sender: TObject);
 var
   Filename: String;
@@ -5471,9 +5354,8 @@ end;
 procedure SettingsPageUpdate;
 begin
 
-  {Important to reset these}
+  {Important to reset this}
   GFlags.SettingsError := False;
-  GFlags.DisableTls := False;
 
   {Update path data. Returns true if it has changed}
   if SetPathInfo(False) then
