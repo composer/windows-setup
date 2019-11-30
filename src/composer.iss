@@ -3286,11 +3286,11 @@ function CheckPhpVersion(Config: TConfigRec): Boolean;
 begin
 
   if (Config.PhpCalls = 0) and (Config.PhpId = 0) then
-    {No file info available, allow if we are not silent}
-    Result := not WizardSilent
+    {No file info available}
+    Result := False
   else
-    {The minimum version that Composer requires is 5.3.2}
-    Result := Config.PhpId >= 50302;
+    {The minimum version that works with Composer is 5.5.0}
+    Result := Config.PhpId >= 50500;
 
 end;
 
@@ -3423,12 +3423,18 @@ begin
   end;
 
   if Config.PhpVersion <> '' then
-    Version := Format('(%s) ', [Config.PhpVersion]);
+    Version := Format('(%s)', [Config.PhpVersion]);
 
-  if WizardSilent and (Version = '') then
-    Message := 'Your php.exe has no version info. It may be too old to be installed silently.'
+  if Version = '' then
+    Message := 'Your php.exe has no version info and cannot be used.'
   else
-    Message := Format('Your PHP is very old %sand must be upgraded to a recent version.', [Version]);
+  begin
+    Message := Format('Your PHP version %s does not support the TLS protocols ', [Version]);
+    AddStr(Message, 'used by Composer and must be upgraded to a recent version.');
+  end;
+
+  AddPara(Message, 'The minimum requirement is PHP 5.5, although using the ');
+  AddStr(Message, 'latest version is always recommended.');
 
   Result := True;
 
