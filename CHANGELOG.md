@@ -1,4 +1,16 @@
 ## Unreleased
+* Restricted PHP to 5.5 upwards because lower versions do not use the TLS protocols required to
+download the installer and connect to Packagist.
+* Removed the security page that allowed the user to disable TLS.
+* Improved wording on environment changes page: https://github.com/composer/windows-setup/issues/103
+* Updated the installer script to recognize the HTTPS_PROXY and NO_PROXY environment variables and
+to include certificate data from Wed Oct 16 03:12:09 2019 GMT.
+* Improved proxy display and handling, which nows allows the user to override settings from
+Internet Options: https://github.com/composer/windows-setup/issues/91
+* Fixed crash caused by Inno Setup 5 bug when calling ExpandUNCFileName with a path longer than 259
+characters. This occured when a user had an entry named %PATH% in their Path environment variable,
+so Setup now checks for the path separator in an expanded path: https://github.com/composer/windows-setup/issues/92.
+* Improved extension enabling in php.ini so that only the extension name is used for PHP7.2 upwards.
 * Improved search for common PHP locations.
 
 ## v4.10.0
