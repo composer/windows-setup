@@ -37,13 +37,15 @@ AppPublisher={#AppUrl}
 AppCopyright=Copyright (C) 2012-{#AppYear} John Stevenson
 
 ; compile directives
-Compression=lzma
+Compression=lzma2/max
 SolidCompression=yes
 
 ; runtime directives
 DisableWelcomePage=yes
-MinVersion=5.1
-PrivilegesRequired=none
+MinVersion=6.0
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
+UsePreviousPrivileges=no
 AllowCancelDuringInstall=false
 CloseApplications=no
 SetupLogging=yes
@@ -70,11 +72,16 @@ UninstallDisplayIcon={app}\unins.ico
 ; cosmetic
 WizardImageFile=wiz.bmp
 WizardSmallImageFile=wizsmall.bmp
+WizardStyle=modern
+WizardSizePercent=110
 
 ; release stuff
 #ifdef Release
   #include "build.iss";
 #endif
+
+[LangOptions]
+DialogFontSize=10
 
 
 [Dirs]
@@ -1385,7 +1392,7 @@ end;
 function GetRegHive: Integer;
 begin
 
-  if IsAdminLoggedOn then
+  if IsAdminInstallMode then
     Result := HKLM
   else
     Result := HKCU;
@@ -1839,7 +1846,7 @@ end;
 function CheckPermisions: Boolean;
 begin
   {Dirs check function}
-  Result := isAdminLoggedOn and not GFlags.DevInstall;
+  Result := IsAdminInstallMode and not GFlags.DevInstall;
 end;
 
 
@@ -1858,7 +1865,7 @@ begin
     Exit;
   end;
 
-  if IsAdminLoggedOn then
+  if IsAdminInstallMode then
     Path := GBaseDir.AdminData
   else
     Path := GBaseDir.UserData;
@@ -1877,7 +1884,7 @@ var
 
 begin
 
-  if IsAdminLoggedOn then
+  if IsAdminInstallMode then
     Path := GBaseDir.AdminApp
   else
     Path := GBaseDir.UserApp;
@@ -2133,7 +2140,7 @@ var
 begin
 
   Result := GetPathData(GPaths);
-  IsUser := not IsAdminLoggedOn;
+  IsUser := not IsAdminInstallMode;
 
   if not GPaths.Php.Checked then
   begin
@@ -2212,7 +2219,7 @@ begin
   begin
     Rec.Status := PATH_OK;
 
-    if not IsAdminLoggedOn then
+    if not IsAdminInstallMode then
     begin
       {We are a User, so we cannot modify the System path}
       if Rec.Data.System <> '' then
@@ -2287,7 +2294,7 @@ begin
       Exit;
 
     {Allow admins and dev mode installs to change the path}
-    if IsAdminLoggedOn or GFlags.DevInstall then
+    if IsAdminInstallMode or GFlags.DevInstall then
     begin
       PathChange(GetRegHive(), ENV_ADD, BinPath, True);
       PathChange(Rec.Data.Hive, ENV_REMOVE, Rec.Data.Path, True);
@@ -4493,19 +4500,21 @@ begin
   Result := CreateCustomPage(Id, Caption, Description);
 
   Heading := TNewStaticText.Create(Result);
+  Heading.Parent := Result.Surface;
+  Heading.Anchors := [akLeft, akTop, akRight];
   Heading.AutoSize := True;
   Heading.Caption := 'Important';
   Heading.Font.Style := [fsBold];
-  Heading.Parent := Result.Surface;
 
   Base := GetBase(Heading);
 
   Text := TNewStaticText.Create(Result);
+  Text.Parent := Result.Surface;
   Text.Top := Base + ScaleY(1);
+  Text.Anchors := [akLeft, akTop, akRight];
   Text.WordWrap := True;
   Text.AutoSize := True;
   Text.Width := Result.SurfaceWidth;
-  Text.Parent := Result.Surface;
 
   S := 'You must open a new command window to use Composer for the first time, because your ';
   AddStr(S, 'environment has changed and running programs may not be aware of this.');
@@ -4516,11 +4525,12 @@ begin
   Base := GetBase(Text);
 
   Text2 := TNewStaticText.Create(Result);
+  Text2.Parent := Result.Surface;
   Text2.Top := Base + ScaleY(15);
+  Text2.Anchors := [akLeft, akTop, akRight];
   Text2.WordWrap := True;
   Text2.AutoSize := True;
   Text2.Width := Result.SurfaceWidth;
-  Text2.Parent := Result.Surface;
 
   S := 'If this does not work, you will have to do one of the following:';
   AddPara(S, TAB + '- Close all File Explorer windows, then open a new command window. OR');
@@ -4609,31 +4619,35 @@ begin
   Result := CreateCustomPage(Id, Caption, Description);
 
   GIniPage.Text := TNewStaticText.Create(Result);
+  GIniPage.Text.Parent := Result.Surface;
   GIniPage.Text.Width := Result.SurfaceWidth;
+  GIniPage.Text.Anchors := [akLeft, akTop, akRight];
   GIniPage.Text.WordWrap := True;
   GIniPage.Text.AutoSize := True;
   GIniPage.Text.Caption := '';
-  GIniPage.Text.Parent := Result.Surface;
 
   Base := GetBase(GIniPage.Text);
 
   GIniPage.Checkbox := TNewCheckbox.Create(Result);
+  GIniPage.Checkbox.Parent := Result.Surface;
   GIniPage.Checkbox.Top := Base + ScaleY(60);
+  {It seems we need to adjust the checkbox height}
+  GIniPage.Checkbox.Height := ScaleY(15);
   GIniPage.Checkbox.Width := Result.SurfaceWidth;
   GIniPage.Checkbox.Caption := '';
   GIniPage.Checkbox.Enabled := True;
   GIniPage.Checkbox.Checked := True;
-  GIniPage.Checkbox.Parent := Result.Surface;
 
   Base := GetBase(GIniPage.Checkbox);
 
   GIniPage.Info := TNewStaticText.Create(Result);
+  GIniPage.Info.Parent := Result.Surface;
   GIniPage.Info.Top := Base + ScaleY(5);
   GIniPage.Info.Width := Result.SurfaceWidth;
+  GIniPage.Info.Anchors := [akLeft, akTop, akRight];
   GIniPage.Info.WordWrap := True;
   GIniPage.Info.AutoSize := True;
   GIniPage.Info.Caption := '';
-  GIniPage.Info.Parent := Result.Surface;
 
 end;
 
@@ -4704,21 +4718,23 @@ begin
   Result := CreateCustomPage(Id, Caption, Description);
 
   StaticText := TNewStaticText.Create(Result);
+  StaticText.Parent := Result.Surface;
+  StaticText.Anchors := [akLeft, akTop, akRight];
   StaticText.Name := 'Text';
   StaticText.Caption := Text;
   StaticText.AutoSize := True;
-  StaticText.Parent := Result.Surface;
 
   Top := StaticText.Top + StaticText.Height;
 
   Memo := TNewMemo.Create(Result);
+  Memo.Parent := Result.Surface;
   Memo.Name := 'Memo';
   Memo.Top := Top + ScaleY(8);
   Memo.Height := Result.SurfaceHeight - (Top + ScaleY(8) + ScaleY(15));
   Memo.Width := Result.SurfaceWidth;
+  Memo.Anchors := [akLeft, akTop, akRight, akBottom];
   Memo.ScrollBars := ssVertical;
   Memo.ReadOnly := True;
-  Memo.Parent := Result.Surface;
   Memo.Text := '';
 
 end;
@@ -4784,11 +4800,13 @@ begin
   Result := CreateCustomPage(Id, Caption, Description);
 
   GOptionsPage.Text := TNewStaticText.Create(Result);
+  GOptionsPage.Text.Parent := Result.Surface;
   GOptionsPage.Text.Width := Result.SurfaceWidth;
+  GOptionsPage.Text.Anchors := [akLeft, akTop, akRight];
   GOptionsPage.Text.AutoSize := True;
   GOptionsPage.Text.WordWrap := True;
 
-  if IsAdminLoggedOn then
+  if IsAdminInstallMode then
     Users := 'all users'
   else
     Users := 'the current user';
@@ -4798,36 +4816,40 @@ begin
   S := S + ' Click Next to use it.';
 
   GOptionsPage.Text.Caption := S;
-  GOptionsPage.Text.Parent := Result.Surface;
 
   Base := GetBase(GOptionsPage.Text);
 
   GOptionsPage.Checkbox := TNewCheckbox.Create(Result);
+  GOptionsPage.Checkbox.Parent := Result.Surface;
   GOptionsPage.Checkbox.Top := Base + ScaleY(30);
+  {It seems we need to adjust the checkbox height}
+  GOptionsPage.Checkbox.Height := ScaleY(15);
   GOptionsPage.Checkbox.Width := Result.SurfaceWidth;
   GOptionsPage.Checkbox.Caption := 'Developer mode';
   GOptionsPage.Checkbox.Checked := False;
   GOptionsPage.Checkbox.OnClick := @OptionsCheckboxClick;
-  GOptionsPage.Checkbox.Parent := Result.Surface;
 
   Base := GetBase(GOptionsPage.Checkbox);
 
   GOptionsPage.DevText := TNewStaticText.Create(Result);
+  GOptionsPage.DevText.Parent := Result.Surface;
   GOptionsPage.DevText.Top := Base + ScaleY(3);
   GOptionsPage.DevText.Width := Result.SurfaceWidth;
+  GOptionsPage.DevText.Anchors := [akLeft, akTop, akRight];
   GOptionsPage.DevText.AutoSize := True;
   GOptionsPage.DevText.WordWrap := True;
 
   S := 'Take control and just install Composer. An uninstaller will not be included.';
 
   GOptionsPage.DevText.Caption := S;
-  GOptionsPage.DevText.Parent := Result.Surface;
 
   Base := GetBase(GOptionsPage.DevText);
 
   GOptionsPage.DevInfo := TNewStaticText.Create(Result);
+  GOptionsPage.DevInfo.Parent := Result.Surface;
   GOptionsPage.DevInfo.Top := Base + ScaleY(8);
   GOptionsPage.DevInfo.Width := Result.SurfaceWidth;
+  GOptionsPage.DevInfo.Anchors := [akLeft, akTop, akRight];
   GOptionsPage.DevInfo.AutoSize := True;
   GOptionsPage.DevInfo.WordWrap := True;
 
@@ -4851,8 +4873,6 @@ begin
 
   end;
 
-  GOptionsPage.DevInfo.Parent := Result.Surface;
-
   OptionsPageInit();
 
 end;
@@ -4867,7 +4887,7 @@ begin
   else
   begin
 
-    if IsAdminLoggedOn then
+    if IsAdminInstallMode then
       GFlags.LastDevDir := ExpandConstant('{sd}') + '\composer'
     else
       GFlags.LastDevDir := GetEnv('USERPROFILE') + '\composer';
@@ -5058,48 +5078,57 @@ begin
   Result := CreateCustomPage(Id, Caption, Description);
 
   GProxyPage.Checkbox := TNewCheckbox.Create(Result);
+  GProxyPage.Checkbox.Parent := Result.Surface;
   GProxyPage.Checkbox.Width := Result.SurfaceWidth;
+  {It seems we need to adjust the checkbox height}
+  GProxyPage.Checkbox.Height := ScaleY(15);
   GProxyPage.Checkbox.Caption := 'Use a proxy server to connect to internet';
   GProxyPage.Checkbox.Checked := False;
   GProxyPage.Checkbox.OnClick := @ProxyCheckboxClick;
-  GProxyPage.Checkbox.Parent := Result.Surface;
 
   Base := GetBase(GProxyPage.Checkbox);
 
   GProxyPage.Text := TNewStaticText.Create(Result);
+  GProxyPage.Text.Parent := Result.Surface;
   GProxyPage.Text.Top := Base + ScaleY(25);
   GProxyPage.Text.Width := Result.SurfaceWidth;
+  GProxyPage.Text.Anchors := [akLeft, akTop, akRight];
+  {It seems we need wordwrap so that the caption isn't truncated on resize}
+  GProxyPage.Text.WordWrap := True;
   GProxyPage.Text.AutoSize := True;
   GProxyPage.Text.Caption := '';
-  GProxyPage.Text.Parent := Result.Surface;
 
   Base := GetBase(GProxyPage.Text);
 
   GProxyPage.Edit := TNewEdit.Create(Result);
+  GProxyPage.Edit.Parent := Result.Surface;
   GProxyPage.Edit.Top := Base + ScaleY(5);
   GProxyPage.Edit.Width := Result.SurfaceWidth;
+  GProxyPage.Edit.Anchors := [akLeft, akTop, akRight];
   GProxyPage.Edit.Text := '';
-  GProxyPage.Edit.Parent := Result.Surface;
 
   Base := GetBase(GProxyPage.Edit);
 
   GProxyPage.Ignore := TNewCheckbox.Create(Result);
+  GProxyPage.Ignore.Parent := Result.Surface;
   GProxyPage.Ignore.Top := Base + ScaleY(10);
+  {It seems we need to adjust the checkbox height}
+  GProxyPage.Ignore.Height := ScaleY(15);
   GProxyPage.Ignore.Width := Result.SurfaceWidth;
   GProxyPage.Ignore.Caption := 'Ignore settings from registry';
   GProxyPage.Ignore.Checked := False;
   GProxyPage.Ignore.OnClick := @ProxyIgnoreClick;
-  GProxyPage.Ignore.Parent := Result.Surface;
 
   Base := GetBase(GProxyPage.Ignore);
 
   GProxyPage.Info := TNewStaticText.Create(Result);
+  GProxyPage.Info.Parent := Result.Surface;
   GProxyPage.Info.Top := Base + ScaleY(10);
   GProxyPage.Info.Width := Result.SurfaceWidth;
+  GProxyPage.Info.Anchors := [akLeft, akTop, akRight];
   GProxyPage.Info.WordWrap := True;
   GProxyPage.Info.AutoSize := True;
   GProxyPage.Info.Caption := '';
-  GProxyPage.Info.Parent := Result.Surface;
 
 end;
 
@@ -5313,35 +5342,41 @@ begin
   Result := CreateCustomPage(Id, Caption, Description);
 
   GSettingsPage.Text := TNewStaticText.Create(Result);
+  GSettingsPage.Text.Parent := Result.Surface;
+  GSettingsPage.Text.Anchors := [akLeft, akTop, akRight];
   GSettingsPage.Text.AutoSize := True;
   GSettingsPage.Text.Caption := 'Choose the command-line PHP you want to use:';
-  GSettingsPage.Text.Parent := Result.Surface;
 
   Base := GetBase(GSettingsPage.Text);
 
   GSettingsPage.Combo := TNewComboBox.Create(Result);
+  GSettingsPage.Combo.Parent := Result.Surface;
   GSettingsPage.Combo.Top := Base + ScaleY(8);
   GSettingsPage.Combo.Width := Result.SurfaceWidth - (ScaleX(75) + ScaleX(10));
+  GSettingsPage.Combo.Anchors := [akLeft, akTop, akRight];
   GSettingsPage.Combo.Style := csDropDownList;
   GSettingsPage.Combo.OnChange := @SettingsComboChange;
-  GSettingsPage.Combo.Parent := Result.Surface;
 
   GSettingsPage.Browse := TNewButton.Create(Result);
+  GSettingsPage.Browse.Parent := Result.Surface;
   GSettingsPage.Browse.Top := GSettingsPage.Combo.Top - ScaleY(1);
   GSettingsPage.Browse.Left := Result.SurfaceWidth - ScaleX(75);
   GSettingsPage.Browse.Width := ScaleX(75);
   GSettingsPage.Browse.Height := ScaleY(23);
+  GSettingsPage.Browse.Anchors := [akTop, akRight];
   GSettingsPage.Browse.Caption := '&Browse...';
   GSettingsPage.Browse.OnClick := @SettingsBrowseClick;
-  GSettingsPage.Browse.Parent := Result.Surface;
 
   Base := GetBase(GSettingsPage.Combo);
 
   GSettingsPage.Info := TNewStaticText.Create(Result);
-  GSettingsPage.Info.Top := Base + ScaleY(8);
-  GSettingsPage.Info.AutoSize := True;
-  GSettingsPage.Info.Caption := '';
   GSettingsPage.Info.Parent := Result.Surface;
+  GSettingsPage.Info.Top := Base + ScaleY(8);
+  GSettingsPage.Info.Width := GSettingsPage.Combo.Width;
+  GSettingsPage.Info.Anchors := [akLeft, akTop, akRight];
+  GSettingsPage.Info.AutoSize := True;
+  GSettingsPage.Info.WordWrap := True;
+  GSettingsPage.Info.Caption := '';
 
   SettingsPageInit();
 

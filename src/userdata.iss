@@ -110,7 +110,7 @@ begin
   Rec.Cache := ExpandConstant('{localappdata}\Composer');
   UserAddDataRec(Rec, Result);
 
-  if IsAdminLoggedOn then
+  if IsAdminInstallMode then
     UserDataGetAll(Rec.User, Result);
 
   for I := 0 to GetArrayLength(Result) - 1 do
@@ -516,7 +516,7 @@ begin
   Form.Main.ClientWidth := ScaleX(380);
   Form.Main.ClientHeight := ScaleY(255);
   Form.Main.Caption := 'Delete User Data';
-  Form.Main.CenterInsideControl(UninstallProgressForm, False);
+  Form.Main.FlipSizeAndCenterIfNeeded(True, UninstallProgressForm, False);
 
   Left := ScaleX(20);
   Width := Form.Main.ClientWidth - (Left * 2);
