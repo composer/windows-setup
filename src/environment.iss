@@ -392,8 +392,7 @@ begin
 
     Path := TrimRight(Expanded);
 
-    {Check for %PATH% or something else that expands to a path-separated list.
-    See: https://github.com/composer/windows-setup/issues/92}
+    {Check that expanded Path does not contain path-separators}
     if Pos(';', Path) <> 0 then
       Exit;
 
@@ -404,8 +403,7 @@ begin
   begin
     Path := ExpandUNCFileName(Path);
 
-    {Inno versions < 6 did not handle long paths (> 259 characters) and returned garbage, as per above issue.
-    Check any way, otherwise we will crash}
+    {Inno versions < 6 returned garbage with paths > 259 characters, which could cause a crash}
     if Pos(#0, Path) <> 0 then
       Exit;
 

@@ -201,9 +201,9 @@ type
     ProxyUrl    : String;   {Contains the proxy url to be used}
     UserUrl     : String;   {Controls the value of a user-entered proxy}
     Active      : Boolean;  {If a proxy is being used}
-    DebugMsg    : String;   {Proxy information about}
     CanIgnore   : Boolean;  {If a proxy value can be ignored}
     UserIgnore  : Boolean;  {If a proxy value has been ignored}
+    DebugMsg    : String;   {Reports proxy search information}
   end;
 
 type
