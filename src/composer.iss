@@ -404,7 +404,7 @@ procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
 procedure ShowErrorIfSilent; forward;
 procedure ShowErrorMessage(const Message: String); forward;
 function StrToVer(Version: String): DWord; forward;
-function VersionMatchMajor(Ver1, Ver2: String): Boolean; forward;
+function VersionGetConflict(VerCurrent, VerExisting: String): Boolean; forward;
 
 {Exec output functions}
 procedure OutputDebug(Output, Name: String); forward;
@@ -1015,8 +1015,8 @@ begin
   if not Result.Installed then
     Exit;
 
-  {Check that the major versions match}
-  Result.Conflict := not VersionMatchMajor('{#SetupVersion}', Result.Version);
+  {Check if there is a conflict}
+  Result.Conflict := VersionGetConflict('{#SetupVersion}', Result.Version);
 
 end;
 
@@ -1541,18 +1541,21 @@ begin
 end;
 
 
-{Returns true if the major version of each version string are equal}
-function VersionMatchMajor(Ver1, Ver2: String): Boolean;
+function VersionGetConflict(VerCurrent, VerExisting: String): Boolean;
 var
-  Major1: Integer;
-  Major2: Integer;
+  Current: Cardinal;
+  Existing: Cardinal;
 
 begin
 
-  Major1 := (StrToVer(Ver1) shr 24) and $ff;
-  Major2 := (StrToVer(Ver2) shr 24) and $ff;
+  Current := (StrToVer(VerCurrent) shr 24) and $ff;
+  Existing := (StrToVer(VerExisting) shr 24) and $ff;
 
-  Result := Major1 = Major2;
+  if (Current = 5) and (Existing = 4) then
+    {Version 5 only drops support for XP}
+    Result := False
+  else
+    Result := Current <> Existing;
 
 end;
 
