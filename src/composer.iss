@@ -4507,7 +4507,7 @@ begin
   Text.Width := Result.SurfaceWidth;
   Text.Parent := Result.Surface;
 
-  S := 'You must open a new terminal to use Composer for the first time, because your ';
+  S := 'You must open a new command window to use Composer for the first time, because your ';
   AddStr(S, 'environment has changed and running programs may not be aware of this.');
 
   Text.Caption := S;
@@ -4523,8 +4523,8 @@ begin
   Text2.Parent := Result.Surface;
 
   S := 'If this does not work, you will have to do one of the following:';
-  AddPara(S, TAB + '- Close all File Explorer windows, then open a new terminal. OR');
-  AddLine(S, TAB + '- Logoff and Logon again, then open a new terminal.');
+  AddPara(S, TAB + '- Close all File Explorer windows, then open a new command window. OR');
+  AddLine(S, TAB + '- Logoff and Logon again, then open a new command window.');
   AddPara(S,'As a last resort, you may need to restart your computer.');
 
   Text2.Caption := S;
