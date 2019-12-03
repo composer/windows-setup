@@ -169,7 +169,7 @@ class IniChecker
             }
         }
 
-        $exts = array('openssl', 'mbstring');
+        $exts = array('curl', 'mbstring', 'openssl');
         $missing = $this->getMissingExts($exts);
 
         return !empty($missing);
@@ -238,7 +238,7 @@ class IniChecker
         }
 
         // extensions
-        $exts = array('openssl', 'mbstring');
+        $exts = array('curl', 'mbstring', 'openssl');
 
         if ($missing = $this->getMissingExts($exts)) {
             return $this->enableExtensions($missing);

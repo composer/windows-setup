@@ -54,7 +54,7 @@ loaded. The installer will remind you if this is the case.
 Composer-Setup will either create a new `php.ini` or modify an existing file if any settings needed by Composer are missing:
 
 * `allow_url_fopen` set to `On`
-* `open_ssl` and `mbstring` extensions enabled
+* `curl`, `mbstring` and `open_ssl` extensions enabled
 
 When creating a new file, the _php.ini-production_ file is used with `extension_dir` and `date.timezone` values appropriately set. When modifying an existing file, a backup is created in the same directory, named `php.ini~orig`.
 
