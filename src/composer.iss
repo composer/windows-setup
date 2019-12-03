@@ -520,6 +520,7 @@ function GetInstallerCommonErrors(Config: TConfigRec): String; forward;
 function GetInstallerErrors(Config: TConfigRec): String; forward;
 function GetInstallerUnexpected(Config: TConfigRec): String; forward;
 function GetInstallerWarnings(Config: TConfigRec): String; forward;
+function ParseErrorOutput(StdOut: TArrayOfString): String; forward;
 procedure RunInstaller(var Config: TConfigRec); forward;
 procedure SetErrorsSSL(Config: TConfigRec; ReasonList: TStringList); forward;
 
@@ -4184,22 +4185,20 @@ begin
 end;
 
 
-{A very basic method to highlight possible proxy errors}
+{Reports the use of a proxy when there are download errors}
 function GetErrorProxy(var Message: String; Config: TConfigRec): Boolean;
 begin
 
   Result := False;
 
-  if Pos('actively refused it', Config.Output) = 0 then
+  if not GProxyInfo.Active then
     Exit;
 
-  {See if we are using a proxy}
-  if (GProxyInfo.Active) then
-    AddStr(Message, 'Your proxy settings may be causing this error.')
-  else
-    AddStr(Message, 'A proxy or firewall may be causing this error.');
-
-  Result := True;
+  if Pos('could not be downloaded', Config.Output) <> 0 then
+  begin
+    AddStr(Message, 'Your proxy settings may be causing this error.');
+    Result := True;
+  end;
 
 end;
 
@@ -4280,6 +4279,7 @@ begin
     Result := Config.Output
   else
   begin
+    Config.Output := ParseErrorOutput(Config.StdOut);
     CommonErrors := GetInstallerCommonErrors(Config);
 
     Result := 'The Composer installer script was not successful';
@@ -4367,6 +4367,55 @@ begin
 
   Result := Trim(Result);
   AddStr(Result, LF);
+
+end;
+
+
+{Parses out duplicate errors from the output}
+function ParseErrorOutput(StdOut: TArrayOfString): String;
+var
+  TmpList: TArrayOfString;
+  Count: Integer;
+  I: Integer;
+  Next: Integer;
+  Index: Integer;
+  Error: String;
+
+begin
+
+  Count := GetArrayLength(StdOut);
+  SetArrayLength(TmpList, Count);
+
+  Next := 0;
+
+  for I := 0 to Count - 1 do
+  begin
+
+    if I > 0 then
+    begin
+      {Skip the error if it contains a colon and the part
+      after the colon is found in the previous error}
+      Index := Pos(':', StdOut[I]);
+
+      if Index <> 0 then
+      begin
+        Error := Copy(StdOut[I], Index + 1, MaxInt);
+
+        if Pos(Error, StdOut[I - 1]) <> 0 then
+          Continue;
+      end;
+
+    end;
+
+    TmpList[Next] := StdOut[I];
+    Inc(Next);
+
+  end;
+
+  if Count > Next then
+    SetArrayLength(TmpList, Next);
+
+  Result := Trim(OutputFromArray(TmpList));
 
 end;
 
