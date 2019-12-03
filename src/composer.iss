@@ -988,7 +988,7 @@ begin
   GFlags.Completed := False;
 
   {Initialize GBaseDir}
-  GBaseDir.AdminApp := ExpandConstant('{pf}');
+  GBaseDir.AdminApp := ExpandConstant('{commonpf}');
   GBaseDir.AdminData := ExpandConstant('{commonappdata}');
   GBaseDir.UserApp := ExpandConstant('{localappdata}');
   GBaseDir.UserData := ExpandConstant('{localappdata}');
@@ -1775,10 +1775,10 @@ begin
   List.Add(UserBin + PhpFolder);
 
   {Program Files}
-  Pf32 := ExpandConstant('{pf32}');
+  Pf32 := ExpandConstant('{commonpf32}');
 
   if IsWin64 then
-    Pf64 := ExpandConstant('{pf64}');
+    Pf64 := ExpandConstant('{commonpf64}');
 
   List.Add(Pf32 + RootFolder);
   List.Add(Pf32 + PhpFolder);
@@ -5309,9 +5309,9 @@ begin
   if GFlags.LastFolder <> '' then
     Dir := GFlags.LastFolder
   else if IsWin64 then
-    Dir := ExpandConstant('{pf64}')
+    Dir := ExpandConstant('{commonpf64}')
   else
-    Dir := ExpandConstant('{pf}');
+    Dir := ExpandConstant('{commonpf}');
 
   Filter := 'php.exe|php.exe';
   Extension := '.exe';
