@@ -512,6 +512,7 @@ var
 begin
 
   Form.Main := CreateCustomForm();
+  Form.Main.Font.Size := 9;
 
   Form.Main.ClientWidth := ScaleX(380);
   Form.Main.ClientHeight := ScaleY(255);

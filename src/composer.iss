@@ -67,13 +67,13 @@ VersionInfoProductName={#AppDescription}
 ; uninstall
 Uninstallable=IncludeUninstaller
 UninstallDisplayName={#AppDescription}
-UninstallDisplayIcon={app}\unins.ico
+UninstallDisplayIcon={uninstallexe}
 
 ; cosmetic
 WizardImageFile=wiz.bmp
 WizardSmallImageFile=wizsmall.bmp
 WizardStyle=modern
-WizardSizePercent=110
+WizardSizePercent=110,100
 
 ; release stuff
 #ifdef Release
@@ -378,7 +378,8 @@ procedure InitCommon; forward;
 function InitGetExisting: TExistingRec; forward;
 function InitGetParams: TParamsRec; forward;
 procedure InitPathParams(var Params: TParamsRec); forward;
-procedure InitSetData(); forward;
+procedure InitSetData; forward;
+procedure InitSetTheme; forward;
 
 {Common functions}
 procedure AddLine(var Existing: String; const Value: String); forward;
@@ -616,6 +617,8 @@ end;
 
 procedure InitializeWizard;
 begin
+
+  InitSetTheme();
 
   GPages.Options := OptionsPageCreate(wpWelcome,
     'Installation Options', 'Choose your installation type.');
@@ -905,6 +908,12 @@ begin
 end;
 
 
+procedure InitializeUninstallProgressForm;
+begin
+  InitSetTheme();
+end;
+
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   BinPath: String;
@@ -1098,6 +1107,24 @@ begin
   GParamsRec := InitGetParams();
   SetPathInfo(False);
   SetPhpLocations();
+
+end;
+
+
+{Sets the font color to dark grey}
+procedure InitSetTheme();
+var
+  Color: Integer;
+
+begin
+
+  {Hex 343434}
+  Color := (52 shl 16) + (52 shl 8) + 52;
+
+  if not IsUninstaller then
+    WizardForm.Font.Color := Color
+  else
+    UninstallProgressForm.Font.Color := Color;
 
 end;
 
