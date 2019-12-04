@@ -1118,8 +1118,8 @@ var
 
 begin
 
-  {Hex 343434}
-  Color := (52 shl 16) + (52 shl 8) + 52;
+  {Hex 303030}
+  Color := (48 shl 16) + (48 shl 8) + 48;
 
   if not IsUninstaller then
     WizardForm.Font.Color := Color

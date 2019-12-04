@@ -1,4 +1,7 @@
 ## Unreleased
+
+## v5.0.0
+2019-12-04
 * Improved the Chocolatey package release process to use their automatic update module.
 * Added the curl extension to php.ini modifications which will be needed in Composer 2.
 * Updated to Inno Setup 6 which provides a modern resizable interface and drops support for Windows XP.
