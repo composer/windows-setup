@@ -1,0 +1,21 @@
+VERIFICATION
+Verification is intended to assist the Chocolatey moderators and community
+in verifying that the contents of this package are trustworthy.
+
+All binaries are SHA256 code-signed by Open Source Developer, John Stevenson
+
+The installer can also be verified like this:
+
+1. Download the installer from:
+
+  x32: https://github.com/composer/windows-setup/releases/download/v4.10.0/Composer-Setup.4.10.0.exe
+
+2. You can use one of the following methods to obtain the SHA256 checksum:
+  - Use powershell function 'Get-FileHash'
+  - Use Chocolatey utility 'checksum.exe'
+
+  checksum32: 0B00F156EDD116A7F464B6A17938568A1C1D71E93365104AA862351B2CF660E9
+
+
+File 'license.txt' is obtained from:
+  From: https://github.com/composer/windows-setup/blob/master/LICENSE
