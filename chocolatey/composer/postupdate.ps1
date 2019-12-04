@@ -9,9 +9,14 @@ function ConvertEol($file) {
 }
 
 Write-Host 'Post update actions (non-au)'
-Get-ChildItem $root\tools\*.exe | ForEach-Object { Write-Host "Removing - $_"; Remove-Item $_ -ea 0 }
-ConvertEol("$root\composer.nuspec")
-ConvertEol("$root\legal\VERIFICATION.txt")
-ConvertEol("$root\tools\chocolateyinstall.ps1")
+$exefiles = Get-ChildItem $root\tools\*.exe
 
-
+if ($null -eq $exefiles) {
+  Write-Host 'No changes detected'
+}
+else {
+  $exefiles | ForEach-Object { Write-Host "Removing - $_"; Remove-Item $_ -ea 0 }
+  ConvertEol("$root\composer.nuspec")
+  ConvertEol("$root\legal\VERIFICATION.txt")
+  ConvertEol("$root\tools\chocolateyinstall.ps1")
+}
