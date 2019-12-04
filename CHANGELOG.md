@@ -1,4 +1,7 @@
 ## Unreleased
+* Improved the Chocolatey package release process to use their automatic update module.
+* Added the curl extension to php.ini modifications which will be needed in Composer 2.
+* Updated to Inno Setup 6 which provides a modern resizable interface and drops support for Windows XP.
 * Restricted PHP to 5.5 upwards because lower versions do not use the TLS protocols required to
 download the installer and connect to Packagist.
 * Removed the security page that allowed the user to disable TLS.
