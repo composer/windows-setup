@@ -12,10 +12,10 @@ If you encounter any problems with the installation, you can run it interactivel
 
 ## Advanced Usage
 
-The following package parameters can be set. They are mainly intended for CI usage:
+The following installer arguments can be set. They are mainly intended for CI usage:
 
 * `/DEV=path` - this installs Composer to the specified path, but without an uninstaller.
 * `/PHP=folder-or-exe` - this uses PHP from the specified location, adding it to the path.
 
 These parameters can be passed to the installer by using the `--ia` option.
-For example: --ia '"/DEV=C:\tools\php /PHP=C:\php"'.
+For example: `choco install --ia '"/DEV=C:\tools\php /PHP=C:\php"'`.
