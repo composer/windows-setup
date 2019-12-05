@@ -8,13 +8,13 @@ The installer can also be verified like this:
 
 1. Download the installer from:
 
-  x32: https://github.com/composer/windows-setup/releases/download/v4.10.0/Composer-Setup.4.10.0.exe
+  x32: https://github.com/composer/windows-setup/releases/download/v5.0.0/Composer-Setup.5.0.0.exe
 
 2. You can use one of the following methods to obtain the SHA256 checksum:
   - Use powershell function 'Get-FileHash'
   - Use Chocolatey utility 'checksum.exe'
 
-  checksum32: 0B00F156EDD116A7F464B6A17938568A1C1D71E93365104AA862351B2CF660E9
+  checksum32: 6A0B75FEAF3823A1054274A362BDD92B9687B265C0F0FF782741853C7995CDD8
 
 
 File 'license.txt' is obtained from:
