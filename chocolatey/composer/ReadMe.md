@@ -4,12 +4,14 @@ Composer Setup downloads and installs the latest version of Composer, the PHP De
 
 Note: The version number refers to the installer and not to Composer, which you can update by running `composer self-update` from your terminal.
 
-##Package Specifics
+## Package Specifics
+
 This package has a dependency on the Chocolatey PHP package. If this is not found, the latest version will be downloaded and installed first.
 
 If you encounter any problems with the installation, you can run it interactively using the `--notsilent` option.
 
-##Advanced Usage
+## Advanced Usage
+
 The following package parameters can be set. They are mainly intended for CI usage:
 
 * `/DEV=path` - this installs Composer to the specified path, but without an uninstaller.
