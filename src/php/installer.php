@@ -1183,16 +1183,21 @@ class ErrorHandler
 
 class NoProxyPattern
 {
-    private $rulePort;
+    private $composerInNoProxy = false;
+    private $rulePorts = array();
 
     public function __construct($pattern)
     {
         $rules = preg_split('{[\s,]+}', $pattern, null, PREG_SPLIT_NO_EMPTY);
 
         if ($matches = preg_grep('{getcomposer\.org(?::\d+)?}i', $rules)) {
-            if (strpos($matches[0], ':') !== false) {
-                list(, $port) = explode(':', $matches[0]);
-                $this->rulePort = (int) $port;
+            $this->composerInNoProxy = true;
+
+            foreach ($matches as $match) {
+                if (strpos($match, ':') !== false) {
+                    list(, $port) = explode(':', $match);
+                    $this->rulePorts[] = (int) $port;
+                }
             }
         }
     }
@@ -1206,7 +1211,11 @@ class NoProxyPattern
      */
     public function test($url)
     {
-        if (empty($this->rulePort)) {
+        if (!$this->composerInNoProxy) {
+            return false;
+        }
+
+        if (empty($this->rulePorts)) {
             return true;
         }
 
@@ -1216,7 +1225,7 @@ class NoProxyPattern
             $port = 443;
         }
 
-        return $this->rulePort === $port;
+        return in_array($port, $this->rulePorts);
     }
 }
 
@@ -1546,6 +1555,8 @@ class HttpClient {
             '/usr/share/ssl/certs/ca-bundle.crt', // Really old RedHat?
             '/etc/ssl/cert.pem', // OpenBSD
             '/usr/local/etc/ssl/cert.pem', // FreeBSD 10.x
+            '/usr/local/etc/openssl/cert.pem', // OS X homebrew, openssl package
+            '/usr/local/etc/openssl@1.1/cert.pem', // OS X homebrew, openssl@1.1 package
         );
 
         foreach ($caBundlePaths as $caBundle) {
@@ -1570,7 +1581,7 @@ class HttpClient {
 ##
 ## Bundle of CA Root Certificates
 ##
-## Certificate data from Mozilla as of: Wed Oct 16 03:12:09 2019 GMT
+## Certificate data from Mozilla as of: Wed Nov 27 04:12:10 2019 GMT
 ##
 ## This is a bundle of X.509 certificates of public Certificate Authorities
 ## (CA). These were automatically extracted from Mozilla's root certificates
@@ -1583,7 +1594,7 @@ class HttpClient {
 ## Just configure this file as the SSLCACertificateFile.
 ##
 ## Conversion done with mk-ca-bundle.pl version 1.27.
-## SHA256: c979c6f35714a0fedb17d9e5ba37adecbbc91a8faf4186b4e23d6f9ca44fd6cb
+## SHA256: 607309057d0ec70f8e4e97b03906bafb2fcebb24cd37b5e8293e681ae26ceae0
 ##
 
 
