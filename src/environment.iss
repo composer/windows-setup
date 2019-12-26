@@ -12,13 +12,16 @@ function SendMessageTimeout(Hwnd, Msg, WParam: LongInt; LParam: String; Flags, T
 
 function EnvAdd(Hive: Integer; Name, Value: String; Display: Boolean): Integer; forward;
 function EnvRemove(Hive: Integer; Name, Value: String; Display: Boolean): Integer; forward;
+function AddPathSeparator(Path: String): String; forward;
 function AddToPath(Hive: Integer; Value: String): Integer; forward;
 function RemoveFromPath(Hive: Integer; Value: String): Integer; forward;
+function WriteRegistryPath(Hive: Integer; Path: String): Integer; forward;
 function GetRawPath(Hive: Integer; var Value: String): Boolean; forward;
 function SplitPath(Value: String): TArrayOfString; forward;
 function GetPathKeyForHive(Hive: Integer): String; forward;
 function GetHiveName(Hive: Integer): String; forward;
 function GetHiveFriendlyName(Hive: Integer): String; forward;
+function IsPathEnv(Name: String): Boolean; forward;
 function NormalizePath(const Value: String): String; forward;
 function GetSafePathList(Hive: Integer): TPathList; forward;
 function GetSafePath(var PathList: TPathList; Index: Integer): String; forward;
@@ -50,7 +53,7 @@ var
 
 begin
 
-  if CompareText(ENV_KEY_PATH, Name) = 0 then
+  if IsPathEnv(Name) then
   begin
     Result := AddToPath(Hive, Value);
     Exit;
@@ -94,7 +97,7 @@ var
 
 begin
 
-  if CompareText(ENV_KEY_PATH, Name) = 0 then
+  if IsPathEnv(Name) then
   begin
     Result := RemoveFromPath(Hive, Value);
     Exit;
@@ -117,6 +120,17 @@ begin
     Result := ENV_FAILED;
     DbgError(Name);
   end;
+
+end;
+
+
+function AddPathSeparator(Path: String): String;
+begin
+
+  if (Path <> '') and (Path[Length(Path)] <> ';') then
+    Result := Path + ';'
+  else
+    Result := Path;
 
 end;
 
@@ -157,24 +171,10 @@ begin
 
   DbgPath(ENV_ADD, Hive, SafeDirectory);
 
-  {Add trailing separator to path if required}
-  if (Path <> '') and (Path[Length(Path)] <> ';') then
-    Path := Path + ';';
+  {Add our new value to the end of the path}
+  Path := AddPathSeparator(Path) + SafeDirectory;
 
-  {Add our new value to the path}
-  Path := Path + SafeDirectory;
-
-  {Add a trailing separator if required}
-  if NeedsTrailingSeparator then
-    Path := Path + ';';
-
-  if RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, Path) then
-    Result := ENV_CHANGED
-  else
-  begin
-    Result := ENV_FAILED;
-    DbgError(ENV_KEY_PATH);
-  end;
+  Result := WriteRegistryPath(Hive, Path);
 
 end;
 
@@ -235,16 +235,7 @@ begin
 
     {Add each raw entry if normalize failed or if it does not match the directory we are removing}
     if (SafePath = '') or (CompareText(SafePath, SafeDirectory) <> 0) then
-    begin
-
-      {Add separator if required}
-      if NewPath <> '' then
-        NewPath := NewPath + ';';
-
-      {Important to add RAW value}
-      NewPath := NewPath + RawList[I];
-
-    end
+      NewPath := AddPathSeparator(NewPath) + RawList[I]
     else
       FoundEntry := True;
 
@@ -252,17 +243,40 @@ begin
 
   {See if we found the entry we want to remove}
   if not FoundEntry then
-  begin
-    Result := ENV_NONE;
-    Exit;
-  end;
-
-  if (NewPath = '') and (Hive = HKCU) then
-    {We have an empty User PATH, so we can delete the subkey}
-    Res := RegDeleteValue(Hive, Key, ENV_KEY_PATH)
+    Result := ENV_NONE
   else
-    {Write the new path (could be empty for HKLM)}
-    Res := RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, NewPath);
+    Result := WriteRegistryPath(Hive, NewPath);
+
+end;
+
+
+function WriteRegistryPath(Hive: Integer; Path: String): Integer;
+var
+  Key: String;
+  Res: Boolean;
+
+begin
+
+  Key := GetPathKeyForHive(Hive);
+
+  if Path = '' then
+  begin
+    {We can delete the PATH key if we have an empty User PATH}
+    if Hive = HKCU then
+      Res := RegDeleteValue(Hive, Key, ENV_KEY_PATH)
+    else
+      Res := RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, Path);
+  end
+  else
+  begin
+
+    {Add a trailing separator if required}
+    if NeedsTrailingSeparator then
+      Path := AddPathSeparator(Path);
+
+    Res := RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, Path);
+
+  end;
 
   if Res then
     Result := ENV_CHANGED
@@ -360,6 +374,13 @@ begin
   else
     Result := 'User';
 
+end;
+
+
+{Returns true if the subkey name is for the PATH value}
+function IsPathEnv(Name: String): Boolean;
+begin
+  Result := CompareText(ENV_KEY_PATH, Name) = 0;
 end;
 
 
