@@ -453,6 +453,8 @@ function EnvListChanges(List: TEnvChangeList): String; forward;
 function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Integer; forward;
 procedure EnvRegisterChange(Hive, Action: Integer; const Name, Value: String; Show: Boolean); forward;
 procedure EnvRevokeChanges(List: TEnvChangeList); forward;
+procedure EnvSortMakeChanges(var List: TEnvChangeList); forward;
+procedure EnvSortRevokeChanges(var List: TEnvChangeList); forward;
 procedure PathChange(Hive, Action: Integer; const Path: String; Show: Boolean); forward;
 procedure ProxyChange(const Name, Value: String; Action: Integer); forward;
 
@@ -2506,6 +2508,7 @@ var
 begin
 
   Result := ENV_NONE;
+  EnvSortMakeChanges(List);
 
   for I := 0 to GetArrayLength(List) - 1 do
   begin
@@ -2567,6 +2570,8 @@ begin
   {We haven't really got a way to display any errors, but something must
   be seriously wrong with the system if we need to call this and we fail}
 
+  EnvSortRevokeChanges(List);
+
   for I := 0 to GetArrayLength(List) - 1 do
   begin
 
@@ -2581,6 +2586,101 @@ begin
       EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Display);
 
   end;
+
+end;
+
+
+procedure EnvSortMakeChanges(var List: TEnvChangeList);
+var
+  Temp: TEnvChangeList;
+  Count: Integer;
+  I: Integer;
+  Next: Integer;
+
+begin
+
+  Count := GetArrayLength(List);
+  SetArrayLength(Temp, Count);
+  Next := 0;
+
+  {Remove from path items first}
+  for I := 0 to Count - 1 do
+  begin
+    if IsPathEnv(List[I].Name) and (List[I].Action = ENV_REMOVE) then
+    begin
+      Temp[Next] := List[I];
+      Inc(Next);
+    end;
+  end;
+
+  {Add to path items next}
+  for I := 0 to Count - 1 do
+  begin
+    if IsPathEnv(List[I].Name) and (List[I].Action = ENV_ADD) then
+    begin
+      Temp[Next] := List[I];
+      Inc(Next);
+    end;
+  end;
+
+  {Non-path actions last}
+  for I := 0 to Count - 1 do
+  begin
+    if not IsPathEnv(List[I].Name) then
+    begin
+      Temp[Next] := List[I];
+      Inc(Next);
+    end;
+  end;
+
+  List := Temp;
+
+end;
+
+procedure EnvSortRevokeChanges(var List: TEnvChangeList);
+var
+  Temp: TEnvChangeList;
+  Count: Integer;
+  I: Integer;
+  Next: Integer;
+
+begin
+
+  Count := GetArrayLength(List);
+  SetArrayLength(Temp, Count);
+  Next := 0;
+
+  {Remove added items from path first}
+  for I := 0 to Count - 1 do
+  begin
+    if IsPathEnv(List[I].Name) and (List[I].Action = ENV_ADD) then
+    begin
+      Temp[Next] := List[I];
+      Inc(Next);
+    end;
+  end;
+
+  {Add removed items to path next}
+  for I := 0 to Count - 1 do
+  begin
+    if IsPathEnv(List[I].Name) and (List[I].Action = ENV_REMOVE) then
+    begin
+      Temp[Next] := List[I];
+      Inc(Next);
+    end;
+  end;
+
+  {Non-path actions last}
+  for I := 0 to Count - 1 do
+  begin
+    if not IsPathEnv(List[I].Name) then
+    begin
+      Temp[Next] := List[I];
+      Inc(Next);
+    end;
+  end;
+
+  List := Temp;
 
 end;
 
