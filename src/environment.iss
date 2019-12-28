@@ -15,7 +15,7 @@ function EnvRemove(Hive: Integer; Name, Value: String; Display: Boolean): Intege
 function AddPathSeparator(Path: String): String; forward;
 function AddToPath(Hive: Integer; Value: String): Integer; forward;
 function RemoveFromPath(Hive: Integer; Value: String): Integer; forward;
-function WriteRegistryPath(Hive: Integer; Path: String): Integer; forward;
+function WriteRegistryPath(Hive: Integer; const Key, Path: String): Integer; forward;
 function GetRawPath(Hive: Integer; var Value: String): Boolean; forward;
 function SplitPath(Value: String): TArrayOfString; forward;
 function GetPathKeyForHive(Hive: Integer): String; forward;
@@ -23,12 +23,11 @@ function GetHiveName(Hive: Integer): String; forward;
 function GetHiveFriendlyName(Hive: Integer): String; forward;
 function IsPathEnv(Name: String): Boolean; forward;
 function NormalizePath(const Value: String): String; forward;
-function GetSafePathList(Hive: Integer): TPathList; forward;
-function GetSafePath(var PathList: TPathList; Index: Integer): String; forward;
-procedure SetPathList(Hive: Integer; const Path: String; var SafeList: TPathList); forward;
-function DirectoryInPath(var Directory: String; PathList: TPathList; Hive: Integer): Boolean; forward;
-function SearchPath(PathList: TPathList; Hive: Integer; const Cmd: String): String; forward;
-function SearchPathEx(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String; forward;
+function GetSafePathList(Hive: Integer): TSafeList; forward;
+procedure SetSafePathList(const RawPath: String; var SafeList: TSafeList); forward;
+function DirectoryInPath(var Directory: String; SafeList: TSafeList): Boolean; forward;
+function SearchPath(SafeList: TSafeList; const Cmd: String): String; forward;
+function SearchPathEx(SafeList: TSafeList; const Cmd: String; var Index: Integer): String; forward;
 procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Display: Boolean); forward;
 procedure DbgPath(Action, Hive: Integer; Value: String); forward;
 procedure DbgError(Name: String); forward;
@@ -138,7 +137,7 @@ end;
 function AddToPath(Hive: Integer; Value: String): Integer;
 var
   SafeDirectory: String;
-  SafeList: TPathList;
+  SafeList: TSafeList;
   Key: String;
   Path: String;
 
@@ -158,7 +157,7 @@ begin
   SafeList := GetSafePathList(Hive);
 
   {See if our directory is already in the path}
-  if DirectoryInPath(SafeDirectory, SafeList, Hive) then
+  if DirectoryInPath(SafeDirectory, SafeList) then
   begin
     Result := ENV_NONE;
     Exit;
@@ -174,7 +173,7 @@ begin
   {Add our new value to the end of the path}
   Path := AddPathSeparator(Path) + SafeDirectory;
 
-  Result := WriteRegistryPath(Hive, Path);
+  Result := WriteRegistryPath(Hive, Key, Path);
 
 end;
 
@@ -189,7 +188,6 @@ var
   I: Integer;
   SafePath: String;
   FoundEntry: Boolean;
-  Res: Boolean;
 
 begin
 
@@ -245,19 +243,16 @@ begin
   if not FoundEntry then
     Result := ENV_NONE
   else
-    Result := WriteRegistryPath(Hive, NewPath);
+    Result := WriteRegistryPath(Hive, Key, NewPath);
 
 end;
 
 
-function WriteRegistryPath(Hive: Integer; Path: String): Integer;
+function WriteRegistryPath(Hive: Integer; const Key, Path: String): Integer;
 var
-  Key: String;
   Res: Boolean;
 
 begin
-
-  Key := GetPathKeyForHive(Hive);
 
   if Path = '' then
   begin
@@ -437,7 +432,7 @@ begin
 end;
 
 
-function GetSafePathList(Hive: Integer): TPathList;
+function GetSafePathList(Hive: Integer): TSafeList;
 var
   Path: String;
 
@@ -446,26 +441,12 @@ begin
   if not GetRawPath(Hive, Path) then
     Exit;
 
-  SetPathList(Hive, Path, Result);
+  SetSafePathList(Path, Result);
 
 end;
 
 
-function GetSafePath(var PathList: TPathList; Index: Integer): String;
-begin
-
-  if PathList.Items[Index].Safe then
-    Result := PathList.Items[Index].Path
-  else
-  begin
-    Result := NormalizePath(PathList.Items[Index].Path);
-    PathList.Items[Index].Safe := True;
-  end;
-
-end;
-
-
-procedure SetPathList(Hive: Integer; const Path: String; var SafeList: TPathList);
+procedure SetSafePathList(const RawPath: String; var SafeList: TSafeList);
 var
   RawList: TArrayOfString;
   Next: Integer;
@@ -474,40 +455,31 @@ var
 
 begin
 
-  RawList := SplitPath(Path)
-
-  Next := GetArrayLength(SafeList.Items);
-  SetArrayLength(SafeList.Items, Next + GetArrayLength(RawList));
+  RawList := SplitPath(RawPath);
+  SetArrayLength(SafeList, GetArrayLength(RawList));
+  Next := 0;
 
   for I := 0 to GetArrayLength(RawList) - 1 do
   begin
 
-    if RawList[I] <> '' then
+    SafePath := NormalizePath(RawList[I]);
+
+    if SafePath <> '' then
     begin
-
-      SafePath := NormalizePath(RawList[I]);
-
-      if SafePath <> '' then
-      begin
-        SafeList.Items[Next].Hive := Hive;
-        SafeList.Items[Next].Path := SafePath;
-        SafeList.Items[Next].Safe := True;
-        Inc(Next);
-      end;
-
+      SafeList[Next] := SafePath;
+      Inc(Next);
     end;
 
   end;
 
-  SetArrayLength(SafeList.Items, Next);
+  SetArrayLength(SafeList, Next);
 
 end;
 
 
-function DirectoryInPath(var Directory: String; PathList: TPathList; Hive: Integer): Boolean;
+function DirectoryInPath(var Directory: String; SafeList: TSafeList): Boolean;
 var
   I: Integer;
-  SafePath: String;
 
 begin
 
@@ -518,15 +490,10 @@ begin
   if Directory = '' then
     Exit;
 
-  for I := 0 to GetArrayLength(PathList.Items) - 1 do
+  for I := 0 to GetArrayLength(SafeList) - 1 do
   begin
 
-    if Hive <> PathList.Items[I].Hive then
-      Continue;
-
-    SafePath := GetSafePath(PathList, I);
-
-    if (SafePath <> '') and (CompareText(SafePath, Directory) = 0) then
+    if CompareText(SafeList[I], Directory) = 0 then
     begin
       Result := True;
       Exit;
@@ -537,21 +504,21 @@ begin
 end;
 
 
-function SearchPath(PathList: TPathList; Hive: Integer; const Cmd: String): String;
+function SearchPath(SafeList: TSafeList; const Cmd: String): String;
 var
   Index: Integer;
 
 begin
 
-  Result := SearchPathEx(PathList, Hive, Cmd, Index);
+  Result := SearchPathEx(SafeList, Cmd, Index);
 
 end;
 
 
-function SearchPathEx(PathList: TPathList; Hive: Integer; const Cmd: String; var Index: Integer): String;
+function SearchPathEx(SafeList: TSafeList; const Cmd: String; var Index: Integer): String;
 var
   I: Integer;
-  SafePath: String;
+  Path: String;
   Filename: String;
 
 begin
@@ -559,26 +526,17 @@ begin
   Result := '';
   Index := -1;
 
-  for I := 0 to GetArrayLength(PathList.Items) - 1 do
+  for I := 0 to GetArrayLength(SafeList) - 1 do
   begin
 
-    if Hive <> PathList.Items[I].Hive then
-      Continue;
+    Path := SafeList[I];
+    Filename := AddBackslash(Path) + Cmd;
 
-    SafePath := GetSafePath(PathList, I);
-
-    if SafePath <> '' then
+    if FileExists(Filename) then
     begin
-
-      Filename := AddBackslash(SafePath) + Cmd;
-
-      if FileExists(Filename) then
-      begin
-        Result := Filename;
-        Index := I;
-        Exit;
-      end;
-
+      Result := Filename;
+      Index := I;
+      Exit;
     end;
 
   end;
@@ -657,7 +615,7 @@ by adding a trailing separator to the path.}
 function NeedsTrailingSeparator: Boolean;
 var
   Hive: Integer;
-  SafeList: TPathList;
+  SafeList: TSafeList;
   Cmd: String;
   GitExe: String;
   Version: String;
@@ -669,13 +627,13 @@ begin
 
   Hive := HKLM;
   SafeList := GetSafePathList(Hive);
-  GitExe := SearchPath(SafeList, Hive, Cmd);
+  GitExe := SearchPath(SafeList, Cmd);
 
   if GitExe = '' then
   begin
     Hive := HKCU;
     SafeList := GetSafePathList(Hive);
-    GitExe := SearchPath(SafeList, Hive, Cmd);
+    GitExe := SearchPath(SafeList, Cmd);
   end;
 
   if GitExe = '' then

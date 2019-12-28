@@ -172,17 +172,12 @@ type
     Path    : String;
   end;
 
-type
-  TPathListRec = record
-    Hive    : Integer;
-    Path    : String;
-    Safe    : Boolean;
-  end;
+type TSafeList = TArrayOfString;
 
 type
-  TPathList = record
-    Hash    : String;
-    Items   : Array of TPathListRec;
+  TSafePaths = record
+    System  : TSafeList;
+    User    : TSafeList;
   end;
 
 type
@@ -197,7 +192,8 @@ type
     Php         : TPathStatus;
     Bin         : TPathStatus;
     VendorBin   : TPathStatus;
-    List        : TPathList;
+    List        : TSafePaths;
+    RawHash     : String;
   end;
 
 type
@@ -2080,21 +2076,22 @@ begin
   GetRawPath(HKCU, UserPath);
   Hash := GetPathHash(SystemPath, UserPath);
 
-  Result := CompareText(Rec.List.Hash, Hash) <> 0;
+  Result := CompareText(Rec.RawHash, Hash) <> 0;
 
   if Result then
   begin
     Debug('Getting path info from registry');
 
     {Set the new hash}
-    Rec.List.Hash := Hash;
+    Rec.RawHash := Hash;
 
     {Clear any previous list entries}
-    SetArrayLength(Rec.List.Items, 0);
+    SetArrayLength(Rec.List.System, 0);
+    SetArrayLength(Rec.List.User, 0);
 
     {Set safe path list}
-    SetPathList(HKLM, SystemPath, Rec.List);
-    SetPathList(HKCU, UserPath, Rec.List);
+    SetSafePathList(SystemPath, Rec.List.System);
+    SetSafePathList(UserPath, Rec.List.User);
 
     {Flag records as not checked}
     Rec.Php.Checked := False;
@@ -2113,6 +2110,7 @@ end;
 
 function SearchPathBin(Hive: Integer): String;
 var
+  SafeList: TSafeList;
   Res: Array[0..1] of String;
   Index: Array[0..1] of Integer;
   I: Integer;
@@ -2120,12 +2118,17 @@ var
 
 begin
 
+  if Hive = HKLM then
+    SafeList := GPaths.List.System
+  else
+    SafeList := GPaths.List.User;
+
   {We grab the first reference in the path to either the bat or the shell shim}
 
   Result := '';
 
-  Res[0] := SearchPathEx(GPaths.List, Hive, '{#CmdBat}', Index[0]);
-  Res[1] := SearchPathEx(GPaths.List, Hive, '{#CmdShell}', Index[1])
+  Res[0] := SearchPathEx(SafeList, '{#CmdBat}', Index[0]);
+  Res[1] := SearchPathEx(SafeList, '{#CmdShell}', Index[1])
 
   Low := MaxInt;
 
@@ -2178,11 +2181,11 @@ begin
   if not GPaths.Php.Checked then
   begin
 
-    GPaths.Php.Data.System := SearchPath(GPaths.List, HKLM, '{#CmdPhp}');
+    GPaths.Php.Data.System := SearchPath(GPaths.List.System, '{#CmdPhp}');
 
     {Only check user path if we have no system entry, even if we are an admin}
     if GPaths.Php.Data.System = '' then
-      GPaths.Php.Data.User := SearchPath(GPaths.List, HKCU, '{#CmdPhp}');
+      GPaths.Php.Data.User := SearchPath(GPaths.List.User, '{#CmdPhp}');
 
     UpdatePathStatus(GPaths.Php);
 
@@ -2214,10 +2217,10 @@ begin
     to find an entry in the system path. We only add this path
     if the status is PATH_NONE}
 
-    if DirectoryInPath(VendorBin, GPaths.List, HKLM) then
+    if DirectoryInPath(VendorBin, GPaths.List.System) then
       GPaths.VendorBin.Data.System := VendorBin;
 
-    if DirectoryInPath(VendorBin, GPaths.List, HKCU) then
+    if DirectoryInPath(VendorBin, GPaths.List.User) then
       GPaths.VendorBin.Data.User := VendorBin;
 
     UpdatePathStatus(GPaths.VendorBin);
