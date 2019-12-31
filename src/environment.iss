@@ -25,7 +25,7 @@ function IsPathEnv(Name: String): Boolean; forward;
 function NormalizePath(const Value: String): String; forward;
 function GetSafePathList(Hive: Integer): TSafeList; forward;
 procedure SetSafePathList(const RawPath: String; var SafeList: TSafeList); forward;
-function DirectoryInPath(var Directory: String; SafeList: TSafeList): Boolean; forward;
+function DirectoryInPath(Directory: String; SafeList: TSafeList): Boolean; forward;
 function SearchPath(SafeList: TSafeList; const Cmd: String): String; forward;
 function SearchPathEx(SafeList: TSafeList; const Cmd: String; var Index: Integer): String; forward;
 procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Display: Boolean); forward;
@@ -469,23 +469,24 @@ begin
 end;
 
 
-function DirectoryInPath(var Directory: String; SafeList: TSafeList): Boolean;
+function DirectoryInPath(Directory: String; SafeList: TSafeList): Boolean;
 var
+  SafeDirectory: String;
   I: Integer;
 
 begin
 
   Result := False;
 
-  Directory := NormalizePath(Directory);
+  SafeDirectory := NormalizePath(Directory);
 
-  if Directory = '' then
+  if SafeDirectory = '' then
     Exit;
 
   for I := 0 to GetArrayLength(SafeList) - 1 do
   begin
 
-    if CompareText(SafeList[I], Directory) = 0 then
+    if CompareText(SafeList[I], SafeDirectory) = 0 then
     begin
       Result := True;
       Exit;
@@ -509,6 +510,7 @@ end;
 
 function SearchPathEx(SafeList: TSafeList; const Cmd: String; var Index: Integer): String;
 var
+  Start: Integer;
   I: Integer;
   Path: String;
   Filename: String;
@@ -516,9 +518,15 @@ var
 begin
 
   Result := '';
+
+  if Index < 0 then
+    Start := 0
+  else
+    Start := Index;
+
   Index := -1;
 
-  for I := 0 to GetArrayLength(SafeList) - 1 do
+  for I := Start to GetArrayLength(SafeList) - 1 do
   begin
 
     Path := SafeList[I];

@@ -344,6 +344,9 @@ const
   PHP_CHECK_ID = '{#PHP_CHECK_ID}';
   PHP_INI = '{#PhpIni}';
   PHP_INSTALLER = '{#PhpInstaller}';
+
+  CMD_BAT = '{#CmdBat}';
+  CMD_PHP = '{#CmdPhp}';
   CMD_SHELL = '{#CmdShell}';
 
   PATH_NONE = 0;
@@ -430,6 +433,7 @@ function UnixifyShellFile(const Filename: String; var Error: String): Boolean; f
 {Path retrieve functions}
 function GetPathData(var Rec: TPathInfo): Boolean; forward;
 function GetPathHash(const SystemPath, UserPath: String): String; forward;
+function GetPathList(Hive: Integer; SafePaths: TSafePaths): TSafeList; forward;
 function SearchPathBin(Hive: Integer): String; forward;
 procedure SetPathDataRec(var Rec: TPathRec; Cmd: String); forward;
 function SetPathInfo(AllData: Boolean): Boolean; forward;
@@ -444,6 +448,7 @@ function GetPathExt(Hive: Integer; var Value: String): Boolean; forward;
 
 {Environment change functions}
 function EnvAllowDisplay(Name: String): Boolean; forward;
+function EnvChangeIsRegistered(Hive, Action: Integer; const Name, Value: String): Boolean; forward;
 function EnvChangeToString(Rec: TEnvChangeRec; const Spacing: String): String; forward;
 function EnvListChanges(List: TEnvChangeList): String; forward;
 function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Integer; forward;
@@ -451,7 +456,11 @@ procedure EnvRegisterChange(Hive, Action: Integer; const Name, Value: String; Sh
 procedure EnvRevokeChanges(List: TEnvChangeList); forward;
 procedure EnvSortMakeChanges(var List: TEnvChangeList); forward;
 procedure EnvSortRevokeChanges(var List: TEnvChangeList); forward;
-procedure PathChange(Hive, Action: Integer; const Path: String; Show: Boolean); forward;
+procedure PathAdd(Hive: Integer; const Path: String; Show: Boolean); forward;
+procedure PathRemoveBin(Hive: Integer; Show: Boolean); forward;
+procedure PathRemoveCmd(Hive: Integer; const Cmd: String; Show: Boolean); forward;
+procedure PathRemoveDirectory(Hive: Integer; const Directory: String; Show: Boolean); forward;
+procedure PathRemovePhp(Hive: Integer; Show: Boolean); forward;
 procedure ProxyChange(const Name, Value: String; Action: Integer); forward;
 
 {Proxy functions}
@@ -939,7 +948,7 @@ begin
 
     if CompareText(BinDir, BinPath) = 0 then
     begin
-      PathChange(GetRegHive(), ENV_REMOVE, BinDir, False);
+      PathRemoveDirectory(GetRegHive(), BinDir, False);
       NoBin := True;
     end
     else
@@ -954,7 +963,7 @@ begin
       Cache := ExpandConstant('{localappdata}\Composer');
 
       if not DirExists(Home) and not DirExists(Cache) then
-        PathChange(HKCU, ENV_REMOVE, GetVendorBinDir(), False);
+        PathRemoveDirectory(HKCU, GetVendorBinDir(), False);
 
     end;
 
@@ -1693,7 +1702,7 @@ var
 
 begin
 
-  Exe := AddBackslash(Path) + '{#CmdPhp}';
+  Exe := AddBackslash(Path) + CMD_PHP;
 
   if FileExists(Exe) then
     ResultList.Add(Exe);
@@ -2108,6 +2117,17 @@ begin
 end;
 
 
+function GetPathList(Hive: Integer; SafePaths: TSafePaths): TSafeList;
+begin
+
+  if Hive = HKLM then
+    Result := SafePaths.System
+  else
+    Result := SafePaths.User;
+
+end;
+
+
 function SearchPathBin(Hive: Integer): String;
 var
   SafeList: TSafeList;
@@ -2118,17 +2138,13 @@ var
 
 begin
 
-  if Hive = HKLM then
-    SafeList := GPaths.List.System
-  else
-    SafeList := GPaths.List.User;
-
   {We grab the first reference in the path to either the bat or the shell shim}
 
   Result := '';
+  SafeList := GetPathList(Hive, GPaths.List);
 
-  Res[0] := SearchPathEx(SafeList, '{#CmdBat}', Index[0]);
-  Res[1] := SearchPathEx(SafeList, '{#CmdShell}', Index[1])
+  Res[0] := SearchPathEx(SafeList, CMD_BAT, Index[0]);
+  Res[1] := SearchPathEx(SafeList, CMD_SHELL, Index[1])
 
   Low := MaxInt;
 
@@ -2181,11 +2197,11 @@ begin
   if not GPaths.Php.Checked then
   begin
 
-    GPaths.Php.Data.System := SearchPath(GPaths.List.System, '{#CmdPhp}');
+    GPaths.Php.Data.System := SearchPath(GPaths.List.System, CMD_PHP);
 
     {Only check user path if we have no system entry, even if we are an admin}
     if GPaths.Php.Data.System = '' then
-      GPaths.Php.Data.User := SearchPath(GPaths.List.User, '{#CmdPhp}');
+      GPaths.Php.Data.User := SearchPath(GPaths.List.User, CMD_PHP);
 
     UpdatePathStatus(GPaths.Php);
 
@@ -2297,7 +2313,7 @@ begin
   end;
 
   if not IsSystemUser() and (GPaths.VendorBin.Status = PATH_NONE) then
-    PathChange(HKCU, ENV_ADD, GetVendorBinDir(), GFlags.DevInstall);
+    PathAdd(HKCU, GetVendorBinDir(), GFlags.DevInstall);
 
   Result := True;
 
@@ -2318,7 +2334,7 @@ begin
   begin
 
     {Path empty, so add BinPath and exit}
-    PathChange(GetRegHive(), ENV_ADD, BinPath, GFlags.DevInstall);
+    PathAdd(GetRegHive(), BinPath, GFlags.DevInstall);
     Exit;
 
   end
@@ -2332,8 +2348,8 @@ begin
     {Allow admins and dev mode installs to change the path}
     if IsAdminInstallMode or GFlags.DevInstall then
     begin
-      PathChange(GetRegHive(), ENV_ADD, BinPath, True);
-      PathChange(Rec.Data.Hive, ENV_REMOVE, Rec.Data.Path, True);
+      PathAdd(GetRegHive(), BinPath, True);
+      PathRemoveBin(Rec.Data.Hive, True);
       Exit;
     end;
 
@@ -2382,20 +2398,18 @@ end;
 procedure CheckPathPhp(Rec: TPathStatus; Config: TConfigRec);
 var
   PhpPath: String;
-  FixedHive: Integer;
 
 begin
 
   Debug('Checking php path');
 
   PhpPath := ExtractFileDir(Config.PhpExe);
-  FixedHive := GetRegHive();
 
   if Rec.Status = PATH_NONE then
   begin
 
     {Path empty, so add PhpPath}
-    PathChange(FixedHive, ENV_ADD, PhpPath, True);
+    PathAdd(GetRegHive(), PhpPath, True);
 
   end
   else if Rec.Status = PATH_OK then
@@ -2405,11 +2419,11 @@ begin
     the new one and remove the existing one}
     if CompareText(Rec.Data.Path, PhpPath) <> 0 then
     begin
-      PathChange(FixedHive, ENV_ADD, PhpPath, True);
+      PathAdd(GetRegHive(), PhpPath, True);
 
       {We might need to remove an existing user path in an admin
       install, so we use the specific hive}
-      PathChange(Rec.Data.Hive, ENV_REMOVE, Rec.Data.Path, True);
+      PathRemovePhp(Rec.Data.Hive, True);
     end;
 
   end;
@@ -2449,6 +2463,36 @@ begin
     (CompareText(Name, PROXY_KEY_HTTPS) <> 0);
 
 end;
+
+
+{Returns true if a change is already registered}
+function EnvChangeIsRegistered(Hive, Action: Integer; const Name, Value: String): Boolean;
+var
+  I: Integer;
+
+begin
+
+  Result := False;
+
+  for I := 0 to GetArrayLength(GEnvChanges) - 1 do
+  begin
+
+    if Hive <> GEnvChanges[I].Hive then
+      Continue;
+
+    if Action <> GEnvChanges[I].Action then
+      Continue;
+
+    if CompareText(Name, GEnvChanges[I].Name) = 0 then
+      Result := CompareText(Value, GEnvChanges[I].Value) = 0;
+
+    if Result then
+      Exit;
+
+  end;
+
+end;
+
 
 function EnvChangeToString(Rec: TEnvChangeRec; const Spacing: String): String;
 var
@@ -2543,19 +2587,20 @@ end;
 procedure EnvRegisterChange(Hive, Action: Integer; const Name, Value: String; Show: Boolean);
 var
   Next: Integer;
-  Display: Boolean;
 
 begin
 
+  if EnvChangeIsRegistered(Hive, Action, Name, Value) then
+    Exit;
+
   Next := GetArrayLength(GEnvChanges);
   SetArrayLength(GEnvChanges, Next + 1);
-  Display := EnvAllowDisplay(Name);
 
   GEnvChanges[Next].Hive := Hive;
   GEnvChanges[Next].Action := Action;
   GEnvChanges[Next].Name := Name;
   GEnvChanges[Next].Value := Value;
-  GEnvChanges[Next].Display := Display;
+  GEnvChanges[Next].Display := EnvAllowDisplay(Name);
   GEnvChanges[Next].Show := Show;
   GEnvChanges[Next].Done := False;
 
@@ -2688,9 +2733,58 @@ begin
 end;
 
 
-procedure PathChange(Hive, Action: Integer; const Path: String; Show: Boolean);
+procedure PathAdd(Hive: Integer; const Path: String; Show: Boolean);
 begin
-  EnvRegisterChange(Hive, Action, ENV_KEY_PATH, Path, Show);
+  EnvRegisterChange(Hive, ENV_ADD, ENV_KEY_PATH, Path, Show);
+end;
+
+
+{Removes all path entries ro composer}
+procedure PathRemoveBin(Hive: Integer; Show: Boolean);
+begin
+  PathRemoveCmd(Hive, CMD_BAT, Show);
+  PathRemoveCmd(Hive, CMD_SHELL, Show);
+end;
+
+
+{Removes all path entries for the specific command}
+procedure PathRemoveCmd(Hive: Integer; const Cmd: String; Show: Boolean);
+var
+  SafeList: TSafeList;
+  Filename: String;
+  Index: Integer;
+  Path: String;
+
+begin
+
+  SafeList := GetPathList(Hive, GPaths.List);
+  Index := 0;
+
+  repeat
+    Filename := SearchPathEx(SafeList, Cmd, Index);
+
+    if Filename <> '' then
+    begin
+      Path := ExtractFileDir(Filename);
+      EnvRegisterChange(Hive, ENV_REMOVE, ENV_KEY_PATH, Path, Show);
+      Inc(Index);
+    end;
+
+  until Filename = '';
+
+end;
+
+
+procedure PathRemoveDirectory(Hive: Integer; const Directory: String; Show: Boolean);
+begin
+  EnvRegisterChange(Hive, ENV_REMOVE, ENV_KEY_PATH, Directory, Show);
+end;
+
+
+{Removes all path entries to PHP}
+procedure PathRemovePhp(Hive: Integer; Show: Boolean);
+begin
+  PathRemoveCmd(Hive, CMD_PHP, Show);
 end;
 
 
