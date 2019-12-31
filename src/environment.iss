@@ -10,8 +10,8 @@ function ExpandEnvironmentStrings(Src: String; Dst: String; Size: DWord): DWord;
 function SendMessageTimeout(Hwnd, Msg, WParam: LongInt; LParam: String; Flags, Timeout: LongInt; lpdwResult: DWord): DWord;
   external 'SendMessageTimeoutW@user32.dll stdcall delayload';
 
-function EnvAdd(Hive: Integer; Name, Value: String; Display: Boolean): Integer; forward;
-function EnvRemove(Hive: Integer; Name, Value: String; Display: Boolean): Integer; forward;
+function EnvAdd(Hive: Integer; Name, Value: String; Sensitive: Boolean): Integer; forward;
+function EnvRemove(Hive: Integer; Name, Value: String; Sensitive: Boolean): Integer; forward;
 function AddPathSeparator(Path: String): String; forward;
 function AddToPath(Hive: Integer; Value: String): Integer; forward;
 function RemoveFromPath(Hive: Integer; Value: String): Integer; forward;
@@ -28,7 +28,7 @@ procedure SetSafePathList(const RawPath: String; var SafeList: TSafeList); forwa
 function DirectoryInPath(Directory: String; SafeList: TSafeList): Boolean; forward;
 function SearchPath(SafeList: TSafeList; const Cmd: String): String; forward;
 function SearchPathEx(SafeList: TSafeList; const Cmd: String; var Index: Integer): String; forward;
-procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Display: Boolean); forward;
+procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Sensitive: Boolean); forward;
 procedure DbgPath(Action, Hive: Integer; Value: String); forward;
 procedure DbgError(Name: String); forward;
 procedure NotifyEnvironmentChange; forward;
@@ -43,7 +43,7 @@ const
   ENV_KEY_PATH = 'PATH';
 
 
-function EnvAdd(Hive: Integer; Name, Value: String; Display: Boolean): Integer;
+function EnvAdd(Hive: Integer; Name, Value: String; Sensitive: Boolean): Integer;
 var
   Key: String;
   Existing: String;
@@ -69,7 +69,7 @@ begin
     end;
   end;
 
-  DbgEnv(ENV_ADD, Hive, Name, Value, Display);
+  DbgEnv(ENV_ADD, Hive, Name, Value, Sensitive);
   Existing := Value;
 
   {See if we are expandable}
@@ -89,7 +89,7 @@ begin
 end;
 
 
-function EnvRemove(Hive: Integer; Name, Value: String; Display: Boolean): Integer;
+function EnvRemove(Hive: Integer; Name, Value: String; Sensitive: Boolean): Integer;
 var
   Key: String;
 
@@ -109,7 +109,7 @@ begin
     Exit;
   end;
 
-  DbgEnv(ENV_REMOVE, Hive, Name, Value, Display);
+  DbgEnv(ENV_REMOVE, Hive, Name, Value, Sensitive);
 
   if RegDeleteValue(Hive, Key, Name) then
     Result := ENV_CHANGED
@@ -544,7 +544,7 @@ begin
 end;
 
 
-procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Display: Boolean);
+procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Sensitive: Boolean);
 var
   Path: String;
   Prefix: String;
@@ -554,10 +554,10 @@ begin
   Path := Format('%s\%s', [GetHiveName(Hive), GetPathKeyForHive(Hive)]);
   Name := Format('%s%s%s', [#39, Name, #39]);
 
-  if Display then
-    Value := Format(' with value %s%s%s', [#39, Value, #39])
+  if Sensitive then
+    Value := ''
   else
-    Value := '';
+    Value := Format(' with value %s%s%s', [#39, Value, #39]);
 
   if Action = ENV_ADD then
     Prefix := Format('Adding %s%s to', [Name, Value])

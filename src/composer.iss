@@ -221,13 +221,13 @@ type
 
 type
   TEnvChangeRec = record
-    Hive    : Integer;
-    Action  : Integer;
-    Name    : String;
-    Value   : String;
-    Display : Boolean;
-    Show    : Boolean;
-    Done    : Boolean;
+    Hive      : Integer;
+    Action    : Integer;
+    Name      : String;
+    Value     : String;
+    Sensitive : Boolean;
+    Show      : Boolean;
+    Done      : Boolean;
   end;
 
 type
@@ -447,9 +447,9 @@ procedure CheckPathPhp(Rec: TPathStatus; Config: TConfigRec); forward;
 function GetPathExt(Hive: Integer; var Value: String): Boolean; forward;
 
 {Environment change functions}
-function EnvAllowDisplay(Name: String): Boolean; forward;
 function EnvChangeIsRegistered(Hive, Action: Integer; const Name, Value: String): Boolean; forward;
 function EnvChangeToString(Rec: TEnvChangeRec; const Spacing: String): String; forward;
+function EnvIsSensitive(Name: String): Boolean; forward;
 function EnvListChanges(List: TEnvChangeList): String; forward;
 function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Integer; forward;
 procedure EnvRegisterChange(Hive, Action: Integer; const Name, Value: String; Show: Boolean); forward;
@@ -2455,16 +2455,6 @@ end;
 
 {*************** Environment change functions ***************}
 
-{Returns true if the environment variable value can be shown}
-function EnvAllowDisplay(Name: String): Boolean;
-begin
-
-  Result := (CompareText(Name, PROXY_KEY) <> 0) and
-    (CompareText(Name, PROXY_KEY_HTTPS) <> 0);
-
-end;
-
-
 {Returns true if a change is already registered}
 function EnvChangeIsRegistered(Hive, Action: Integer; const Name, Value: String): Boolean;
 var
@@ -2517,7 +2507,7 @@ begin
     Env := 'environment';
 
     {Ensure we don't log or display sensitive info}
-    if not Rec.Display then
+    if Rec.Sensitive then
       Value := Rec.Name
     else
       Value := Format('%s = %s', [Rec.Name, Rec.Value]);
@@ -2525,6 +2515,16 @@ begin
 
   Action := Format('%s %s %s: ', [Action, GetHiveFriendlyName(Rec.Hive), Env]);
   Result := Action + Spacing + Value;
+
+end;
+
+
+{Returns true if the environment variable might contain sensitive info}
+function EnvIsSensitive(Name: String): Boolean;
+begin
+
+  Result := (CompareText(Name, PROXY_KEY) = 0) or
+    (CompareText(Name, PROXY_KEY_HTTPS) = 0);
 
 end;
 
@@ -2562,9 +2562,9 @@ begin
 
     {Modify the environemnt}
     if List[I].Action = ENV_ADD then
-      Result := EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Display)
+      Result := EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Sensitive)
     else
-      Result := EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Display);
+      Result := EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Sensitive);
 
     {Check the result}
     if Result = ENV_CHANGED then
@@ -2600,7 +2600,7 @@ begin
   GEnvChanges[Next].Action := Action;
   GEnvChanges[Next].Name := Name;
   GEnvChanges[Next].Value := Value;
-  GEnvChanges[Next].Display := EnvAllowDisplay(Name);
+  GEnvChanges[Next].Sensitive := EnvIsSensitive(Name);
   GEnvChanges[Next].Show := Show;
   GEnvChanges[Next].Done := False;
 
@@ -2629,9 +2629,9 @@ begin
 
     {Reverse the action}
     if List[I].Action = ENV_ADD then
-      EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Display)
+      EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Sensitive)
     else
-      EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Display);
+      EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Sensitive);
 
   end;
 
