@@ -32,7 +32,6 @@ procedure DbgEnv(Action, Hive: Integer; Name, Value: String; Display: Boolean); 
 procedure DbgPath(Action, Hive: Integer; Value: String); forward;
 procedure DbgError(Name: String); forward;
 procedure NotifyEnvironmentChange; forward;
-function NeedsTrailingSeparator: Boolean; forward;
 
 const
   ENV_CHANGED = 0;
@@ -254,24 +253,17 @@ var
 
 begin
 
-  if Path = '' then
+  if Path <> '' then
+    Res := RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, Path)
+  else
   begin
     {We can delete the PATH key if we have an empty User PATH}
     if Hive = HKCU then
       Res := RegDeleteValue(Hive, Key, ENV_KEY_PATH)
     else
       Res := RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, Path);
-  end
-  else
-  begin
-
-    {Add a trailing separator if required}
-    if NeedsTrailingSeparator then
-      Path := AddPathSeparator(Path);
-
-    Res := RegWriteExpandStringValue(Hive, Key, ENV_KEY_PATH, Path);
-
   end;
+
 
   if Res then
     Result := ENV_CHANGED
@@ -602,54 +594,5 @@ begin
 
   {WM_SETTINGCHANGE = $1A; SMTO_ABORTIFHUNG = $2;}
   SendMessageTimeout(HWND_BROADCAST, $1A, 0, 'Environment', $2, 2000, Res);
-
-end;
-
-
-{Git for Windows had a bug on versions lower than 1.8.1.0 that only
-affects users with cygwin in their path. The code to strip the cygwin
-references adds a null-byte to the PATH which means that Posix paths
-are inherited by non-msys child processes rather than Windows ones,
-and the last path entry becomes unresovable. We can cure the latter
-by adding a trailing separator to the path.}
-function NeedsTrailingSeparator: Boolean;
-var
-  Hive: Integer;
-  SafeList: TSafeList;
-  Cmd: String;
-  GitExe: String;
-  Version: String;
-
-begin
-
-  Result := False;
-  Cmd := 'git.exe';
-
-  Hive := HKLM;
-  SafeList := GetSafePathList(Hive);
-  GitExe := SearchPath(SafeList, Cmd);
-
-  if GitExe = '' then
-  begin
-    Hive := HKCU;
-    SafeList := GetSafePathList(Hive);
-    GitExe := SearchPath(SafeList, Cmd);
-  end;
-
-  if GitExe = '' then
-    Exit;
-
-  if StringChangeEx(GitExe, 'cmd', 'bin', True) = 0 then
-    Exit;
-
-  if FileExists(GitExe) then
-  begin
-
-    Result := True;
-
-    if GetVersionNumbersString(GitExe, Version) then
-      Result := CompareStr(Version, '1.8.1.0') < 0;
-
-  end;
 
 end;
