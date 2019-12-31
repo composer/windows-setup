@@ -1110,6 +1110,9 @@ begin
 
   Debug('Initializing {#AppInstallName} {#SetupVersion} for user: ' + GetUserNameString);
 
+  {Set environment variable for installer script}
+  SetEnvironmentVariable(Uppercase('{#AppInstallName}'), '{#SetupVersion}');
+
   GExistingRec := InitGetExisting();
   GParamsRec := InitGetParams();
   SetPathInfo(False);
