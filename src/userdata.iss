@@ -54,8 +54,7 @@ function GetResult(StrBuf: String; BufCount: DWord): DWord;
 procedure UserDataDelete; forward;
 function UserDataGet(Status: Integer): TUserDataList; forward;
 procedure UserDataGetAll(const User: String; var List: TUserDataList); forward;
-function UserGetAccountsWmi(var Accounts: TUserProfileList): Boolean; forward;
-function UserGetAccountsReg(var Accounts: TUserProfileList): Boolean; forward;
+function UserGetAccounts(var Accounts: TUserProfileList): Boolean; forward;
 function UserGetProfile(const Sid: String; var Path: String): Boolean; forward;
 procedure UserAddProfileRec(const User, Profile: String; var Accounts: TUserProfileList); forward;
 procedure UserAddDataItem(User, Folder, Caption: String; Local: Boolean; var List: TUserDataList); forward;
@@ -139,9 +138,8 @@ var
 
 begin
 
-  {We use Windows wmi as this is a reliable way to get the correct user name
-  for each local account. If this is not available (it is missing from XP Home),
-  we fallback to using the registry.}
+  {We use Windows wmi as this is a reliable way to get the correct
+  user name for each local account}
 
   if UserGetFolderPrefix('AppData', HomeSuffix) then
     HomeSuffix := AddBackslash(HomeSuffix) + 'Composer'
@@ -153,7 +151,7 @@ begin
   else
     Exit;
 
-  if not (UserGetAccountsWmi(Accounts) or UserGetAccountsReg(Accounts)) then
+  if not UserGetAccounts(Accounts) then
     Exit;
 
   SystemDir := AnsiLowercase(GetSystemDir());
@@ -181,7 +179,7 @@ begin
 end;
 
 
-function UserGetAccountsWmi(var Accounts: TUserProfileList): Boolean;
+function UserGetAccounts(var Accounts: TUserProfileList): Boolean;
 var
   Cmd: String;
   Dir: String;
@@ -249,40 +247,6 @@ begin
 
   finally
     SList.Free;
-  end;
-
-  Result := GetArrayLength(Accounts) > 0;
-
-end;
-
-
-function UserGetAccountsReg(var Accounts: TUserProfileList): Boolean;
-var
-  SubKey: String;
-  Sids: TArrayofString;
-  I: Integer;
-  Profile: String;
-
-begin
-
-  Result := False;
-
-  SubKey := 'Software\Microsoft\Windows NT\CurrentVersion\ProfileList'
-
-  if not RegGetSubkeyNames(HKLM, SubKey, Sids) then
-    Exit;
-
-  for I := 0 to GetArrayLength(Sids) - 1 do
-  begin
-
-    if Pos(SID_START, Sids[I]) <> 0 then
-    begin
-
-      if UserGetProfile(Sids[I], Profile) then
-        UserAddProfileRec(ExtractFileName(Profile), Profile, Accounts);
-
-    end;
-
   end;
 
   Result := GetArrayLength(Accounts) > 0;
