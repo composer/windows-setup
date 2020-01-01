@@ -14,7 +14,7 @@ setupEnvironment();
 process(is_array($argv) ? $argv : array());
 
 /**
- * Ensures the environment is sane
+ * Initializes various values
  */
 function setupEnvironment()
 {
@@ -32,7 +32,7 @@ function setupEnvironment()
 }
 
 /**
- * processes the installer
+ * Processes the installer
  */
 function process($argv)
 {
@@ -83,7 +83,7 @@ function process($argv)
 }
 
 /**
- * displays the help
+ * Displays the help
  */
 function displayHelp()
 {

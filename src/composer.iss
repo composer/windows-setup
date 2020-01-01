@@ -2641,6 +2641,9 @@ begin
 end;
 
 
+{Orders the path changes so that items to be removed are actioned
+first, followed by items to be added which are always appended to
+the registry path value}
 procedure EnvSortMakeChanges(var List: TEnvChangeList);
 var
   Temp: TEnvChangeList;
@@ -2688,6 +2691,10 @@ begin
 
 end;
 
+
+{Orders the path changes so that added items are removed first
+followed by adding back the removed items. Note that the latter
+will not be in their original positions.}
 procedure EnvSortRevokeChanges(var List: TEnvChangeList);
 var
   Temp: TEnvChangeList;
@@ -2736,13 +2743,14 @@ begin
 end;
 
 
+{Registers a new value to add to the specific path}
 procedure PathAdd(Hive: Integer; const Path: String; Show: Boolean);
 begin
   EnvRegisterChange(Hive, ENV_ADD, ENV_KEY_PATH, Path, Show);
 end;
 
 
-{Removes all path entries ro composer}
+{Registers the removal of all path entries to composer shim scripts}
 procedure PathRemoveBin(Hive: Integer; Show: Boolean);
 begin
   PathRemoveCmd(Hive, CMD_BAT, Show);
@@ -2750,7 +2758,7 @@ begin
 end;
 
 
-{Removes all path entries for the specific command}
+{Registers the removal of all path entries for the specific command}
 procedure PathRemoveCmd(Hive: Integer; const Cmd: String; Show: Boolean);
 var
   SafeList: TSafeList;
@@ -2778,20 +2786,21 @@ begin
 end;
 
 
+{Registers the removal of all path entries to the specific directory}
 procedure PathRemoveDirectory(Hive: Integer; const Directory: String; Show: Boolean);
 begin
   EnvRegisterChange(Hive, ENV_REMOVE, ENV_KEY_PATH, Directory, Show);
 end;
 
 
-{Removes all path entries to PHP}
+{Registers the removal of all path entries to the PHP CLI binary}
 procedure PathRemovePhp(Hive: Integer; Show: Boolean);
 begin
   PathRemoveCmd(Hive, CMD_PHP, Show);
 end;
 
 
-{Register or remove a value from the main environment changes array}
+{Registers a proxy value to the main environment changes array}
 procedure ProxyChange(const Name, Value: String; Action: Integer);
 var
   TmpList: TEnvChangeList;

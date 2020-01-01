@@ -1,4 +1,5 @@
 ## Unreleased
+* Added the identifier `Composer-Setup.exe` (plus version) to the user-agent header when downloading.
 * Improved path handling to remove all instances of PHP and Composer when adding new values.
 * Updated to latest installer script which fixes NO_PROXY handling bug and includes certificate data
 from Wed Nov 27 04:12:10 2019 GMT.

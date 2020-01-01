@@ -133,6 +133,7 @@ begin
 end;
 
 
+{Appends a value to the specific registry path if it does not already exist}
 function AddToPath(Hive: Integer; Value: String): Integer;
 var
   SafeDirectory: String;
@@ -177,6 +178,7 @@ begin
 end;
 
 
+{Removes all matching values from the specific registry path}
 function RemoveFromPath(Hive: Integer; Value: String): Integer;
 var
   SafeDirectory: String;
@@ -469,6 +471,7 @@ begin
 end;
 
 
+{Returns true if the directory is found in the array of path entries}
 function DirectoryInPath(Directory: String; SafeList: TSafeList): Boolean;
 var
   SafeDirectory: String;
@@ -497,6 +500,7 @@ begin
 end;
 
 
+{Returns the full filename if a command is found in the array of path entries}
 function SearchPath(SafeList: TSafeList; const Cmd: String): String;
 var
   Index: Integer;
@@ -508,6 +512,9 @@ begin
 end;
 
 
+{Returns the full filename if a command is found in the array of path entries.
+Index is an in-out param that is used to set the start index of the search and
+the index of the found entry, or -1 if no entry is found.}
 function SearchPathEx(SafeList: TSafeList; const Cmd: String; var Index: Integer): String;
 var
   Start: Integer;
