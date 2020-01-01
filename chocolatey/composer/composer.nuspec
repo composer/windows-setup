@@ -4,7 +4,7 @@
   <metadata>
     <id>composer</id>
     <title>Composer Setup</title>
-    <version>5.0.0</version>
+    <version>5.1.0</version>
     <packageSourceUrl>https://github.com/composer/windows-setup</packageSourceUrl>
     <owners>John Stevenson</owners>
     <authors>Nils Adermann, Jordi Boggiano and community contributors</authors>
@@ -38,7 +38,7 @@ The following installer arguments can be set. They are mainly intended for CI us
 These parameters can be passed to the installer by using the `--ia` option.
 For example: `choco install --ia '"/DEV=C:\tools\php /PHP=C:\php"'`.
 ]]></description>
-    <releaseNotes>https://github.com/composer/windows-setup/releases/tag/v5.0.0</releaseNotes>
+    <releaseNotes>https://github.com/composer/windows-setup/releases/tag/v5.1.0</releaseNotes>
     <dependencies>
       <dependency id="php" version="5.5.0" />
     </dependencies>

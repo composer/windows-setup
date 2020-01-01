@@ -19,11 +19,12 @@ $au_WhatIf = $true; ./update.ps1
 
 ```
 
-To test the installation of the package, run:
+To test the installation and uninstallation of the package, run:
 
 ```powershell
-Test-Package
+Test-Package -Install
+Test-Package -Uninstall
 ```
 
 The previous release process can be found in the `chocolatey/local` directory. This can be be used
-to test binaries before it has been officially released on Github.
+to test the Composer-Setup binary before it has been officially released on Github.

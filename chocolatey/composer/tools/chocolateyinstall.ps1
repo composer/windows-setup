@@ -2,13 +2,13 @@ $ErrorActionPreference = 'Stop'
 
 $toolsPath = Split-Path $MyInvocation.MyCommand.Definition
 
-$fileName = 'Composer-Setup.5.0.0.exe'
+$fileName = 'Composer-Setup.5.1.0.exe'
 
 $packageArgs = @{
   packageName  = 'composer'
   fileType     = 'exe'
   file         = Get-Item $toolsPath\$fileName
-  checksum     = '6A0B75FEAF3823A1054274A362BDD92B9687B265C0F0FF782741853C7995CDD8'
+  checksum     = '80422FEF0EA310C0F565D6028F34010EEEBC96A4EDEC3175156D85F4F0EEEF10'
   checksumType = 'sha256'
   silentArgs   = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART'
   softwareName = 'composer*'
