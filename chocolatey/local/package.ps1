@@ -12,7 +12,7 @@ $packagefiles | ForEach-Object { Write-Host "Removing - $_"; Remove-Item $_ -ea 
 $templateFile = (Join-Path $packageDir "composer.template")
 $nuspec = (Join-Path $packageDir  "composer.nuspec")
 
-$buildDir = "..\..\src"
+$buildDir = "..\..\builds"
 
 # Replace values in template and write output file
 if ($version -eq '') {

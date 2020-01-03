@@ -1,7 +1,7 @@
 ; This file is only included in release builds
 
 ; release defines
-#define private OutputDir "release"
+#define private OutputDir "..\builds\release"
 #define private OutputBaseFilename "Composer-Setup." + SetupVersion
 
 ; release guard

@@ -80,6 +80,7 @@ WizardSizePercent=110,100
 #ifdef Release
   #include "build.iss";
 #else
+  OutputDir=..\builds\output
   OutputBaseFilename=Composer-Setup.dev
 #endif
 
