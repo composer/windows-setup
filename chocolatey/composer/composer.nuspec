@@ -9,7 +9,7 @@
     <owners>John Stevenson</owners>
     <authors>Nils Adermann, Jordi Boggiano and community contributors</authors>
     <projectUrl>https://getcomposer.org</projectUrl>
-    <iconUrl>https://getcomposer.org/img/logo-composer-transparent.png</iconUrl>
+    <iconUrl>https://rawcdn.githack.com/composer/windows-setup/80f687d4ec2c5a199770c131525fd08ff93d0366/chocolatey/composer-logo.png</iconUrl>
     <copyright>© 2011-Present Nils Adermann, Jordi Boggiano</copyright>
     <licenseUrl>https://github.com/composer/composer/blob/master/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>

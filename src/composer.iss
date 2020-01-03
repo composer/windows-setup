@@ -3,6 +3,7 @@
   #include "develop.iss"
 #endif
 
+#define AppId "{7315AF68-E777-496A-A6A2-4763A98ED35A}"
 #define AppInstallName "ComposerSetup"
 #define AppDescription "Composer - Php Dependency Manager"
 #define AppUrl "getcomposer.org"
@@ -29,7 +30,7 @@
 
 
 [Setup]
-AppId={{7315AF68-E777-496A-A6A2-4763A98ED35A}
+AppId={{#AppId}
 ; app name and version, must both be Composer
 AppName=Composer
 AppVerName=Composer
@@ -75,7 +76,7 @@ WizardSmallImageFile=wizsmall.bmp
 WizardStyle=modern
 WizardSizePercent=110,100
 
-; release stuff
+; release or development
 #ifdef Release
   #include "build.iss";
 #endif
@@ -429,6 +430,7 @@ function IsSystemUser: Boolean; forward;
 procedure RemoveSystemUserData; forward;
 procedure SaveInfData; forward;
 function UnixifyShellFile(const Filename: String; var Error: String): Boolean; forward;
+procedure UpdateRegQuietUninstall; forward;
 
 {Path retrieve functions}
 function GetPathData(var Rec: TPathInfo): Boolean; forward;
@@ -889,6 +891,10 @@ begin
     in RegisterPreviousData event without an uninstaller.}
     if GFlags.DevInstall then
       SaveInfData();
+
+    {Add all silent options to the registry key}
+    if WizardSilent and not GFlags.DevInstall then
+      UpdateRegQuietUninstall();
 
     GFlags.Completed := True;
   end;
@@ -2068,6 +2074,62 @@ begin
   end;
 
   Result := True;
+
+end;
+
+
+{Inno includes a QuietUninstallString in the Uninstall registry entry
+but it only uses the /SILENT option. This adds other params if they
+have been included on the command line}
+procedure UpdateRegQuietUninstall;
+var
+  Key: String;
+  QuietValue: String;
+  Params: String;
+  Option: String;
+  Changed: Boolean;
+
+begin
+
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1';
+
+  if not RegQueryStringValue(HKA, Key, 'QuietUninstallString', QuietValue) then
+    Exit;
+
+  Changed := False;
+  Params := UpperCase(GetCmdTail);
+
+  Option := '/VERYSILENT';
+
+  if Pos(Option, Params) <> 0 then
+  begin
+
+    if Pos(Option, UpperCase(QuietValue)) = 0 then
+    begin
+      if StringChangeEx(QuietValue, '/SILENT', Option, True) = 0 then
+        QuietValue := Format('%s %s', [QuietValue, Option]);
+
+      Changed := True;
+
+    end;
+
+  end;
+
+  Option := '/SUPPRESSMSGBOXES';
+
+  if Pos(Option, Params) <> 0 then
+  begin
+
+    if Pos(Option, UpperCase(QuietValue)) = 0 then
+    begin
+      QuietValue := Format('%s /SUPPRESSMSGBOXES', [QuietValue]);
+      Changed := True;
+    end;
+
+  end;
+
+  if Changed then
+    RegWriteStringValue(HKA, Key, 'QuietUninstallString', QuietValue);
 
 end;
 
