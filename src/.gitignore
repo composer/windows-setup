@@ -1,6 +1,5 @@
 output/
 debug.iss
-develop.iss
 release.iss
 *.phar
 *.tmp

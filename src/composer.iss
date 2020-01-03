@@ -1,6 +1,6 @@
 #ifndef SetupVersion
-  ; you must create a develop.iss - see ReadMe.txt
-  #include "develop.iss"
+  ; See src/ReadMe.md for versioning info
+  #include "version.iss"
 #endif
 
 #define AppId "{7315AF68-E777-496A-A6A2-4763A98ED35A}"
@@ -76,9 +76,11 @@ WizardSmallImageFile=wizsmall.bmp
 WizardStyle=modern
 WizardSizePercent=110,100
 
-; release or development
+; settings for release or dev compilation
 #ifdef Release
   #include "build.iss";
+#else
+  OutputBaseFilename=Composer-Setup.dev
 #endif
 
 [LangOptions]

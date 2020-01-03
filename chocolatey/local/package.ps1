@@ -16,7 +16,7 @@ $buildDir = "..\..\src"
 
 # Replace values in template and write output file
 if ($version -eq '') {
-  $filename = "$buildDir\output\mysetup.exe"
+  $filename = "$buildDir\output\Composer-Setup.dev.exe"
   $baseVersion = (Get-Item "$filename").VersionInfo.ProductVersion.Trim()
   $version = "$baseVersion.$([DateTime]::UtcNow.ToString('yyyyMMdd'))"
 }
