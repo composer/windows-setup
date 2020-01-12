@@ -1,5 +1,7 @@
 # Composer-Setup
 
+[![build](https://github.com/composer/windows-setup/workflows/build/badge.svg)](https://github.com/composer/windows-setup/actions)
+
 The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Download**][download] the latest release.
 
 ## Contents

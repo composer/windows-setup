@@ -1,0 +1,67 @@
+# https://help.github.com/en/categories/automating-your-workflow-with-github-actions
+
+on:
+  - pull_request
+  - push
+name: build
+
+jobs:
+  builds:
+    name: Build & deploy
+
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        install:
+          - "exe"
+          - "choco"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+        with:
+          fetch-depth: 1
+
+      - name: Compile Composer-Setup
+        run: iscc src\composer.iss
+        shell: cmd
+
+      - name: Build Chocolatey package
+        if: matrix.install == 'choco'
+        run: .\chocolatey\local\package.ps1
+
+      - name: Install Composer-Setup.exe
+        if: matrix.install == 'exe'
+        run: builds\output\Composer-Setup.dev.exe /VERYSILENT /SUPPRESSMSGBOXES /DEV=C:\composer /LOG=install.txt
+        shell: cmd
+
+      - name: Install Chocolatey package
+        if: matrix.install == 'choco'
+        # Install without php dependencies
+        run: choco install -i -y composer --source .\chocolatey\local --ia '"/DEV=C:\composer /LOG=install.txt"'
+
+      - name: Upload install log
+        uses: actions/upload-artifact@v1
+        with:
+          name: install-${{ matrix.install }}-log
+          path: install.txt
+
+      - name: Test install
+        run: |
+          Test-Path C:\composer\composer
+          Test-Path C:\composer\composer.bat
+          Test-Path C:\composer\composer.phar
+
+      - name: Prepend install location to PATH
+        # This is already in the registry PATH from the install but needs to be pulled in for subsequent Run steps.
+        run: echo "::add-path::C:\composer"
+
+      - name: Run
+        run: composer --version
+        shell: cmd
+
+      - name: Run in bash
+        run: composer --version
+        shell: bash
