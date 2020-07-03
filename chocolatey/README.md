@@ -19,10 +19,19 @@ $au_WhatIf = $true; ./update.ps1
 
 ```
 
+If the package is already published on Chocolatey, use:
+
+```powershell
+ `$au_Force = $true; ./update.ps1`.
+```
+
+Note that the `$au_` variables are persisent and must be set to `$false` to be cleared.
+
 To test the installation and uninstallation of the package, run:
 
 ```powershell
 Test-Package -Install
+Test-Package -Install -Parameters '...'
 Test-Package -Uninstall
 ```
 
