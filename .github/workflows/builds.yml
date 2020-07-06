@@ -39,8 +39,8 @@ jobs:
 
       - name: Install Chocolatey package
         if: matrix.install == 'choco'
-        # Install without php dependencies. Use force as we are already installed.
-        run: choco install -i -y composer --source .\chocolatey\local --force --params '"/Dev:C:\composer"' --ia '"/LOG=install.txt"'
+        # Upgrade as we are already installed.
+        run: choco upgrade -y composer --source .\chocolatey\local --params '"/Dev:C:\composer"' --ia '"/LOG=install.txt"'
 
       - name: Upload install log
         uses: actions/upload-artifact@v1

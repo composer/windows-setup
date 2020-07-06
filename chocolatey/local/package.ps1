@@ -19,8 +19,7 @@ if ($version -eq '') {
   $filename = "$buildDir\output\Composer-Setup.dev.exe"
   $baseVersion = (Get-Item "$filename").VersionInfo.ProductVersion.Trim()
   $version = "$baseVersion.$([DateTime]::UtcNow.ToString('yyyyMMdd'))"
-}
-else {
+} else {
   $filename = "$buildDir\release\Composer-Setup.$version.exe"
 }
 
