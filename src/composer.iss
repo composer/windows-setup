@@ -2339,7 +2339,7 @@ begin
   begin
     Rec.Status := PATH_OK;
 
-    if not IsAdminInstallMode then
+    if not IsAdmin then
     begin
       {We are a User, so we cannot modify the System path}
       if Rec.Data.System <> '' then
