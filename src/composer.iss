@@ -309,6 +309,8 @@ type
     Combo     : TNewComboBox;
     Browse    : TNewButton;
     Info      : TNewStaticText;
+    Confirm   : TNewCheckbox;
+    Warning   : TNewStaticText;
 end;
 
 type
@@ -597,9 +599,12 @@ procedure SettingsBrowseClick(Sender: TObject); forward;
 function SettingsCheckSelected: Boolean; forward;
 procedure SettingsComboChange(Sender: TObject); forward;
 procedure SettingsComboAdd(PhpExe: String); forward;
+procedure SettingsConfirmClick(Sender: TObject); forward;
 function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure SettingsPageInit; forward;
 procedure SettingsPageUpdate; forward;
+function SettingsSkipConfirm: Boolean; forward;
+procedure SettingsToggleInfo(Show: Boolean); forward;
 
 #include "environment.iss"
 #include "escape.iss"
@@ -5960,6 +5965,18 @@ begin
 
   Selected := GSettingsPage.Combo.Text;
 
+  {Check we have a filename}
+  DebugMsg := 'Error, no php selected';
+  Error := 'No php.exe has been selected';
+  Result := Selected <> '';
+
+  if not Result then
+  begin
+    Debug(DebugMsg);
+    ShowErrorMessage(Error);
+    Exit;
+  end;
+
   {Check filename is php.exe, for param input}
   DebugMsg := Format('Error, file name must be php.exe: %s', [Selected]);
   Error := Format('The file name you specified must be php.exe:%s%s', [LF, Selected]);
@@ -5976,6 +5993,18 @@ begin
   DebugMsg := Format('Error, file does not exist: %s', [Selected]);
   Error := Format('The file you specified does not exist:%s%s', [LF, Selected]);
   Result := FileExists(Selected);
+
+  if not Result then
+  begin
+    Debug(DebugMsg);
+    ShowErrorMessage(Error);
+    Exit;
+  end;
+
+  {Check path confirmation}
+  DebugMsg := Format('Error, confirmation missing for : %s', [Selected]);
+  Error := Format('Please confirm you want to use:%s%s', [LF, Selected]);
+  Result := SettingsSkipConfirm() or GSettingsPage.Confirm.Checked
 
   if not Result then
   begin
@@ -6013,9 +6042,13 @@ end;
 
 procedure SettingsComboChange(Sender: TObject);
 var
-  Caption: String;
+  Info: String;
+  Confirm: String;
+  SkipConfirm: Boolean;
 
 begin
+
+  SkipConfirm := SettingsSkipConfirm();
 
   case GPaths.Php.Status of
     PATH_OK:
@@ -6024,22 +6057,46 @@ begin
       if SameText(GSettingsPage.Combo.Text, GPaths.Php.Data.Cmd) then
         Caption := 'This is the PHP in your path. Click Next to use it.'
       else
-        Caption := 'This will replace the PHP entry in your path. Click Next if you want to do this.';
+      begin
+        Info := 'This will replace the PHP entry in your path. Click Next if you want to do this.';
+        {Fix resizing issue by making the caption word wrap}
+        Info := Info + StringOfChar(#32, 20);
+        Confirm := 'Add this PHP to your path? It will replace the existing entry.'
+      end;
 
     end;
 
-    PATH_NONE: Caption := '';
-    PATH_FIXED: Caption := 'To use a different PHP, you must remove this one from your System path.';
+    PATH_NONE:
+    begin
+
+      if (GSettingsPage.Combo.Text <> '') then
+      begin
+        Info := 'This will add PHP to your path. Click Next to use it.';
+        Confirm := 'Add this PHP to your path?';
+      end;
+
+    end;
+
+    PATH_FIXED: Info := 'To use a different PHP, you must remove this one from your System path.';
   end;
 
-  GSettingsPage.Info.Caption := Caption;
+  GSettingsPage.Info.Caption := Info;
+  GSettingsPage.Confirm.Caption := Confirm;
+  SettingsToggleInfo(SkipConfirm);
 
+end;
+
+
+procedure SettingsConfirmClick(Sender: TObject);
+begin
+  GSettingsPage.Warning.Visible := not GSettingsPage.Confirm.Checked;
 end;
 
 
 function SettingsPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
 var
   Base: Integer;
+  S: String;
 
 begin
 
@@ -6075,12 +6132,41 @@ begin
 
   GSettingsPage.Info := TNewStaticText.Create(Result);
   GSettingsPage.Info.Parent := Result.Surface;
-  GSettingsPage.Info.Top := Base + ScaleY(8);
+  GSettingsPage.Info.Top := Base + ScaleY(20);
   GSettingsPage.Info.Width := GSettingsPage.Combo.Width;
+  GSettingsPage.Info.Height := ScaleY(30);
   GSettingsPage.Info.Anchors := [akLeft, akTop, akRight];
   GSettingsPage.Info.AutoSize := True;
   GSettingsPage.Info.WordWrap := True;
   GSettingsPage.Info.Caption := '';
+
+  {Confirm checkbox overlays Info text}
+  GSettingsPage.Confirm := TNewCheckbox.Create(Result);
+  GSettingsPage.Confirm.Parent := Result.Surface;
+  GSettingsPage.Confirm.Top := GSettingsPage.Info.Top;
+  GSettingsPage.Confirm.Width := Result.SurfaceWidth;
+  GSettingsPage.Confirm.Height := ScaleY(15);
+  GSettingsPage.Confirm.Caption := '';
+  GSettingsPage.Confirm.Checked := False;
+  GSettingsPage.Confirm.Visible := False;
+  GSettingsPage.Confirm.OnClick := @SettingsConfirmClick;
+
+  Base := GetBase(GSettingsPage.Confirm);
+
+  GSettingsPage.Warning := TNewStaticText.Create(Result);
+  GSettingsPage.Warning.Parent := Result.Surface;
+  GSettingsPage.Warning.Top := Base + ScaleY(3);
+  GSettingsPage.Warning.Width := GSettingsPage.Combo.Width;
+  GSettingsPage.Warning.Height := ScaleY(30);
+  GSettingsPage.Warning.Anchors := [akLeft, akTop, akRight];
+  GSettingsPage.Warning.AutoSize := True;
+  GSettingsPage.Warning.WordWrap := True;
+
+  S := 'Please confirm to continue. The security of this location is your responsibility';
+  S := S + ' and is particularly important if other people use this computer.';
+
+  GSettingsPage.Warning.Caption := S;
+  GSettingsPage.Warning.Visible := False;
 
   SettingsPageInit();
 
@@ -6106,12 +6192,33 @@ begin
   GFlags.SettingsError := False;
 
   {Update path data. Returns true if it has changed}
-  if SetPathInfo(False) then
-    SettingsComboChange(GSettingsPage.Combo);
+  if (SetPathInfo(False)) then
+    SettingsComboAdd(GPaths.Php.Data.Cmd);
 
   GSettingsPage.Combo.Enabled := GPaths.Php.Status <> PATH_FIXED;
   GSettingsPage.Browse.Enabled := GPaths.Php.Status <> PATH_FIXED;
 
+end;
+
+
+function SettingsSkipConfirm: Boolean;
+begin
+
+  Result := WizardSilent
+    or not IsAdminInstallMode
+    or GFlags.DevInstall
+    or IsEmpty(GSettingsPage.Combo.Text)
+    or SameText(GSettingsPage.Combo.Text, GPaths.Php.Data.Cmd)
+    or SameText(GSettingsPage.Combo.Text, GParamsRec.Php)
+
+end;
+
+
+procedure SettingsToggleInfo(Show: Boolean);
+begin
+  GSettingsPage.Info.Visible := Show;
+  GSettingsPage.Confirm.Visible := not Show;
+  GSettingsPage.Warning.Visible := not Show and not GSettingsPage.Confirm.Checked;
 end;
 
 {Keep this at the very bottom so it compiles
