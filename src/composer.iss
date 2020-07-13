@@ -1855,12 +1855,19 @@ var
 
 begin
 
-  Debug('Searching for Php in common locations');
+  Debug('Searching for PHP in common locations');
 
-  {First create our global}
+  {First create our global list}
   GPhpList := TStringList.Create;
   GPhpList.Sorted := True;
   GPhpList.Duplicates := dupIgnore;
+
+  {Skip searching if PHP has been specified}
+  if (GParamsRec.Php <> '') then
+  begin
+    Debug(Format('Search overriden by param or inf file: %s', [GParamsRec.Php]));
+    Exit;
+  end;
 
   Locations := TStringList.Create;
 
@@ -1876,7 +1883,7 @@ begin
   end;
 
   if GPhpList.Count = 0 then
-    Debug('Php not found in common locations')
+    Debug('PHP not found in common locations')
   else
   begin
 
@@ -1885,7 +1892,7 @@ begin
     else
       S := 'locations';
 
-    Debug(Format('Php found in %d %s', [GPhpList.Count, S]));
+    Debug(Format('PHP found in %d %s', [GPhpList.Count, S]));
   end;
 
 end;
