@@ -1050,6 +1050,7 @@ end;
 function InitGetParams: TParamsRec;
 var
   LoadInf: String;
+  Proxy: String;
 
 begin
 
@@ -1073,6 +1074,15 @@ begin
     if Result.Proxy = '' then
       Result.Proxy := GetIniString('{#IniSection}', '{#ParamProxy}', '', LoadInf);
   end;
+
+  {Log params}
+  Proxy := Result.Proxy;
+
+  if Proxy <> '' then
+    Proxy := '[retracted]';
+
+  Debug(Format('Params: dev=%s, php=%s, proxy=%s, loadinf=%s', [Result.Dev,
+    Result.Php, Proxy, LoadInf]));
 
   InitPathParams(Result);
 
