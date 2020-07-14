@@ -405,6 +405,7 @@ function GetRegHive: Integer; forward;
 function GetRunPhpError(ExitCode: Integer): String; forward;
 function GetStatusText(Status: Integer): String; forward;
 procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
+procedure SetErrorEx(StatusCode: Integer; var Config: TConfigRec; NewStatusCode: Integer); forward;
 procedure ShowErrorIfSilent; forward;
 procedure ShowErrorMessage(const Message: String); forward;
 function StrToVer(Version: String): DWord; forward;
@@ -1354,7 +1355,7 @@ begin
 
   if not Result then
   begin
-    SetError(ERR_RUN_CMD, Config);
+    SetErrorEx(ERR_RUN_CMD, Config, ERR_CHECK_PHP);
     Exit;
   end;
 
@@ -1508,6 +1509,8 @@ begin
 end;
 
 
+{Provides a common function to set error messages for use on
+the Settings and Installer error pages}
 procedure SetError(StatusCode: Integer; var Config: TConfigRec);
 begin
 
@@ -1527,6 +1530,18 @@ begin
   end;
 
   Debug(Format('Error: %s%s%s', [GetStatusText(StatusCode), LF, Config.Message]));
+
+end;
+
+
+{A wrapper around SetError to additionally update the status code if required}
+procedure SetErrorEx(StatusCode: Integer; var Config: TConfigRec; NewStatusCode: Integer);
+begin
+
+  SetError(StatusCode, Config);
+
+  if NewStatusCode <> 0 then
+    Config.StatusCode := NewStatusCode;
 
 end;
 
@@ -3540,7 +3555,7 @@ begin
 
   if not Result or (Config.ExitCode <> 0) then
   begin
-    SetError(ERR_RUN_PHP, Config);
+    SetErrorEx(ERR_RUN_PHP, Config, ERR_CHECK_PHP);
     Result := False;
   end;
 
