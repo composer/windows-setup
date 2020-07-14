@@ -265,6 +265,7 @@ type
     DevInstall    : Boolean;  {Set if a dev mode install is being used}
     LastDevDir    : String;   {The last destination selected in dev mode}
     LastFolder    : String;   {The last folder used in the file browser}
+    CmdExeOk      : Boolean;  {Set if cmd.exe is okay}
     SettingsError : Boolean;  {Set if we have errors, to make ShouldSkipPage work}
     EnvChanged    : Boolean;  {Set if we have altered the environment}
     Completed     : Boolean;  {Flags that we have succesfully completed the install}
@@ -365,13 +366,18 @@ const
   PROXY_KEY_HTTPS = 'HTTPS_PROXY';
 
   ERR_SUCCESS = 0;
-  ERR_RUN_PHP = 100;
-  ERR_RUN_CMD = 101;
-  ERR_CHECK_PHP = 200;
-  ERR_CHECK_PATH = 201;
-  ERR_INSTALL_WARNINGS = 300;
-  ERR_INSTALL_ERRORS = 301;
-  ERR_INSTALL_UNEXPECTED = 302;
+  ERR_CMD_MISSING = 100;
+  ERR_CMD_EXIT = 102;
+  ERR_CMD_OUTPUT = 103;
+  ERR_CMD_DIRECTORY = 104;
+  ERR_RUN_PHP = 200;
+  ERR_RUN_CMD = 201;
+  ERR_CHECK_CMD = 300;
+  ERR_CHECK_PHP = 301;
+  ERR_CHECK_PATH = 302;
+  ERR_INSTALL_WARNINGS = 400;
+  ERR_INSTALL_ERRORS = 401;
+  ERR_INSTALL_UNEXPECTED = 402;
 
 function SetEnvironmentVariable (Name: String; Value: String): LongBool;
   external 'SetEnvironmentVariableW@kernel32.dll stdcall delayload';
@@ -487,6 +493,14 @@ procedure SetProxyData; forward;
 procedure SetProxyFromReg(Hive: Integer; Servers: String; var Proxy: TProxyRec); forward;
 function SetProxyValueFromReg(var Value: String; Protocol: String): Boolean; forward;
 
+{Check cmd.exe functions}
+function CheckCmdExe: Boolean; forward;
+function CheckCmdExeDirectory(WorkingDir: string; var Config: TConfigRec): Boolean; forward;
+function CheckCmdExeOutput(var Config: TConfigRec): Boolean; forward;
+function GetCmdExeError(Config: TConfigRec): String; forward;
+function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean; forward;
+procedure UpdateErrorIfAnsicon(var Message: String; Autorun: String); forward;
+
 {Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
@@ -494,10 +508,8 @@ function CheckPhpOutput(var Config: TConfigRec): Boolean; forward;
 function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean; forward;
 function CheckPhpVersion(Config: TConfigRec): Boolean; forward;
 function GetCommonErrors(Config: TConfigRec; var VersionError, ShowIni: Boolean): String; forward;
-function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean; forward;
-procedure GetErrorIfAnsicon(var Message: String; Autorun: String); forward;
 function GetErrorVersion(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean; forward;
 function GetPhpError(Config: TConfigRec): String; forward;
@@ -1000,6 +1012,7 @@ begin
   {Initialize our flags - not strictly necessary}
   GFlags.DevInstall := False;
   GFlags.LastFolder := '';
+  GFlags.CmdExeOk := False;
   GFlags.SettingsError := False;
   GFlags.EnvChanged := False;
   GFlags.Completed := False;
@@ -1492,8 +1505,13 @@ begin
   case Status of
 
     ERR_SUCCESS:            Result := 'ERR_SUCCESS';
+    ERR_CMD_MISSING:        Result := 'ERR_CMD_MISSING';
+    ERR_CMD_EXIT:           Result := 'ERR_CMD_EXIT';
+    ERR_CMD_OUTPUT:         Result := 'ERR_CMD_OUTPUT';
+    ERR_CMD_DIRECTORY:      Result := 'ERR_CMD_DIRECTORY';
     ERR_RUN_PHP:            Result := 'ERR_RUN_PHP';
     ERR_RUN_CMD:            Result := 'ERR_RUN_CMD';
+    ERR_CHECK_CMD:          Result := 'ERR_CHECK_CMD';
     ERR_CHECK_PHP:          Result := 'ERR_CHECK_PHP';
     ERR_CHECK_PATH:         Result := 'ERR_CHECK_PATH';
     ERR_INSTALL_WARNINGS:   Result := 'ERR_INSTALL_WARNINGS';
@@ -1518,6 +1536,12 @@ begin
   Config.StatusCode := StatusCode;
 
   case StatusCode of
+
+    ERR_CMD_MISSING,
+    ERR_CMD_EXIT,
+    ERR_CMD_OUTPUT,
+    ERR_CMD_DIRECTORY: Config.Message := GetCmdExeError(Config);
+
     ERR_RUN_PHP,
     ERR_RUN_CMD: Config.Message := GetExecError(Config);
 
@@ -1527,6 +1551,7 @@ begin
     ERR_INSTALL_WARNINGS: Config.Message := GetInstallerWarnings(Config);
     ERR_INSTALL_ERRORS: Config.Message := GetInstallerErrors(Config);
     ERR_INSTALL_UNEXPECTED: Config.Message := GetInstallerUnexpected(Config);
+
   end;
 
   Debug(Format('Error: %s%s%s', [GetStatusText(StatusCode), LF, Config.Message]));
@@ -3492,6 +3517,210 @@ begin
 end;
 
 
+{*************** Check cmd.exe functions ***************}
+
+function CheckCmdExe: Boolean;
+var
+  Success: Boolean;
+  Params: String;
+
+begin
+
+  Result := False;
+
+  GConfigRec := ConfigInit(GCmdExe);
+  Debug('Checking cmd.exe: ' + GCmdExe);
+
+  {Check if cmd.exe is missing - it has happened}
+  if not FileExists(GCmdExe) then
+  begin
+    SetErrorEx(ERR_CMD_MISSING, GConfigRec, ERR_CHECK_CMD);
+    Exit;
+  end;
+
+  DeleteFile(GTmpFile.StdOut);
+  DeleteFile(GTmpFile.StdErr);
+
+  Params := Format('/c cd > %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]);
+  DebugExecBegin(GCmdExe, Params);
+
+  Success := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, GConfigRec.ExitCode);
+  DebugExecEnd(Success, GConfigRec.ExitCode);
+
+  if not Success then
+  begin
+    SetErrorEx(ERR_RUN_CMD, GConfigRec, ERR_CHECK_CMD);
+    Exit;
+  end;
+
+  {Put the output into config}
+  OutputReadStdFiles(GConfigRec);
+
+  {Check for a non-zero exit code}
+  if GConfigRec.ExitCode <> 0 then
+  begin
+    GConfigRec.Output := OutputFromArray(GConfigRec.StdErr);
+    SetErrorEx(ERR_CMD_EXIT, GConfigRec, ERR_CHECK_CMD);
+    Exit;
+  end;
+
+  {Check and set config.output}
+  if not CheckCmdExeOutput(GConfigRec) then
+  begin
+    SetErrorEx(ERR_CMD_OUTPUT, GConfigRec, ERR_CHECK_CMD);
+    Exit;
+  end;
+
+  {Check the returned directory in config.output}
+  if not CheckCmdExeDirectory(GTmpDir, GConfigRec) then
+  begin
+    SetErrorEx(ERR_CMD_DIRECTORY, GConfigRec, ERR_CHECK_CMD);
+    Exit;
+  end;
+
+  Result := True;
+
+end;
+
+
+function CheckCmdExeDirectory(WorkingDir: string; var Config: TConfigRec): Boolean;
+var
+  Directory: String;
+
+begin
+
+  Directory := RemoveBackslashUnlessRoot(Config.Output);
+  Result := SameText(RemoveBackslashUnlessRoot(WorkingDir), Directory);
+
+end;
+
+
+function CheckCmdExeOutput(var Config: TConfigRec): Boolean;
+begin
+
+  Result := False;
+
+  if GetArrayLength(Config.StdOut) = 0 then
+    Exit;
+
+  Config.Output := OutputFromArray(Config.StdOut);
+
+  if Config.Output = '' then
+    Exit;
+
+  {Check for a resulting single line}
+  Result := Pos(LF, Config.Output) = 0;
+
+end;
+
+
+function GetCmdExeError(Config: TConfigRec): String;
+var
+  Condition: String;
+  Error: String;
+  Help: String;
+  Output: String;
+
+begin
+
+  Error := '';
+  Help := '';
+  Output := '';
+
+  if Config.StatusCode = ERR_CMD_MISSING then
+    Condition := 'is missing'
+  else
+    Condition := 'did not run correctly';
+
+  Result := Format('The command interpreter %s:%s%s', [Condition, LF, GCmdExe]);
+
+  case Config.StatusCode of
+
+    ERR_CMD_OUTPUT:
+    begin
+
+      if Config.Output = '' then
+        Error := 'It did not return the expected output.'
+      else
+        Error := 'It returned unexpected output.';
+
+      Output := Config.Output;
+
+    end;
+
+    ERR_CMD_EXIT:
+    begin
+      Error := 'It returned the wrong exit code';
+      FormatExitCode(Error, Config);
+      AddLine(Error, Format('GetLastError: %s.', [SysErrorMessage(Config.ExitCode)]));
+      Output := Config.Output;
+      GetErrorAutorun(Help, Config);
+    end;
+
+    ERR_CMD_DIRECTORY:
+    begin
+      Error := Format('It changed the directory to %s', [Config.Output]);
+      GetErrorAutorun(Help, Config);
+    end;
+
+  end;
+
+  if Error <> '' then
+    AddPara(Result, Error);
+
+  if Help <> '' then
+    AddPara(Result, Help);
+
+  if Output <> '' then
+    AddPara(Result, Format('Program output:%s%s', [LF, Output]));
+
+end;
+
+
+function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean;
+var
+  Key: String;
+  Autorun: String;
+
+begin
+
+  {Autorun entries in the registry can start cmd.exe in the wrong directory or
+  intercept the output. Some configurations of ansicon, for example, can cause
+  a non-zero exit code to be returned.}
+
+  Result := False;
+
+  if not GetRegistryAutorun(Key, Autorun) then
+    Exit;
+
+  AddStr(Message, 'A setting in your registry could be causing the problem.');
+  AddStr(Message, ' Check this value and remove it if necessary:');
+  AddPara(Message, Format('%s = %s', [Key, Autorun]));
+
+  UpdateErrorIfAnsicon(Message, Autorun);
+  Result := True;
+
+end;
+
+
+{ANSICON is unreliable if installed in the system directory, resulting in a
+non-zero exit code being returned.}
+procedure UpdateErrorIfAnsicon(var Message: String; Autorun: String);
+var
+  Value: String;
+  System: String;
+
+begin
+
+  Value := Lowercase(Autorun);
+  System := Lowercase(ExpandConstant('{sys}'));
+
+  if (Pos('ansicon', Value) > 0) and (Pos(System, Value) > 0) then
+    AddPara(Message, 'Note: ANSICON should not be installed in the system directory.');
+
+end;
+
+
 {*************** Check php functions ***************}
 
 function CheckPhp(const Filename: String): Boolean;
@@ -3678,32 +3907,6 @@ begin
 end;
 
 
-function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean;
-var
-  Key: String;
-  Autorun: String;
-
-begin
-
-  {Autorun entries in the registry can start cmd.exe in the wrong directory or
-  intercept the output. Some configurations of ansicon, for example, can cause
-  a non-zero exit code to be returned.}
-
-  Result := False;
-
-  if not GetRegistryAutorun(Key, Autorun) then
-    Exit;
-
-  AddStr(Message, 'A setting in your registry could be causing the problem.');
-  AddStr(Message, ' Check this value and remove it if necessary:');
-  AddPara(Message, Format('%s = %s', [Key, Autorun]));
-
-  GetErrorIfAnsicon(Message, Autorun);
-  Result := True;
-
-end;
-
-
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean;
 begin
 
@@ -3733,24 +3936,6 @@ begin
 
   AddStr(Message, 'A duplicate setting in your php.ini could be causing the problem.');
   Result := True;
-
-end;
-
-
-{ANSICON is unreliable if installed in the system directory, resulting in a
-non-zero exit code being returned.}
-procedure GetErrorIfAnsicon(var Message: String; Autorun: String);
-var
-  Value: String;
-  System: String;
-
-begin
-
-  Value := Lowercase(Autorun);
-  System := Lowercase(ExpandConstant('{sys}'));
-
-  if (Pos('ansicon', Value) > 0) and (Pos(System, Value) > 0) then
-    AddPara(Message, 'Note: ANSICON should not be installed in the system directory.');
 
 end;
 
@@ -4973,7 +5158,12 @@ begin
   Page := GPages.ErrorSettings;
   Memo := TNewMemo(Page.FindComponent('Memo'));
 
-  if GConfigRec.StatusCode = ERR_CHECK_PHP then
+  if GConfigRec.StatusCode = ERR_CHECK_CMD then
+  begin
+    Page.Caption := 'System Configuration Error';
+    Page.Description := 'Composer Setup cannot continue';
+  end
+  else if GConfigRec.StatusCode = ERR_CHECK_PHP then
   begin
     Page.Caption := 'PHP Settings Error';
     Page.Description := 'Composer will not work with your current settings';
@@ -5352,10 +5542,26 @@ procedure ProgressPageSettings(const Filename: String);
 begin
 
   GPages.ProgressSettings.Tag := WizardForm.CurPageID;
-  GPages.ProgressSettings.SetText('Checking your command-line PHP', '');
   ProgressShow(GPages.ProgressSettings);
 
   try
+
+    if not GFlags.CmdExeOk then
+    begin
+
+      GPages.ProgressSettings.SetText('Checking your system configuration', '');
+      GFlags.CmdExeOk := CheckCmdExe;
+
+      if not GFlags.CmdExeOk then
+      begin
+        {Important to set this for ShouldSkipPage}
+        GFlags.SettingsError := True;
+        Exit;
+      end;
+
+    end;
+
+    GPages.ProgressSettings.SetText('Checking your command-line PHP', '');
 
     if not CheckPhp(Filename) then
     begin
