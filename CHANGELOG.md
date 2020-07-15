@@ -1,4 +1,9 @@
 ## Unreleased
+* Fixed missing captions on settings error page when cmd or php did not run.
+* Added logging of command-line params.
+* Fixed bug when admin installing in user-mode could not change global environment.
+* Further improvements to Chocolatey package so it can be accepted as a core-team package.
+* Fixed installer script to handle uopz extension if it prevents exit calls.
 
 ## v5.1.0
 2020-01-01
