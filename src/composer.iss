@@ -410,6 +410,8 @@ function GetExecParams(Config: TConfigRec; Script, Args, Ini: String): String; f
 function GetRegHive: Integer; forward;
 function GetRunPhpError(ExitCode: Integer): String; forward;
 function GetStatusText(Status: Integer): String; forward;
+function IsEmpty(const Value: String): Boolean; forward;
+function NotEmpty(const Value: String): Boolean; forward;
 procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
 procedure SetErrorEx(StatusCode: Integer; var Config: TConfigRec; NewStatusCode: Integer); forward;
 procedure ShowErrorIfSilent; forward;
@@ -968,13 +970,13 @@ begin
     BinPath := GPaths.Bin.Data.Path;
     BinDir := GetBinDir('');
 
-    if CompareText(BinDir, BinPath) = 0 then
+    if SameText(BinDir, BinPath) then
     begin
       PathRemoveDirectory(GetRegHive(), BinDir, False);
       NoBin := True;
     end
     else
-      NoBin := BinPath = '';
+      NoBin := IsEmpty(BinPath);
 
     {Only remove vendor/bin from the user path if composer is no longer in the
     path and the user data folders do not exist}
@@ -1036,7 +1038,7 @@ begin
   {We started using an AppId in v3.0, which is the registry key that Inno
   uses, so older versions will not be found.}
   Result.Version := GetPreviousData('{#PrevDataVersion}', '');
-  Result.Installed := Result.Version <> '';
+  Result.Installed := NotEmpty(Result.Version);
   Result.Conflict := False;
 
   if not Result.Installed then
@@ -1075,24 +1077,24 @@ begin
   Result.SaveInf := ExpandFilename(ExpandConstant('{param:saveinf}'));
   LoadInf := ExpandFilename(ExpandConstant('{param:loadinf}'));
 
-  if LoadInf <> '' then
+  if NotEmpty(LoadInf) then
   begin
 
     {Command line values take precedence}
-    if Result.Dev = '' then
+    if IsEmpty(Result.Dev) then
       Result.Dev := GetIniString('{#IniSection}', '{#ParamDev}', '', LoadInf);
 
-    if Result.Php = '' then
+    if IsEmpty(Result.Php) then
       Result.Php := GetIniString('{#IniSection}', '{#ParamPhp}', '', LoadInf);
 
-    if Result.Proxy = '' then
+    if IsEmpty(Result.Proxy) then
       Result.Proxy := GetIniString('{#IniSection}', '{#ParamProxy}', '', LoadInf);
   end;
 
   {Log params}
   Proxy := Result.Proxy;
 
-  if Proxy <> '' then
+  if NotEmpty(Proxy) then
     Proxy := '[retracted]';
 
   Debug(Format('Params: dev=%s, php=%s, proxy=%s, loadinf=%s', [Result.Dev,
@@ -1111,15 +1113,15 @@ var
 
 begin
 
-  if Params.Dev <> '' then
+  if NotEmpty(Params.Dev) then
   begin
     Path := NormalizePath(Params.Dev);
-    if Path <> '' then
+    if NotEmpty(Path) then
       Params.Dev := Path;
   end;
 
   {The php param can be passed as a folder or an exe}
-  if Params.Php <> '' then
+  if NotEmpty(Params.Php) then
   begin
     Php := AnsiLowercase(ExtractFileName(Params.Php));
 
@@ -1131,7 +1133,7 @@ begin
       Path := NormalizePath(Params.Php);
     end;
 
-    if Path <> '' then
+    if NotEmpty(Path) then
       Params.Php := AddBackslash(Path) + Php;
   end;
 
@@ -1179,7 +1181,7 @@ All existing trailing space and linefeeds are removed first}
 procedure AddLine(var Existing: String; const Value: String);
 begin
 
-  if Existing <> '' then
+  if NotEmpty(Existing) then
   begin
     Existing := TrimRight(Existing);
     Existing := Existing + LF;
@@ -1195,7 +1197,7 @@ This method preserves existing trailing space and linefeeds}
 procedure AddLineRaw(var Existing: String; const Value: String);
 begin
 
-  if Existing <> '' then
+  if NotEmpty(Existing) then
     Existing := Existing + LF;
 
   AddStr(Existing, Value);
@@ -1208,7 +1210,7 @@ All existing trailing space and linefeeds are removed first}
 procedure AddPara(var Existing: String; const Value: String);
 begin
 
-  if Existing <> '' then
+  if NotEmpty(Existing) then
   begin
     Existing := TrimRight(Existing);
     Existing := Existing + LF2;
@@ -1224,7 +1226,7 @@ value is expected to be escaped}
 procedure AddParam(var Params: String; const Value: String);
 begin
 
-  if Params <> '' then
+  if NotEmpty(Params) then
   begin
     Params := TrimRight(Params);
     Params := Params + #32;
@@ -1444,12 +1446,12 @@ begin
   AddParam(Params, '-d error_log=');
   AddParam(Params, '-d log_errors=On');
 
-  if Ini <> '' then
+  if NotEmpty(Ini) then
     AddParam(Params, Format('-c %s', [ArgCmd(Ini)]));
 
   AddParam(Params, ArgCmd(Script));
 
-  if Args <> '' then
+  if NotEmpty(Args) then
     AddParam(Params, Args);
 
   {Always use the full path for the output streams, in case the directory is changed}
@@ -1493,7 +1495,7 @@ begin
     {STATUS_DLL_NOT_FOUND}
     Result := 'The program cannot start because a dll was not found.' + Suffix;
 
-  if Result = '' then
+  if IsEmpty(Result) then
     Result := 'The program failed to run correctly.' + Suffix;
 
 end;
@@ -1524,6 +1526,20 @@ begin
 
   Result := Format('[%s]', [Result]);
 
+end;
+
+
+{Returns true if a string is empty}
+function IsEmpty(const Value: String): Boolean;
+begin
+  Result := Value = '';
+end;
+
+
+{Returns true if a string is not empty}
+function NotEmpty(const Value: String): Boolean;
+begin
+  Result := Value <> '';
 end;
 
 
@@ -1792,7 +1808,7 @@ begin
           if (FindRec.Name = '.') or (FindRec.Name = '..') then
             Continue;
 
-          if EndPath = '' then
+          if IsEmpty(EndPath) then
             CheckPhpLocation(Path + FindRec.Name, ResultList)
           else
             CheckAllLocations(Path + FindRec.Name + EndPath, ResultList);
@@ -1886,7 +1902,7 @@ begin
   {Chocolatey}
   Path := GetEnv('ChocolateyToolsLocation');
 
-  if Path = '' then
+  if IsEmpty(Path) then
     Path := System + '\tools';
 
   List.Add(AddBackslash(Path) + 'php*')
@@ -1913,7 +1929,7 @@ begin
   GPhpList.Duplicates := dupIgnore;
 
   {Skip searching if PHP has been specified}
-  if (GParamsRec.Php <> '') then
+  if NotEmpty(GParamsRec.Php) then
   begin
     Debug(Format('Search overriden by param or inf file: %s', [GParamsRec.Php]));
     Exit;
@@ -2087,7 +2103,7 @@ var
 
 begin
 
-  if GParamsRec.SaveInf = '' then
+  if IsEmpty(GParamsRec.SaveInf) then
     Exit;
 
   if GFlags.DevInstall then
@@ -2210,7 +2226,7 @@ begin
   GetRawPath(HKCU, UserPath);
   Hash := GetPathHash(SystemPath, UserPath);
 
-  Result := CompareText(Rec.RawHash, Hash) <> 0;
+  Result := not SameText(Rec.RawHash, Hash);
 
   if Result then
   begin
@@ -2293,14 +2309,14 @@ begin
   {A helper function for UpdatePathStatus}
   Rec.Cmd := Cmd;
 
-  if Cmd = '' then
+  if IsEmpty(Cmd) then
     Rec.Path := ''
   else
     Rec.Path := ExtractFileDir(Cmd);
 
-  if Rec.System <> '' then
+  if NotEmpty(Rec.System) then
     Rec.Hive := HKLM
-  else if Rec.User <> '' then
+  else if NotEmpty(Rec.User) then
     Rec.Hive := HKCU
   else
     Rec.Hive := 0;
@@ -2325,7 +2341,7 @@ begin
     GPaths.Php.Data.System := SearchPath(GPaths.List.System, CMD_PHP);
 
     {Only check user path if we have no system entry, even if we are an admin}
-    if GPaths.Php.Data.System = '' then
+    if IsEmpty(GPaths.Php.Data.System) then
       GPaths.Php.Data.User := SearchPath(GPaths.List.User, CMD_PHP);
 
     UpdatePathStatus(GPaths.Php);
@@ -2342,7 +2358,7 @@ begin
     GPaths.Bin.Data.System := SearchPathBin(HKLM);
 
     {Only check user path if we are a User and have no system entry}
-    if IsUser and (GPaths.Bin.Data.System = '') then
+    if IsUser and IsEmpty(GPaths.Bin.Data.System) then
       GPaths.Bin.Data.User := SearchPathBin(HKCU);
 
     UpdatePathStatus(GPaths.Bin);
@@ -2378,19 +2394,19 @@ begin
   We always overwrite values because they are stored in a global
   and may have already been set}
 
-  if Rec.Data.System <> '' then
+  if NotEmpty(Rec.Data.System) then
   begin
     SetPathDataRec(Rec.Data, Rec.Data.System);
     {Invalidate any User value}
     Rec.Data.User := '';
   end
-  else if Rec.Data.User <> '' then
+  else if NotEmpty(Rec.Data.User) then
     SetPathDataRec(Rec.Data, Rec.Data.User)
   else
     SetPathDataRec(Rec.Data, '');
 
   {Set the status}
-  if Rec.Data.Path = '' then
+  if IsEmpty(Rec.Data.Path) then
     Rec.Status := PATH_NONE
   else
   begin
@@ -2399,7 +2415,7 @@ begin
     if not IsAdmin then
     begin
       {We are a User, so we cannot modify the System path}
-      if Rec.Data.System <> '' then
+      if NotEmpty(Rec.Data.System) then
         Rec.Status := PATH_FIXED
       else
         Rec.Status := PATH_OK;
@@ -2467,7 +2483,7 @@ begin
   begin
 
     {Existing path. If it matches BinPath we are okay to exit}
-    if CompareText(Rec.Data.Path, BinPath) = 0 then
+    if SameText(Rec.Data.Path, BinPath) then
       Exit;
 
     {Allow admins and dev mode installs to change the path}
@@ -2542,7 +2558,7 @@ begin
 
     {Existing path. If it does not match PhpPath, we need to add
     the new one and remove the existing one}
-    if CompareText(Rec.Data.Path, PhpPath) <> 0 then
+    if not SameText(Rec.Data.Path, PhpPath) then
     begin
       PathAdd(GetRegHive(), PhpPath, True);
 
@@ -2598,7 +2614,7 @@ begin
     if Action <> GEnvChanges[I].Action then
       Continue;
 
-    if CompareText(Name, GEnvChanges[I].Name) = 0 then
+    if SameText(Name, GEnvChanges[I].Name) then
       Result := CompareText(Value, GEnvChanges[I].Value) = 0;
 
     if Result then
@@ -2648,8 +2664,7 @@ end;
 function EnvIsSensitive(Name: String): Boolean;
 begin
 
-  Result := (CompareText(Name, PROXY_KEY) = 0) or
-    (CompareText(Name, PROXY_KEY_HTTPS) = 0);
+  Result := SameText(Name, PROXY_KEY) or SameText(Name, PROXY_KEY_HTTPS);
 
 end;
 
@@ -2896,14 +2911,14 @@ begin
   repeat
     Filename := SearchPathEx(SafeList, Cmd, Index);
 
-    if Filename <> '' then
+    if NotEmpty(Filename) then
     begin
       Path := ExtractFileDir(Filename);
       EnvRegisterChange(Hive, ENV_REMOVE, ENV_KEY_PATH, Path, Show);
       Inc(Index);
     end;
 
-  until Filename = '';
+  until IsEmpty(Filename);
 
 end;
 
@@ -2939,7 +2954,7 @@ begin
   for I := 0 to Count - 1 do
   begin
 
-    if CompareText(Name, GEnvChanges[I].Name) = 0 then
+    if SameText(Name, GEnvChanges[I].Name) then
     begin
 
       {Name found. If we are adding then we update the value and exit.
@@ -2987,7 +3002,7 @@ begin
   Url := Trim(Lowercase(Url));
 
   {Check for a value and bail out if http}
-  if (Url = '') or (Pos('http://', Url) = 1) then
+  if IsEmpty(Url) or (Pos('http://', Url) = 1) then
     Exit;
 
   List := TStringList.Create;
@@ -3044,13 +3059,13 @@ var
 
 begin
 
-  if GProxyInfo.ProxyUrl = '' then
+  if IsEmpty(GProxyInfo.ProxyUrl) then
     Exit;
 
   ProxyInLocalEnvironment(Local);
 
   {Add an http_proxy value if it doesn't exist or is different}
-  if CompareText(Local.Http, GProxyInfo.ProxyUrl) <> 0 then
+  if not SameText(Local.Http, GProxyInfo.ProxyUrl) then
   begin
     Key := PROXY_KEY;
     Debug(Format('Setting %s local environment variable', [Key]));
@@ -3060,10 +3075,10 @@ begin
   end;
 
   {Only add an https_proxy value it exists and is different}
-  if Local.Https = '' then
+  if IsEmpty(Local.Https) then
     Exit;
 
-  if CompareText(Local.Https, GProxyInfo.ProxyUrl) <> 0 then
+  if not SameText(Local.Https, GProxyInfo.ProxyUrl) then
   begin
     Key := PROXY_KEY_HTTPS;
     Debug(Format('Setting %s local environment variable', [Key]));
@@ -3091,7 +3106,7 @@ begin
     Key := EnvList[I].Name;
     Value := EnvList[I].Value;
 
-    if Value = '' then
+    if IsEmpty(Value) then
       Action := 'Unsetting'
     else
       Action := 'Restoring';
@@ -3111,20 +3126,20 @@ var
 
 begin
 
-  if Url = '' then
+  if IsEmpty(Url) then
     Exit;
 
   ProxyInLocalEnvironment(User);
 
   {Add an http_proxy value if one doesn't exist or is different}
-  if CompareText(User.Http, Url) <> 0 then
+  if not SameText(User.Http, Url) then
     ProxyChange(PROXY_KEY, Url, ENV_ADD);
 
   {Only add an https_proxy value if it exists and is different}
-  if User.Https = '' then
+  if IsEmpty(User.Https) then
     Exit;
 
-  if CompareText(User.Https, Url) <> 0 then
+  if not SameText(User.Https, Url) then
     ProxyChange(PROXY_KEY_HTTPS, Url, ENV_ADD);
 
 end;
@@ -3159,7 +3174,7 @@ begin
   end;
 
   {Use Http value if it exists}
-  if Proxy.Http <> '' then
+  if NotEmpty(Proxy.Http) then
   begin
     Result := Proxy.Http;
 
@@ -3174,7 +3189,7 @@ begin
 
   end;
 
-  if Proxy.Https <> '' then
+  if NotEmpty(Proxy.Https) then
   begin
 
     {Override Http with Https value if it supports https}
@@ -3197,16 +3212,16 @@ begin
 
   Result := False;
 
-  if (Proxy.Http = '') and (Proxy.Https = '') then
+  if IsEmpty(Proxy.Http) and IsEmpty(Proxy.Https) then
     Exit;
 
-  if Proxy.Http <> '' then
+  if NotEmpty(Proxy.Http) then
   begin
     Result := True;
     AddLine(Proxy.DebugMsg, Format('%s: %s found', [Source, PROXY_KEY]));
   end;
 
-  if Proxy.Https <> '' then
+  if NotEmpty(Proxy.Https) then
   begin
     Result := True;
     AddLine(Proxy.DebugMsg, Format('%s: %s found', [Source, PROXY_KEY_HTTPS]));
@@ -3234,7 +3249,7 @@ begin
     end;
   end;
 
-  if (Prepend <> '') and (Result <> 'none') then
+  if NotEmpty(Prepend) and (Result <> 'none') then
     Result := Format('%s %s', [Prepend, Result]);
 
 end;
@@ -3304,7 +3319,7 @@ var
 begin
 
   {A proxy param overrides all other settings and cannot be changed}
-  if GParamsRec.Proxy <> '' then
+  if NotEmpty(GParamsRec.Proxy) then
   begin
     Proxy.Status := PROXY_PARAM;
     Proxy.DebugMsg := ProxyGetSource(Proxy, 'Found proxy in');
@@ -3369,7 +3384,7 @@ begin
 
   DebugMsg := Trim(GProxyInfo.DebugMsg);
 
-  if (DebugMsg = '') then
+  if IsEmpty(DebugMsg) then
     GProxyInfo.DebugMsg := 'No proxy found'
   else
   begin
@@ -3421,7 +3436,7 @@ begin
     begin
       Value := List.Strings[I];
 
-      if Value = '' then
+      if IsEmpty(Value) then
         Continue;
 
       {Check if the format is not protocol=value}
@@ -3450,7 +3465,7 @@ begin
       if SetProxyValueFromReg(Value, 'http') then
       begin
 
-        if Proxy.Http <> '' then
+        if NotEmpty(Proxy.Http) then
           AddLine(Proxy.DebugMsg, Format('%s: additional proxy http= found', [Source]))
         else
         begin
@@ -3465,7 +3480,7 @@ begin
       if SetProxyValueFromReg(Value, 'https') then
       begin
 
-        if Proxy.Https <> '' then
+        if NotEmpty(Proxy.Https) then
           AddLine(Proxy.DebugMsg, Format('%s: additional proxy https= found', [Source]))
         else
         begin
@@ -3482,7 +3497,7 @@ begin
     List.Free;
   end;
 
-  if (Proxy.Http = '') and (Proxy.Https = '') then
+  if IsEmpty(Proxy.Http) and IsEmpty(Proxy.Https) then
   begin
     Proxy.Status := PROXY_NONE;
     AddLine(Proxy.DebugMsg, Format('%s: no matching protocol found', [Source]));
@@ -3605,7 +3620,7 @@ begin
 
   Config.Output := OutputFromArray(Config.StdOut);
 
-  if Config.Output = '' then
+  if IsEmpty(Config.Output) then
     Exit;
 
   {Check for a resulting single line}
@@ -3639,7 +3654,7 @@ begin
     ERR_CMD_OUTPUT:
     begin
 
-      if Config.Output = '' then
+      if IsEmpty(Config.Output) then
         Error := 'It did not return the expected output.'
       else
         Error := 'It returned unexpected output.';
@@ -3665,13 +3680,13 @@ begin
 
   end;
 
-  if Error <> '' then
+  if NotEmpty(Error) then
     AddPara(Result, Error);
 
-  if Help <> '' then
+  if NotEmpty(Help) then
     AddPara(Result, Help);
 
-  if Output <> '' then
+  if NotEmpty(Output) then
     AddPara(Result, Format('Program output:%s%s', [LF, Output]));
 
 end;
@@ -3802,7 +3817,7 @@ begin
   {GetPhpOutput strips out the details line}
   GetPhpOutput(Details, Config);
 
-  if Details = '' then
+  if IsEmpty(Details) then
     Exit;
 
   if not GetPhpDetails(Details, Config) then
@@ -3812,7 +3827,7 @@ begin
   end;
 
   {Config.Output will contain output other than the details line}
-  Result := (Config.Output = '') and (Config.ExitCode = 0);
+  Result := IsEmpty(Config.Output) and (Config.ExitCode = 0);
 
 end;
 
@@ -3881,7 +3896,7 @@ begin
 
   {Only show the ini if one has been used and we have its location. This stops
   unhelpful messages about having to create one if something has gone wrong}
-  CanShowIni := Config.PhpIni <> '';
+  CanShowIni := NotEmpty(Config.PhpIni);
 
   if GetErrorVersion(Result, Config) then
   begin
@@ -3952,10 +3967,10 @@ begin
     Exit;
   end;
 
-  if Config.PhpVersion <> '' then
+  if NotEmpty(Config.PhpVersion) then
     Version := Format('(%s)', [Config.PhpVersion]);
 
-  if WizardSilent and (Version = '') then
+  if WizardSilent and IsEmpty(Version) then
   begin
     Message := Format('%s has no file version information. ', [Config.PhpExe]);
     AddStr(Message, 'It may be too old to be installed silently.');
@@ -4038,11 +4053,11 @@ begin
   if ShowIni then
     AddPara(Result, GetPhpIni(Config, False));
 
-  if CommonErrors <> '' then
+  if NotEmpty(CommonErrors) then
     AddPara(Result, CommonErrors);
 
   {Config.Output should contain error output}
-  if Config.Output <> '' then
+  if NotEmpty(Config.Output) then
   begin
     AddPara(Result, 'Program Output:');
     AddLine(Result, Config.Output);
@@ -4058,7 +4073,7 @@ var
 
 begin
 
-  if Config.PhpIni = '' then
+  if IsEmpty(Config.PhpIni) then
     Result := 'A php.ini file does not exist. You will have to create one.'
   else
   begin
@@ -4072,7 +4087,7 @@ begin
     {Check for PHPRC}
     EnvIni := GetEnv('PHPRC');
 
-    if (EnvIni <> '') and FileOrDirExists(EnvIni) then
+    if NotEmpty(EnvIni) and FileOrDirExists(EnvIni) then
     begin
       if Indent then
         Spacing := LF + TAB;
@@ -4122,7 +4137,7 @@ begin
         Line := Trim(Copy(Line, 1, StartPos - 1));
 
         {Skip adding the line if it is now empty}
-        if Line = '' then
+        if IsEmpty(Line) then
           Continue;
       end;
 
@@ -4166,7 +4181,7 @@ begin
   if not RegQueryStringValue(Hive, Key, 'AutoRun', Value) then
     Exit;
 
-  if Value <> '' then
+  if NotEmpty(Value) then
   begin
     Name := Format('%s\%s\AutoRun', [GetHiveName(Hive), Key]);
     Result := True;
@@ -4190,7 +4205,7 @@ begin
   Env := GetEnv(Name);
   Msg := Format('Env: %s=%s', [Name, Env]);
 
-  if Env <> '' then
+  if NotEmpty(Env) then
   begin
     if FileOrDirExists(Env) then
       Status := 'exists'
@@ -4205,7 +4220,7 @@ begin
   Env := GetEnv(Name);
   AddStr(Msg, Format(', %s=%s', [Name, Env]));
 
-  if (Env <> '') and (Pos(';', Env) = 0) then
+  if NotEmpty(Env) and (Pos(';', Env) = 0) then
   begin
     {We only check if we have a single directory}
     if DirExists(Env) then
@@ -4303,7 +4318,7 @@ begin
   IniDebug(Format('modify=%d, status=%s', [Modify, Status]));
 
   {Config.Output will contain output other than the details line}
-  Result := (Config.Output = '') and (Config.ExitCode = 0);
+  Result := IsEmpty(Config.Output) and (Config.ExitCode = 0);
 
 end;
 
@@ -4486,7 +4501,7 @@ var
 begin
 
   Result := False;
-  ModIni.New := Config.PhpIni = '';
+  ModIni.New := IsEmpty(Config.PhpIni);
 
   if ModIni.New then
   begin
@@ -4626,7 +4641,7 @@ begin
   Name := 'SSL_CERT_FILE';
   Location := GetEnv(Name);
 
-  if (Location <> '') and FileExists(Location) then
+  if NotEmpty(Location) and FileExists(Location) then
   begin
     Result := FormatCertLocation(Prefix, Name, Source, Location);
     Exit;
@@ -4636,7 +4651,7 @@ begin
   Name := 'SSL_CERT_DIR';
   Location := GetEnv(Name);
 
-  if (Location <> '') and DirExists(Location) then
+  if NotEmpty(Location) and DirExists(Location) then
   begin
     Result := FormatCertLocation(Prefix, Name, Source, Location);
     Exit;
@@ -4649,7 +4664,7 @@ begin
   Name := 'openssl.cafile';
   Location := Config.PhpCafile;
 
-  if (Location <> '') and FileExists(Location) then
+  if NotEmpty(Location) and FileExists(Location) then
   begin
     Result := FormatCertLocation(Prefix, Name, Source, Location);
     AddPara(Result, GetPhpIni(Config, False));
@@ -4660,7 +4675,7 @@ begin
   Name := 'openssl.capath';
   Location := Config.PhpCapath;
 
-  if (Location <> '') and DirExists(Location) then
+  if NotEmpty(Location) and DirExists(Location) then
   begin
     Result := FormatCertLocation(Prefix, Name, Source, Location);
     AddPara(Result, GetPhpIni(Config, False));
@@ -4688,7 +4703,7 @@ begin
   Result := '';
   Location := GetCertLocation(Config, IsFile);
 
-  if (Location <> '') and IsFile then
+  if NotEmpty(Location) and IsFile then
     Problem := 'may be out of date'
   else
     Problem := 'either cannot be found or may be out of date';
@@ -4697,7 +4712,7 @@ begin
   AddStr(Result, ' This indicates a problem with the Certificate Authority file(s)');
   AddStr(Result, Format(' on your system, which %s.', [Problem]));
 
-  if Location <> '' then
+  if NotEmpty(Location) then
     AddPara(Result, Location);
 
 end;
@@ -4804,7 +4819,7 @@ begin
     FormatExitCode(Result, Config);
     AddStr(Result, '.');
 
-    if CommonErrors <> '' then
+    if NotEmpty(CommonErrors) then
       AddPara(Result, CommonErrors);
 
     AddPara(Result, 'Script Output:');
@@ -4837,7 +4852,7 @@ begin
   {We will either have stderr output, or there was no stdout to read}
   Output := OutputFromArray(Config.StdErr);
 
-  if Output <> '' then
+  if NotEmpty(Output) then
   begin
     AddStr(Result, '.');
     AddPara(Result, 'Script Output:');
@@ -5457,7 +5472,7 @@ procedure OptionsPageInit;
 begin
 
   {Set LastDevDir to the default value}
-  if GParamsRec.Dev <> '' then
+  if NotEmpty(GParamsRec.Dev) then
     GFlags.LastDevDir := GParamsRec.Dev
   else
   begin
@@ -5476,7 +5491,7 @@ begin
   WizardForm.DirEdit.Text := GFlags.LastDevDir;
 
   {Set checkbox value and simulate click}
-  GOptionsPage.Checkbox.Checked := GParamsRec.Dev <> '';
+  GOptionsPage.Checkbox.Checked := NotEmpty(GParamsRec.Dev);
   OptionsCheckboxClick(GOptionsPage.Checkbox);
 
 end;
@@ -5619,7 +5634,7 @@ begin
   ProxyPageUpdate();
 
   {Unset use proxy if we have asked to ignore it there is no user data}
-  if GProxyInfo.UserIgnore and (GProxyInfo.UserUrl = '') then
+  if GProxyInfo.UserIgnore and IsEmpty(GProxyInfo.UserUrl) then
     GProxyPage.Checkbox.Checked := False;
 
 end;
@@ -5645,7 +5660,7 @@ begin
     GProxyInfo.Active := True;
     GProxyInfo.ProxyUrl := GProxyPage.Edit.Text;
 
-    if GProxyInfo.ProxyUrl <> '' then
+    if NotEmpty(GProxyInfo.ProxyUrl) then
       {Register environment changes}
       ProxyEnvUserRegister(GProxyInfo.ProxyUrl)
     else
@@ -5818,7 +5833,7 @@ begin
   Filename := '';
 
   {Show last last selected directory, or Program Files}
-  if GFlags.LastFolder <> '' then
+  if NotEmpty(GFlags.LastFolder) then
     Dir := GFlags.LastFolder
   else if IsWin64 then
     Dir := ExpandConstant('{commonpf64}')
@@ -5883,7 +5898,7 @@ begin
 
   {Add the exe to the main PhpList. It might not
   exist if we are initialzing}
-  if PhpExe <> '' then
+  if NotEmpty(PhpExe) then
     Index := GPhpList.Add(PhpExe);
 
   if GSettingsPage.Combo.Items.Count > 0 then
@@ -5981,7 +5996,7 @@ begin
   data. It will be ignored if it doesn't exist}
   SettingsComboAdd(GPaths.Php.Data.Cmd);
 
-  if GParamsRec.Php <> '' then
+  if NotEmpty(GParamsRec.Php) then
     SettingsComboAdd(GParamsRec.Php);
 end;
 
