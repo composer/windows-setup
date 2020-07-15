@@ -4605,7 +4605,7 @@ var
 begin
 
   {Put stdout in Config.Output, which is also used for common errors}
-  Config.Output := Trim(OutputFromArray(Config.StdOut));
+  Config.Output := OutputFromArray(Config.StdOut);
 
   {Just show script output if it is returning platform errors}
   if Pos('Some settings', Config.Output) = 1 then
@@ -4650,7 +4650,7 @@ begin
   end;
 
   {We will either have stderr output, or there was no stdout to read}
-  Output := Trim(OutputFromArray(Config.StdErr));
+  Output := OutputFromArray(Config.StdErr);
 
   if Output <> '' then
   begin
@@ -4748,7 +4748,7 @@ begin
   if Count > Next then
     SetArrayLength(TmpList, Next);
 
-  Result := Trim(OutputFromArray(TmpList));
+  Result := OutputFromArray(TmpList);
 
 end;
 
