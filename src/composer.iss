@@ -607,9 +607,7 @@ begin
   ExtractTemporaryFile(CMD_SHELL);
 
   {Set full filenames, but not for php scripts that we run because it breaks
-  cygwin php. Also, the PHP_CHECK script must not have a path, otherwise it
-  masks errors caused by autorun registry settings that force cmd.exe to open
-  in a particular directory}
+  cygwin php.}
   GTmpFile.RunPhp := GTmpDir + '\' + RUN_PHP;
   GTmpFile.Composer := GTmpDir + '\' + CMD_SHELL;
   GTmpFile.StdOut := GTmpDir + '\stdout.txt';
@@ -3534,6 +3532,8 @@ end;
 
 {*************** Check cmd.exe functions ***************}
 
+{Checks that cmd.exe exists. starts in the working directory
+and returns a zero exit code.}
 function CheckCmdExe: Boolean;
 var
   Success: Boolean;
