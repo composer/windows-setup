@@ -16,8 +16,8 @@
 #define DllData "userdata.dll"
 
 #define PhpCheck "check.php"
+#define PhpIniCheck "inicheck.php"
 #define PhpInstaller "installer.php"
-#define PhpIni "ini.php"
 
 #define PrevDataApp "AppDir"
 #define PrevDataBin "BinDir"
@@ -80,7 +80,11 @@ WizardSizePercent=110,100
 #ifdef Release
   #include "build.iss";
 #else
-  OutputDir=..\builds\output
+  #ifdef OutputDir
+    OutputDir={#OutputDir}
+  #else
+    OutputDir=..\builds\output
+  #endif
   OutputBaseFilename=Composer-Setup.dev
 #endif
 
@@ -97,7 +101,7 @@ Name: {code:GetBinDir}; Permissions: users-modify; Check: CheckPermisions;
 ; files to extract must be first
 Source: php\{#PhpCheck}; Flags: dontcopy;
 Source: php\{#PhpInstaller}; Flags: dontcopy;
-Source: php\{#PhpIni}; Flags: dontcopy;
+Source: php\{#PhpIniCheck}; Flags: dontcopy;
 Source: runphp\{#RunPhp}; Flags: dontcopy signonce;
 Source: shims\{#CmdShell}; Flags: dontcopy;
 
@@ -140,10 +144,12 @@ type
     PhpVersion  : String;         {The php version}
     PhpId       : Integer;        {The php version id, as PHP_VERSION_ID}
     PhpIni      : String;         {The php.ini file in use}
+    PhpOtherOS  : String;         {The PHP_OS if not Windows}
     PhpSecure   : Boolean;        {If openssl is enabled}
     PhpCafile   : String;         {The openssl.cafile ini value, if openssl enabled}
     PhpCapath   : String;         {The openssl.capath ini value, if openssl enabled}
     PhpCompat   : Boolean;        {If php meets minimum Composer requirements}
+    PhpDetails  : Boolean;        {If the details line is valid}
     ExitCode    : Integer;        {The exit code of the last call}
     StatusCode  : Integer;        {The status/error code from the last call}
     StdOut      : TArrayOfString; {Lines read from stdout file}
@@ -215,12 +221,15 @@ type
 
 type
   TTmpFile = record
-    RunPhp    : String;
-    Composer  : String;
-    StdOut    : String;
-    StdErr    : String;
-    Ini       : String;
-    IniBackup : String;
+    RunPhp        : String;
+    PhpCheck      : String;
+    PhpIniCheck   : String;
+    PhpInstaller  : String;
+    Composer      : String;
+    StdOut        : String;
+    StdErr        : String;
+    Ini           : String;
+    IniBackup     : String;
   end;
 
 type
@@ -347,7 +356,7 @@ const
   RUN_PHP = '{#RunPhp}';
   PHP_CHECK = '{#PhpCheck}';
   PHP_CHECK_ID = '{#PHP_CHECK_ID}';
-  PHP_INI = '{#PhpIni}';
+  PHP_INICHECK = '{#PhpIniCheck}';
   PHP_INSTALLER = '{#PhpInstaller}';
 
   CMD_BAT = '{#CmdBat}';
@@ -372,12 +381,14 @@ const
   ERR_CMD_DIRECTORY = 104;
   ERR_RUN_PHP = 200;
   ERR_RUN_CMD = 201;
-  ERR_CHECK_CMD = 300;
-  ERR_CHECK_PHP = 301;
-  ERR_CHECK_PATH = 302;
-  ERR_INSTALL_WARNINGS = 400;
-  ERR_INSTALL_ERRORS = 401;
-  ERR_INSTALL_UNEXPECTED = 402;
+  ERR_PHP_VERSION = 300;
+  ERR_PHP_OS = 301;
+  ERR_CHECK_CMD = 400;
+  ERR_CHECK_PHP = 401;
+  ERR_CHECK_PATH = 402;
+  ERR_INSTALL_WARNINGS = 500;
+  ERR_INSTALL_ERRORS = 501;
+  ERR_INSTALL_UNEXPECTED = 502;
 
 function SetEnvironmentVariable (Name: String; Value: String): LongBool;
   external 'SetEnvironmentVariableW@kernel32.dll stdcall delayload';
@@ -399,7 +410,7 @@ function BoolFromString(Input: String; var Value: Boolean): Boolean; forward;
 function ConfigInit(Exe: String): TConfigRec; forward;
 procedure ConfigSetExec(var Config: TConfigRec); forward;
 procedure Debug(const Message: String); forward;
-procedure DebugExecBegin(const Exe, Params: String); forward;
+procedure DebugExecBegin(const Exe, Params, WorkingDir: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 procedure DebugPageName(Id: Integer); forward;
 function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean; forward;
@@ -509,12 +520,15 @@ function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
 function CheckPhpOutput(var Config: TConfigRec): Boolean; forward;
 function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean; forward;
 function CheckPhpVersion(Config: TConfigRec): Boolean; forward;
-function GetCommonErrors(Config: TConfigRec; var VersionError, ShowIni: Boolean): String; forward;
+function FormatPhpError(Config: TConfigRec; ShowIni: Boolean; Message: String): String; forward;
+function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String; forward;
+function GetErrorDetails(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean; forward;
-function GetErrorVersion(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean; forward;
-function GetPhpError(Config: TConfigRec): String; forward;
+function GetPhpError(var Config: TConfigRec): String; forward;
+function GetPhpErrorOS(Config: TConfigRec): String; forward;
+function GetPhpErrorVersion(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec); forward;
 function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
@@ -602,13 +616,15 @@ begin
   {Extract our temp files to installer directory}
   ExtractTemporaryFile(RUN_PHP);
   ExtractTemporaryFile(PHP_CHECK);
+  ExtractTemporaryFile(PHP_INICHECK);
   ExtractTemporaryFile(PHP_INSTALLER);
-  ExtractTemporaryFile(PHP_INI);
   ExtractTemporaryFile(CMD_SHELL);
 
-  {Set full filenames, but not for php scripts that we run because it breaks
-  cygwin php.}
+  {Set full filenames}
   GTmpFile.RunPhp := GTmpDir + '\' + RUN_PHP;
+  GTmpFile.PhpCheck := GTmpDir + '\' + PHP_CHECK;
+  GTmpFile.PhpIniCheck := GTmpDir + '\' + PHP_INICHECK;
+  GTmpFile.PhpInstaller := GTmpDir + '\' + PHP_INSTALLER;
   GTmpFile.Composer := GTmpDir + '\' + CMD_SHELL;
   GTmpFile.StdOut := GTmpDir + '\stdout.txt';
   GTmpFile.StdErr := GTmpDir + '\stderr.txt';
@@ -1266,8 +1282,12 @@ begin
   Result.PhpVersion := '';
   Result.PhpId := 0;
   Result.PhpIni := '';
+  Result.PhpOtherOS := '';
   Result.PhpSecure := False;
+  Result.PhpCafile := '';
+  Result.PhpCapath := '';
   Result.PhpCompat := False;
+  Result.PhpDetails := False;
 
   ConfigSetExec(Result);
   GModIniRec := ModIni;
@@ -1294,9 +1314,10 @@ begin
 end;
 
 
-procedure DebugExecBegin(const Exe, Params: String);
+procedure DebugExecBegin(const Exe, Params, WorkingDir: String);
 begin
   Debug('-- Execute File --');
+  Debug (Format('Working directory: %s', [WorkingDir]));
   Debug(Format('Running %s %s', [ArgWin(Exe), Params]));
 end;
 
@@ -1353,6 +1374,7 @@ end;
 function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean;
 var
   Params: String;
+  WorkingDir: String;
 
 begin
 
@@ -1361,9 +1383,10 @@ begin
   ConfigSetExec(Config);
 
   Params := GetExecParams(Config, Script, Args, Ini);
-  DebugExecBegin(GCmdExe, Params);
+  WorkingDir := ExtractFileDir(Config.PhpExe);
+  DebugExecBegin(GCmdExe, Params, WorkingDir);
 
-  Result := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
+  Result := Exec(GCmdExe, Params, WorkingDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
   DebugExecEnd(Result, Config.ExitCode);
 
   if not Result then
@@ -1511,6 +1534,8 @@ begin
     ERR_CMD_DIRECTORY:      Result := 'ERR_CMD_DIRECTORY';
     ERR_RUN_PHP:            Result := 'ERR_RUN_PHP';
     ERR_RUN_CMD:            Result := 'ERR_RUN_CMD';
+    ERR_PHP_VERSION:        Result := 'ERR_PHP_VERSION';
+    ERR_PHP_OS:             Result := 'ERR_PHP_OS';
     ERR_CHECK_CMD:          Result := 'ERR_CHECK_CMD';
     ERR_CHECK_PHP:          Result := 'ERR_CHECK_PHP';
     ERR_CHECK_PATH:         Result := 'ERR_CHECK_PATH';
@@ -1558,6 +1583,9 @@ begin
 
     ERR_RUN_PHP,
     ERR_RUN_CMD: Config.Message := GetExecError(Config);
+
+    ERR_PHP_VERSION: Config.Message := GetPhpErrorVersion(Config);
+    ERR_PHP_OS: Config.Message := GetPhpErrorOS(Config);
 
     ERR_CHECK_PHP: Config.Message := GetPhpError(Config);
     ERR_CHECK_PATH: Config.Message := Config.Output;
@@ -1884,12 +1912,6 @@ begin
 
   if IsWin64 then
     List.Add(System + '\wamp64\bin\php\php*');
-
-  {Cygwin}
-  List.Add(System + '\cygwin\bin');
-
-  if IsWin64 then
-    List.Add(System + '\cygwin64\bin');
 
   {Nusphere}
   List.Add(Pf32 + '\NuSphere\PhpEd\php*');
@@ -3557,7 +3579,7 @@ begin
   DeleteFile(GTmpFile.StdErr);
 
   Params := Format('/c cd > %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]);
-  DebugExecBegin(GCmdExe, Params);
+  DebugExecBegin(GCmdExe, Params, GTmpDir);
 
   Success := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, GConfigRec.ExitCode);
   DebugExecEnd(Success, GConfigRec.ExitCode);
@@ -3752,7 +3774,7 @@ begin
   {Bail out on old php versions}
   if not CheckPhpVersion(GConfigRec) then
   begin
-    SetError(ERR_CHECK_PHP, GConfigRec);
+    SetErrorEx(ERR_PHP_VERSION, GConfigRec, ERR_CHECK_PHP);
     Exit;
   end;
 
@@ -3775,6 +3797,7 @@ end;
 function CheckPhpExe(var Config: TConfigRec): Boolean;
 var
   Params: String;
+  WorkingDir: String;
 
 begin
 
@@ -3789,12 +3812,13 @@ begin
 
   Debug('Checking if php will execute');
   Params := ArgWin(Config.PhpExe);
+  WorkingDir := ExtractFileDir(Config.PhpExe);
 
   if WizardSilent then
     Params := Params + ' silent';
 
-  DebugExecBegin(GTmpFile.RunPhp, Params);
-  Result := Exec(GTmpFile.RunPhp, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
+  DebugExecBegin(GTmpFile.RunPhp, Params, WorkingDir);
+  Result := Exec(GTmpFile.RunPhp, Params, WorkingDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
   DebugExecEnd(Result, Config.ExitCode);
 
   if not Result or (Config.ExitCode <> 0) then
@@ -3818,9 +3842,14 @@ begin
   GetPhpOutput(Details, Config);
 
   if IsEmpty(Details) then
+  begin
+    Debug('Missing details');
     Exit;
+  end;
 
-  if not GetPhpDetails(Details, Config) then
+  Config.PhpDetails := GetPhpDetails(Details, Config);
+
+  if not Config.PhpDetails then
   begin
     Debug('Invalid details: ' + Details);
     Exit;
@@ -3839,7 +3868,7 @@ begin
   Debug('Checking php configuration');
 
   {ExecPhp should only fail calling cmd.exe}
-  if not ExecPhp(PHP_CHECK, '', Ini, Config) then
+  if not ExecPhp(GTmpFile.PhpCheck, '', Ini, Config) then
     Exit;
 
   {CheckPhpOutput will fail if we have unexpected output}
@@ -3849,14 +3878,21 @@ begin
     Exit;
   end;
 
-  {Everthing ok}
-  Debug(Format('Config: version=%s, id=%d, ini=%s, tls=%d, cafile=%s, capath=%s, compat=%d', [Config.PhpVersion,
-    Config.PhpId, Config.PhpIni, Config.PhpSecure, Config.PhpCafile, Config.PhpCapath, Config.PhpCompat]));
+  {Output ok}
+  Debug(Format('Config: version=%s, id=%d, ini=%s, other=%s, tls=%d, cafile=%s, capath=%s, compat=%d', [Config.PhpVersion,
+    Config.PhpId, Config.PhpIni, Config.PhpOtherOS, Config.PhpSecure, Config.PhpCafile, Config.PhpCapath, Config.PhpCompat]));
+
+  {Check for non-Windows PHP}
+  if NotEmpty(Config.PhpOtherOS) then
+  begin
+    SetErrorEx(ERR_PHP_OS, GConfigRec, ERR_CHECK_PHP);
+    Exit;
+  end;
 
   {Check for old php version}
-  if not CheckPhpVersion(GConfigRec) then
+  if not CheckPhpVersion(Config) then
   begin
-    SetError(ERR_CHECK_PHP, GConfigRec);
+    SetErrorEx(ERR_PHP_VERSION, GConfigRec, ERR_CHECK_PHP);
     Exit;
   end;
 
@@ -3874,8 +3910,7 @@ function CheckPhpVersion(Config: TConfigRec): Boolean;
 begin
 
   if (Config.PhpCalls = 0) and (Config.PhpId = 0) then
-    {No file version info is available. It could be Cygwin php, but since we cannot
-    reliably determine this we cannot continue if it is a silent install}
+    {No file version info is available. It may be too old to install silently}
     Result := not WizardSilent
   else
     {The minimum version that works with Composer is 5.5.0}
@@ -3884,25 +3919,42 @@ begin
 end;
 
 
-function GetCommonErrors(Config: TConfigRec; var VersionError, ShowIni: Boolean): String;
+{A common function to format PHP errors}
+function FormatPhpError(Config: TConfigRec; ShowIni: Boolean; Message: String): String;
+begin
+
+  Result := 'The PHP exe file you specified did not run correctly';
+  FormatExitCode(Result, Config);
+  Result := FormatError(Result, Config.PhpExe);
+
+  if ShowIni then
+    AddPara(Result, GetPhpIni(Config, False));
+
+  if NotEmpty(Message) then
+    AddPara(Result, Message);
+
+  {Config.Output should contain error output}
+  if NotEmpty(Config.Output) then
+  begin
+    AddPara(Result, 'Program Output:');
+    AddLine(Result, Config.Output);
+  end;
+
+end;
+
+
+function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String;
 var
   CanShowIni: Boolean;
 
 begin
 
   Result := '';
-  VersionError := False;
   ShowIni := False;
 
   {Only show the ini if one has been used and we have its location. This stops
   unhelpful messages about having to create one if something has gone wrong}
   CanShowIni := NotEmpty(Config.PhpIni);
-
-  if GetErrorVersion(Result, Config) then
-  begin
-    VersionError := True;
-    Exit;
-  end;
 
   if GetErrorExtDirectory(Result, Config) then
   begin
@@ -3922,6 +3974,28 @@ begin
 end;
 
 
+function GetErrorDetails(var Message: String; Config: TConfigRec): Boolean;
+var
+  Error: String;
+
+begin
+
+  Result := not Config.PhpDetails;
+
+  if not Result then
+    Exit;
+
+  {The details line is stripped from the output so put it back in
+  if there isn't already any output}
+  if IsEmpty(Config.Output) then
+    Config.Output := OutputFromArray(Config.StdOut);
+
+  Error := 'Required information is missing or invalid';
+  Message := FormatPhpError(Config, False, Error);
+
+end;
+
+
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean;
 begin
 
@@ -3934,7 +4008,7 @@ begin
 
   AddStr(Message, 'A setting in your php.ini could be causing the problem:');
   AddStr(Message, Format(' Either the %sextension_dir%s value is incorrect', [#39, #39]));
-  AddStr(Message, ' or the dll does not exist.');
+  AddStr(Message, ' or a dll does not exist.');
   Result := True;
 
 end;
@@ -3955,39 +4029,6 @@ begin
 end;
 
 
-function GetErrorVersion(var Message: String; Config: TConfigRec): Boolean;
-var
-  Version: String;
-
-begin
-
-  if CheckPhpVersion(Config) then
-  begin
-    Result := False;
-    Exit;
-  end;
-
-  if NotEmpty(Config.PhpVersion) then
-    Version := Format('(%s)', [Config.PhpVersion]);
-
-  if WizardSilent and IsEmpty(Version) then
-  begin
-    Message := Format('%s has no file version information. ', [Config.PhpExe]);
-    AddStr(Message, 'It may be too old to be installed silently.');
-  end
-  else
-  begin
-    Message := Format('Your PHP version %s does not support the TLS protocols ', [Version]);
-    AddStr(Message, 'used by Composer and must be upgraded to a recent version.');
-    AddPara(Message, 'The minimum requirement is PHP 5.5, although using the ');
-    AddStr(Message, 'latest version is always recommended.');
-  end;
-
-  Result := True;
-
-end;
-
-
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean;
 var
   List: TStringList;
@@ -3995,33 +4036,38 @@ var
 
 begin
 
-  Result := False;
+  Result := True;
   StringChangeEx(Details, '|', #13, True);
   List := TStringList.Create;
 
   try
     List.Text := Details;
 
-    if List.Count = 7 then
+    if List.Count <> 8 then
     begin
-      Config.PhpVersion := List.Strings[0];
-      Id := StrToIntDef(List.Strings[1], 0);
-
-      {0 will be set for versions earlier than 5.2.7, so
-      we must not overwrite the existing value}
-      if Id <> 0 then
-        Config.PhpId := Id;
-
-      Config.PhpIni := List.Strings[2];
-
-      if not BoolFromString(List.Strings[3], Config.PhpSecure) then
-        Exit;
-
-      Config.PhpCafile := List.Strings[4];
-      Config.PhpCapath := List.Strings[5];
-
-      Result := BoolFromString(List.Strings[6], Config.PhpCompat);
+      Result := False;
+      Exit;
     end;
+
+    Config.PhpVersion := List.Strings[0];
+    Id := StrToIntDef(List.Strings[1], 0);
+
+    {0 will be set for versions earlier than 5.2.7, so
+    we must not overwrite the existing value}
+    if Id <> 0 then
+      Config.PhpId := Id;
+
+    Config.PhpIni := List.Strings[2];
+    Config.PhpOtherOS := List.Strings[3];
+
+    if not BoolFromString(List.Strings[4], Config.PhpSecure) then
+      Result := False;
+
+    Config.PhpCafile := List.Strings[5];
+    Config.PhpCapath := List.Strings[6];
+
+    if not BoolFromString(List.Strings[7], Config.PhpCompat) then
+      Result := False;
 
   finally
     List.Free;
@@ -4030,37 +4076,76 @@ begin
 end;
 
 
-function GetPhpError(Config: TConfigRec): String;
+function GetPhpError(var Config: TConfigRec): String;
 var
-  CommonErrors: String;
-  VersionError: Boolean;
+  Message: String;
   ShowIni: Boolean;
 
 begin
 
-  CommonErrors := GetCommonErrors(Config, VersionError, ShowIni);
-
-  if VersionError and (Config.ExitCode = 0) then
+  {Check we have the required details}
+  if GetErrorDetails(Message, Config) then
   begin
-    Result := CommonErrors;
+    Result := Message;
     Exit;
   end;
 
-  Result := 'The PHP exe file you specified did not run correctly';
-  FormatExitCode(Result, Config);
-  Result := FormatError(Result, Config.PhpExe);
-
-  if ShowIni then
-    AddPara(Result, GetPhpIni(Config, False));
-
-  if NotEmpty(CommonErrors) then
-    AddPara(Result, CommonErrors);
-
-  {Config.Output should contain error output}
-  if NotEmpty(Config.Output) then
+  {Check we are Windows PHP}
+  if NotEmpty(Config.PhpOtherOS) then
   begin
-    AddPara(Result, 'Program Output:');
-    AddLine(Result, Config.Output);
+    Result := GetPhpErrorOS(Config);
+    Config.StatusCode := ERR_PHP_OS;
+    Exit;
+  end;
+
+  {Check version}
+  if not CheckPhpVersion(Config) then
+  begin
+    Result := GetPhpErrorVersion(Config);
+    Config.StatusCode := ERR_PHP_VERSION;
+    Exit;
+  end;
+
+  Message := GetCommonErrors(Config, ShowIni);
+  Result := FormatPhpError(Config, ShowIni, Message);
+
+end;
+
+
+function GetPhpErrorOS(Config: TConfigRec): String;
+var
+  Error: String;
+
+begin
+
+  Result := 'The PHP exe file you specified cannot be used';
+  Result := FormatError(Result, Config.PhpExe);
+  Error := Format('Setup requires Windows PHP and does not support this build [%s]', [Config.PhpOtherOS]);
+  AddPara(Result, Error);
+
+end;
+
+
+function GetPhpErrorVersion(Config: TConfigRec): String;
+var
+  Version: String;
+
+begin
+
+  if NotEmpty(Config.PhpVersion) then
+    Version := Format('(%s)', [Config.PhpVersion]);
+
+  if WizardSilent and IsEmpty(Version) then
+  begin
+    Result := Format('%s has no file version information. ', [Config.PhpExe]);
+    AddStr(Result, 'It may be too old to be installed silently.');
+  end
+  else
+  begin
+    Result := Format('Your PHP version %s does not support the TLS protocols ', [Version]);
+    AddStr(Result, 'used by Composer and must be upgraded to a recent version.');
+    AddPara(Result, 'The minimum requirement is PHP 5.5, although using the ');
+    AddStr(Result, 'latest version is always recommended.');
   end;
 
 end;
@@ -4330,7 +4415,7 @@ var
 begin
 
   Result := False;
-  Error := Format('Error, script %s did not create ', [PHP_INI]);
+  Error := Format('Error, script %s did not create ', [PHP_INICHECK]);
 
   if not FileExists(GTmpFile.Ini) then
   begin
@@ -4359,7 +4444,7 @@ begin
 
   if not IniCheckOutput(Modify, Config) then
   begin
-    IniDebug(Format('Error, script %s failed', [PHP_INI]));
+    IniDebug(Format('Error, script %s failed', [PHP_INICHECK]));
     Exit;
   end;
 
@@ -4528,7 +4613,7 @@ begin
   AddStr(Args, #32 + ArgCmd(GTmpFile.IniBackup));
 
   {ExecPhp should only fail calling cmd.exe}
-  if not ExecPhp(PHP_INI, Args, '', Config) then
+  if not ExecPhp(GTmpFile.PhpIniCheck, Args, '', Config) then
     Exit;
 
   {See if we needed and created a tmp ini}
@@ -4779,6 +4864,8 @@ begin
   Result := '--';
   AddParam(Result, '--no-ansi');
   AddParam(Result, '--quiet');
+  AddParam(Result, '--install-dir');
+  AddParam(Result, ArgCmd(GTmpDir));
 
 end;
 
@@ -4964,7 +5051,7 @@ var
 begin
 
   Debug('Running Composer installer script');
-  Script := PHP_INSTALLER;
+  Script := GTmpFile.PhpInstaller;
   DeleteFile(GetComposerPharPath());
   Args := GetInstallerArgs(Config);
 
@@ -5178,14 +5265,14 @@ begin
     Page.Caption := 'System Configuration Error';
     Page.Description := 'Composer Setup cannot continue';
   end
-  else if GConfigRec.StatusCode = ERR_CHECK_PHP then
+  else
   begin
-    Page.Caption := 'PHP Settings Error';
-    Page.Description := 'Composer will not work with your current settings';
-  end
-  else if GConfigRec.StatusCode = ERR_CHECK_PATH then
-  begin
-    Page.Caption := 'Path Settings Error';
+
+    if GConfigRec.StatusCode = ERR_CHECK_PHP then
+      Page.Caption := 'PHP Settings Error'
+    else
+      Page.Caption := 'Path Settings Error';
+
     Page.Description := 'Composer Setup cannot continue with your current settings';
   end;
 
