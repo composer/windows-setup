@@ -2,11 +2,14 @@ program runphp;
 
 {$APPTYPE CONSOLE}
 
+{$SETPEOSVERSION 6.0}
+{$SETPESUBSYSVERSION 6.0}
+{$WEAKLINKRTTI ON}
+
 uses
   Windows;
 
-{$R resource\manifest.res}
-{$R resource\version.res}
+{$R *.res}
 
 const
   STATUS_UNSUCCESSFUL = $C0000001;
@@ -26,9 +29,9 @@ begin
   if Pos(#32, CmdLine) <> 0 then
     CmdLine := '"' + CmdLine + '"';
 
-  {We call php.exe with the -v param. This simply prints the version without
-  fully initializing and loading extensions etc}
-  CmdLine := CmdLine + ' -v';
+  {We call php.exe with the -n -v params. This simply prints the version without
+  loading any extensions from the ini}
+  CmdLine := CmdLine + ' -n -v';
 
   {Set up our wait interval and error mode. Note that SEM_NOALIGNMENTFAULTEXCEPT
   is sticky, so we need not concern ourselves with it here.}
