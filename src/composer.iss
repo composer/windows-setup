@@ -2635,7 +2635,7 @@ begin
       Continue;
 
     if SameText(Name, GEnvChanges[I].Name) then
-      Result := CompareText(Value, GEnvChanges[I].Value) = 0;
+      Result := SameText(Value, GEnvChanges[I].Value);
 
     if Result then
       Exit;
@@ -5952,7 +5952,7 @@ begin
   {Check filename is php.exe, for param input}
   DebugMsg := Format('Error, file name must be php.exe: %s', [Selected]);
   Error := Format('The file name you specified must be php.exe:%s%s', [LF, Selected]);
-  Result := CompareText(ExtractFileName(Selected), 'php.exe') = 0;
+  Result := SameText(ExtractFileName(Selected), 'php.exe');
 
   if not Result then
   begin
@@ -6010,7 +6010,7 @@ begin
     PATH_OK:
     begin
 
-      if CompareText(GSettingsPage.Combo.Text, GPaths.Php.Data.Cmd) = 0 then
+      if SameText(GSettingsPage.Combo.Text, GPaths.Php.Data.Cmd) then
         Caption := 'This is the PHP in your path. Click Next to use it.'
       else
         Caption := 'This will replace the PHP entry in your path. Click Next if you want to do this.';
