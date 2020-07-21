@@ -12,8 +12,9 @@
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
-#define RunPhp "runphp.exe"
 #define DllData "userdata.dll"
+#define PermsBat "acls.bat"
+#define RunPhp "runphp.exe"
 
 #define PhpCheck "check.php"
 #define PhpIniCheck "inicheck.php"
@@ -88,13 +89,14 @@ WizardSizePercent=110,100
   OutputBaseFilename=Composer-Setup.dev
 #endif
 
+
 [LangOptions]
 DialogFontSize=10
 
 
-[Dirs]
-; we need to make all-users directory writeable so composer.phar can update
-Name: {code:GetBinDir}; Permissions: users-modify; Check: CheckPermisions;
+; remove the directory so existing permissions are not preserved
+[InstallDelete]
+Type: filesandordirs; Name: {code:GetBinDir}; Check: CheckPermisions;
 
 
 [Files]
@@ -103,6 +105,7 @@ Source: php\{#PhpCheck}; Flags: dontcopy;
 Source: php\{#PhpInstaller}; Flags: dontcopy;
 Source: php\{#PhpIniCheck}; Flags: dontcopy;
 Source: runphp\{#RunPhp}; Flags: dontcopy signonce;
+Source: scripts\{#PermsBat}; Flags: dontcopy;
 Source: shims\{#CmdShell}; Flags: dontcopy;
 
 ; app files
@@ -121,6 +124,7 @@ Type: filesandordirs; Name: {code:GetBinDir};
 
 
 [Run]
+Filename: {tmp}\{#PermsBat}; Flags: runhidden; Check: CheckPermisions;
 Filename: "https://{#AppUrl}"; Description: "View online documentation"; Flags: postinstall shellexec unchecked;
 
 
@@ -357,6 +361,7 @@ const
   LF2 = LF + LF;
   TAB = #32#32#32#32#32#32;
 
+  PERMS_BAT = '{#PermsBat}';
   RUN_PHP = '{#RunPhp}';
   PHP_CHECK = '{#PhpCheck}';
   PHP_CHECK_ID = '{#PHP_CHECK_ID}';
@@ -621,6 +626,7 @@ begin
   GTmpDir := RemoveBackslash(ExpandConstant('{tmp}'));
 
   {Extract our temp files to installer directory}
+  ExtractTemporaryFile(PERMS_BAT);
   ExtractTemporaryFile(RUN_PHP);
   ExtractTemporaryFile(PHP_CHECK);
   ExtractTemporaryFile(PHP_INICHECK);
@@ -1691,7 +1697,10 @@ begin
   Current := (StrToVer(VerCurrent) shr 24) and $ff;
   Existing := (StrToVer(VerExisting) shr 24) and $ff;
 
-  if (Current = 5) and (Existing = 4) then
+  if (Current = 6) and (Existing = 5) then
+    {Version 6 locks down admin bin directory}
+    Result := False
+  else if (Current = 5) and (Existing = 4) then
     {Version 5 only drops support for XP}
     Result := False
   else
@@ -6055,7 +6064,7 @@ begin
     begin
 
       if SameText(GSettingsPage.Combo.Text, GPaths.Php.Data.Cmd) then
-        Caption := 'This is the PHP in your path. Click Next to use it.'
+        Info := 'This is the PHP in your path. Click Next to use it.'
       else
       begin
         Info := 'This will replace the PHP entry in your path. Click Next if you want to do this.';
@@ -6069,7 +6078,7 @@ begin
     PATH_NONE:
     begin
 
-      if (GSettingsPage.Combo.Text <> '') then
+      if NotEmpty(GSettingsPage.Combo.Text) then
       begin
         Info := 'This will add PHP to your path. Click Next to use it.';
         Confirm := 'Add this PHP to your path?';
@@ -6162,7 +6171,7 @@ begin
   GSettingsPage.Warning.AutoSize := True;
   GSettingsPage.Warning.WordWrap := True;
 
-  S := 'Please confirm to continue. The security of this location is your responsibility';
+  S := 'Confirm to continue. The access control of this location is your responsibility';
   S := S + ' and is particularly important if other people use this computer.';
 
   GSettingsPage.Warning.Caption := S;
