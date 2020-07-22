@@ -1,16 +1,18 @@
 <?php
 
 /**
-* Checks if a php.ini file needs creating or modifying. Returns a single line
-* of output that contains info required by the setup.
-*
-* The line must start with PHP_CHECK_ID (which is the same value as the
-* define in the main install script), followed by pipe (|) separated
-* values and ending with an eol.
-*
-* The values required are 0 or 1, signifying whether modification is required,
-* and an informational status message, which may contain an error.
-*/
+ * Checks if a php.ini file needs creating or modifying and writes a new one if
+ * it does, saving any original. The file(s) are written to paths passed in on
+ * the command line.
+ *
+ * Returns a single line of output that contains info required by the setup. The
+ * line must start with PHP_CHECK_ID (which is the same value as the define in
+ * the main install script), followed by pipe (|) separated values and ending
+ * with an eol.
+ *
+ * The values required are 0 or 1, signifying whether any changes have been
+ * made, and an informational status message, which may contain an error.
+ */
 
 $PHP_CHECK_ID = '<ComposerSetup:>';
 
@@ -38,17 +40,16 @@ class IniChecker
      * Constructor
      *
      * The args passed in contain:
-     *   [1] The php.exe directory
-     *   [2] The tmp path for the modified ini
-     *   [3] The tmp path for the original ini
+     *   [1] The tmp path for the modified ini
+     *   [2] The tmp path for the original ini
      *
      * @param array $argv Command-line args
      */
     public function __construct(array $argv)
     {
-        $this->phpDir = $argv[1];
-        $this->modIni = $argv[2];
-        $this->origIni = $argv[3];
+        $this->phpDir = dirname(PHP_BINARY);
+        $this->modIni = $argv[1];
+        $this->origIni = $argv[2];
 
         $this->changes = array();
         $this->writeError('Status message missing');
@@ -130,7 +131,7 @@ class IniChecker
 
             // We must save a tmp backup
             if (!copy($srcIni, $this->origIni)) {
-                $this->writeError('Failed to copy source ini: '.$srcIni);
+                $this->writeError('Failed to backup source ini: '.$srcIni);
                 return;
             }
         } else {

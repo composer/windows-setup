@@ -138,18 +138,22 @@ FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a comman
 [Code]
 
 type
+  TIniInfoRec = record
+    Secure      : Boolean;        {If openssl is enabled}
+    Cafile      : String;         {The openssl.cafile ini value, if openssl enabled}
+    Capath      : String;         {The openssl.capath ini value, if openssl enabled}
+    Compat      : Boolean;        {If openssl and allow_url_fopen are enabled}
+  end;
+
+type
   TConfigRec = record
     PhpExe      : String;         {The full file name of the selected php.exe}
-    PhpCalls    : Integer;        {The number of calls made, used for error handling}
     PhpVersion  : String;         {The php version}
     PhpId       : Integer;        {The php version id, as PHP_VERSION_ID}
     PhpIni      : String;         {The php.ini file in use}
     PhpOtherOS  : String;         {The PHP_OS if not Windows}
-    PhpSecure   : Boolean;        {If openssl is enabled}
-    PhpCafile   : String;         {The openssl.cafile ini value, if openssl enabled}
-    PhpCapath   : String;         {The openssl.capath ini value, if openssl enabled}
-    PhpCompat   : Boolean;        {If php meets minimum Composer requirements}
     PhpDetails  : Boolean;        {If the details line is valid}
+    IniInfo     : TIniInfoRec;    {The openssl values from the ini file}
     ExitCode    : Integer;        {The exit code of the last call}
     StatusCode  : Integer;        {The status/error code from the last call}
     StdOut      : TArrayOfString; {Lines read from stdout file}
@@ -248,17 +252,15 @@ type
 
 type
   TModIniRec = record
-    Active      : Boolean;
-    InUse       : Boolean;
-    New         : Boolean;
-    Backup      : String;
-    File        : String;
-    Secure      : Boolean;
-    Compat      : Boolean;
-    OldFile     : String;
-    OldSecure   : Boolean;
-    OldCompat   : Boolean;
-    UpdateError : String;
+    Active          : Boolean;      {Set if the ini needs modifying}
+    InUse           : Boolean;      {Set if the user has chosen to use the modified ini}
+    New             : Boolean;      {Set if this is a new ini created from php.ini-production}
+    BackupFile      : String;       {The tmp location to backup an existing ini}
+    IniFile         : String;       {The new or modified ini}
+    OriginalIniFile : String;       {The existing ini}
+    IniInfo         : TIniInfoRec;  {The new ini info}
+    OriginalIniInfo : TIniInfoRec;  {The existing ini info}
+    UpdateError     : String;       {Storage for error messages}
   end;
 
 type
@@ -519,7 +521,7 @@ function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
 function CheckPhpOutput(var Config: TConfigRec): Boolean; forward;
 function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean; forward;
-function CheckPhpVersion(Config: TConfigRec): Boolean; forward;
+function CheckPhpVersion(VersionId: Integer; FromFile: Boolean): Boolean; forward;
 function FormatPhpError(Config: TConfigRec; ShowIni: Boolean; Message: String): String; forward;
 function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String; forward;
 function GetErrorDetails(var Message: String; Config: TConfigRec): Boolean; forward;
@@ -539,8 +541,8 @@ procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 {Ini file functions}
 procedure CheckPhpIni(Config: TConfigRec); forward;
 function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean; forward;
+function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
 function IniCheckTmp(Existing: Boolean): Boolean; forward;
-function IniCreateTmp(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
 procedure IniDebug(Message: String); forward;
 function IniFileRestore: Boolean; forward;
 function IniFileSave: Boolean; forward;
@@ -1273,21 +1275,18 @@ end;
 
 function ConfigInit(Exe: String): TConfigRec;
 var
+  IniInfo: TIniInfoRec;
   ModIni: TModIniRec;
 
 begin
 
   Result.PhpExe := Exe;
-  Result.PhpCalls := 0;
   Result.PhpVersion := '';
   Result.PhpId := 0;
   Result.PhpIni := '';
   Result.PhpOtherOS := '';
-  Result.PhpSecure := False;
-  Result.PhpCafile := '';
-  Result.PhpCapath := '';
-  Result.PhpCompat := False;
   Result.PhpDetails := False;
+  Result.IniInfo := IniInfo;
 
   ConfigSetExec(Result);
   GModIniRec := ModIni;
@@ -1394,9 +1393,6 @@ begin
     SetErrorEx(ERR_RUN_CMD, Config, ERR_CHECK_PHP);
     Exit;
   end;
-
-  {Increment calls}
-  Inc(Config.PhpCalls);
 
   {Put the output into Config}
   OutputReadStdFiles(Config);
@@ -3772,7 +3768,7 @@ begin
   SetPhpVersionInfo(GConfigRec);
 
   {Bail out on old php versions}
-  if not CheckPhpVersion(GConfigRec) then
+  if not CheckPhpVersion(GConfigRec.PhpId, True) then
   begin
     SetErrorEx(ERR_PHP_VERSION, GConfigRec, ERR_CHECK_PHP);
     Exit;
@@ -3879,8 +3875,15 @@ begin
   end;
 
   {Output ok}
-  Debug(Format('Config: version=%s, id=%d, ini=%s, other=%s, tls=%d, cafile=%s, capath=%s, compat=%d', [Config.PhpVersion,
-    Config.PhpId, Config.PhpIni, Config.PhpOtherOS, Config.PhpSecure, Config.PhpCafile, Config.PhpCapath, Config.PhpCompat]));
+  Debug(Format('Config: version=%s, id=%d, ini=%s, other=%s, tls=%d, cafile=%s, capath=%s, compat=%d', [
+    Config.PhpVersion,
+    Config.PhpId,
+    Config.PhpIni,
+    Config.PhpOtherOS,
+    Config.IniInfo.Secure,
+    Config.IniInfo.Cafile,
+    Config.IniInfo.Capath,
+    Config.IniInfo.Compat]));
 
   {Check for non-Windows PHP}
   if NotEmpty(Config.PhpOtherOS) then
@@ -3890,7 +3893,7 @@ begin
   end;
 
   {Check for old php version}
-  if not CheckPhpVersion(Config) then
+  if not CheckPhpVersion(Config.PhpId, False) then
   begin
     SetErrorEx(ERR_PHP_VERSION, GConfigRec, ERR_CHECK_PHP);
     Exit;
@@ -3906,15 +3909,15 @@ error output more effectively. Old versions show a MessageBox on some errors,
 which is not suitable for silent installations. This was changed in 5.1.2 to
 show only if display_startup_errors is set. The MessageBox was removed entirely
 for 5.5.0}
-function CheckPhpVersion(Config: TConfigRec): Boolean;
+function CheckPhpVersion(VersionId: Integer; FromFile: Boolean): Boolean;
 begin
 
-  if (Config.PhpCalls = 0) and (Config.PhpId = 0) then
+  if FromFile and (VersionId = 0) then
     {No file version info is available. It may be too old to install silently}
     Result := not WizardSilent
   else
     {The minimum version that works with Composer is 5.5.0}
-    Result := Config.PhpId >= 50500;
+    Result := VersionId >= 50500;
 
 end;
 
@@ -4060,13 +4063,13 @@ begin
     Config.PhpIni := List.Strings[2];
     Config.PhpOtherOS := List.Strings[3];
 
-    if not BoolFromString(List.Strings[4], Config.PhpSecure) then
+    if not BoolFromString(List.Strings[4], Config.IniInfo.Secure) then
       Result := False;
 
-    Config.PhpCafile := List.Strings[5];
-    Config.PhpCapath := List.Strings[6];
+    Config.IniInfo.Cafile := List.Strings[5];
+    Config.IniInfo.Capath := List.Strings[6];
 
-    if not BoolFromString(List.Strings[7], Config.PhpCompat) then
+    if not BoolFromString(List.Strings[7], Config.IniInfo.Compat) then
       Result := False;
 
   finally
@@ -4099,7 +4102,7 @@ begin
   end;
 
   {Check version}
-  if not CheckPhpVersion(Config) then
+  if not CheckPhpVersion(Config.PhpId, False) then
   begin
     Result := GetPhpErrorVersion(Config);
     Config.StatusCode := ERR_PHP_VERSION;
@@ -4365,9 +4368,8 @@ begin
     Exit;
 
   ModIni.Active := True;
-  ModIni.OldFile := Config.PhpIni;
-  ModIni.OldSecure := Config.PhpSecure;
-  ModIni.OldCompat := Config.PhpCompat;
+  ModIni.OriginalIniFile := Config.PhpIni;
+  ModIni.OriginalIniInfo := Config.IniInfo;
 
   {Set the global rec with the current details}
   GModIniRec := ModIni;
@@ -4376,7 +4378,7 @@ begin
   Msg := Format('Available at %s', [GTmpFile.Ini]);
 
   if not ModIni.New then
-    AddStr(Msg, Format(', backup created at %s', [ModIni.Backup]));
+    AddStr(Msg, Format(', backup created at %s', [ModIni.BackupFile]));
 
   IniDebug(Msg);
 
@@ -4408,6 +4410,43 @@ begin
 end;
 
 
+{Returns true if the ini needs creating or modifying, the tmp files have been
+written and the new ini works okay}
+function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
+var
+  Modify: Boolean;
+
+begin
+
+  Result := False;
+
+  if not IniCheckOutput(Modify, Config) then
+  begin
+    IniDebug(Format('Error, script %s failed', [PHP_INICHECK]));
+    Exit;
+  end;
+
+  if not Modify then
+    Exit;
+
+  {Check tmp files have been written}
+  if not IniCheckTmp(not ModIni.New) then
+    Exit;
+
+  IniDebug('Checking tmp ini with selected php');
+  Config := ConfigInit(Config.PhpExe);
+
+  {See if everything works with the new/modified ini}
+  if CheckPhpSetup(Config, GTmpFile.Ini) then
+  begin
+    ModIni.IniInfo := Config.IniInfo;
+    Result := Config.IniInfo.Compat;
+  end;
+
+end;
+
+
+{Checks that the php script created the required tmp inis}
 function IniCheckTmp(Existing: Boolean): Boolean;
 var
   Error: String;
@@ -4434,53 +4473,21 @@ begin
 end;
 
 
-function IniCreateTmp(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
-var
-  Modify: Boolean;
-
-begin
-
-  Result := False;
-
-  if not IniCheckOutput(Modify, Config) then
-  begin
-    IniDebug(Format('Error, script %s failed', [PHP_INICHECK]));
-    Exit;
-  end;
-
-  if not Modify then
-    Exit;
-
-  {Check tmp files have been written}
-  if not IniCheckTmp(not ModIni.New) then
-    Exit;
-
-  IniDebug('Checking tmp ini with selected php');
-  Config := ConfigInit(Config.PhpExe);
-
-  if CheckPhpSetup(Config, GTmpFile.Ini) then
-  begin
-    ModIni.Secure := Config.PhpSecure;
-    ModIni.Compat := Config.PhpCompat;
-    Result := Config.PhpCompat;
-  end;
-
-end;
-
-
 procedure IniDebug(Message: String);
 begin
   Debug(Format('PhpIni: %s', [Message]));
 end;
 
 
+{Restores the original state by either deleting the new ini from the
+php directory or restoring the backup}
 function IniFileRestore: Boolean;
 var
-  Ini: String;
+  IniFile: String;
 
 begin
 
-  Ini := GModIniRec.File;
+  IniFile := GModIniRec.IniFile;
 
   {Return true if the new/modified ini is not in use}
   if not GModIniRec.InUse then
@@ -4491,32 +4498,33 @@ begin
 
   if GModIniRec.New then
   begin
-    DelayDeleteFile(Ini, 2);
-    Result := not FileExists(Ini);
+    DelayDeleteFile(IniFile, 2);
+    Result := not FileExists(IniFile);
   end
   else
-    Result := FileCopy(GTmpFile.IniBackup, Ini, False);
+    Result := FileCopy(GTmpFile.IniBackup, IniFile, False);
 
   IniSetMessage(Result, False, GModIniRec);
 
   if Result then
   begin
-    GConfigRec.PhpIni := GModIniRec.OldFile;
-    GConfigRec.PhpSecure := GModIniRec.OldSecure;
-    GConfigRec.PhpCompat := GModIniRec.OldCompat;
+    {Update the global config with the original ini data}
+    GConfigRec.PhpIni := GModIniRec.OriginalIniFile;
+    GConfigRec.IniInfo := GModIniRec.OriginalIniInfo;
     GModIniRec.InUse := False;
   end;
 
 end;
 
 
+{Copies the new/modified ini to the php directory}
 function IniFileSave: Boolean;
 var
-  Ini: String;
+  IniFile: String;
 
 begin
 
-  Ini := GModIniRec.File;
+  IniFile := GModIniRec.IniFile;
 
   {Return true if the new/modified ini is in use}
   if GModIniRec.InUse then
@@ -4525,20 +4533,21 @@ begin
     Exit;
   end;
 
-  Result := FileCopy(GTmpFile.Ini, Ini, False);
+  Result := FileCopy(GTmpFile.Ini, IniFile, False);
   IniSetMessage(Result, True, GModIniRec);
 
   if Result then
   begin
-    GConfigRec.PhpIni := Ini;
-    GConfigRec.PhpSecure := GModIniRec.Secure;
-    GConfigRec.PhpCompat := GModIniRec.Compat;
+    {Update the global config with the new ini data}
+    GConfigRec.PhpIni := IniFile;
+    GConfigRec.IniInfo := GModIniRec.IniInfo;
     GModIniRec.InUse := True;
   end;
 
 end;
 
 
+{A wrapper around saving and restoring the ini}
 function IniFileUpdate(Save: Boolean): Boolean;
 begin
 
@@ -4579,6 +4588,9 @@ begin
 end;
 
 
+{Returns true if a new ini was created or an existing one was modified.
+The new/modified ini is saved in the tmp directory. The original ini is
+backed up in the tmp directory and also in the user's php directory}
 function IniHasMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
 var
   Args: String;
@@ -4590,13 +4602,13 @@ begin
 
   if ModIni.New then
   begin
-    ModIni.File := ExtractFilePath(Config.PhpExe) + 'php.ini';
-    IniDebug(Format('Checking if ini can be created: %s', [ModIni.File]));
+    ModIni.IniFile := ExtractFilePath(Config.PhpExe) + 'php.ini';
+    IniDebug(Format('Checking if ini can be created: %s', [ModIni.IniFile]));
   end
   else
   begin
-    ModIni.File := Config.PhpIni;
-    ModIni.Backup := Config.PhpIni + '~orig';
+    ModIni.IniFile := Config.PhpIni;
+    ModIni.BackupFile := Config.PhpIni + '~orig';
     IniDebug(Format('Checking if ini needs updating: %s', [Config.PhpIni]));
   end;
 
@@ -4607,17 +4619,16 @@ begin
   DeleteFile(GTmpFile.Ini);
   DeleteFile(GTmpFile.IniBackup);
 
-  {The script needs the php.exe location, the tmp ini and backup ini}
-  Args := ArgCmd(ExtractFileDir(Config.PhpExe));
-  AddStr(Args, #32 + ArgCmd(GTmpFile.Ini));
+  {The script needs the tmp ini and tmp backup ini locations}
+  Args := ArgCmd(GTmpFile.Ini);
   AddStr(Args, #32 + ArgCmd(GTmpFile.IniBackup));
 
   {ExecPhp should only fail calling cmd.exe}
   if not ExecPhp(GTmpFile.PhpIniCheck, Args, '', Config) then
     Exit;
 
-  {See if we needed and created a tmp ini}
-  if not IniCreateTmp(ModIni, Config) then
+  {See if we needed and can make changes}
+  if not IniCheckResult(ModIni, Config) then
     Exit;
 
   if ModIni.New then
@@ -4625,11 +4636,11 @@ begin
   else
   begin
 
-    {Make a backup of the current ini in case something goes wrong}
-    Result := FileCopy(ModIni.File, ModIni.Backup, False);
+    {Make a backup for the user in the php directory, in case something goes wrong}
+    Result := FileCopy(ModIni.IniFile, ModIni.BackupFile, False);
 
     if not Result then
-      IniDebug(Format('Failed to backup existing ini: %s', [ModIni.File]));
+      IniDebug(Format('Failed to backup existing ini: %s', [ModIni.IniFile]));
 
   end;
 
@@ -4685,7 +4696,7 @@ begin
 
   end;
 
-  IniDebug(Format('%s ini: %s', [Msg, Rec.File]));
+  IniDebug(Format('%s ini: %s', [Msg, Rec.IniFile]));
 
 end;
 
@@ -4747,7 +4758,7 @@ begin
 
   IsFile := True;
   Name := 'openssl.cafile';
-  Location := Config.PhpCafile;
+  Location := Config.IniInfo.Cafile;
 
   if NotEmpty(Location) and FileExists(Location) then
   begin
@@ -4758,7 +4769,7 @@ begin
 
   IsFile := False;
   Name := 'openssl.capath';
-  Location := Config.PhpCapath;
+  Location := Config.IniInfo.Capath;
 
   if NotEmpty(Location) and DirExists(Location) then
   begin
@@ -5357,7 +5368,7 @@ begin
     S := S + ' The php.ini used by your command-line PHP is:';
   end;
 
-  S := S + LF2 + TAB + GModIniRec.File;
+  S := S + LF2 + TAB + GModIniRec.IniFile;
   GIniPage.Text.Caption := S;
 
   {Checkbox caption}
@@ -5376,7 +5387,7 @@ begin
   begin
     S := 'Your existing php.ini will be modified.';
     S := S + ' A back-up has been made and saved to:' + LF2 + TAB;
-    S := S + GModIniRec.Backup;
+    S := S + GModIniRec.BackupFile;
   end;
 
   GIniPage.Info.Caption := S;
