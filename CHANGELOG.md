@@ -1,9 +1,10 @@
 ## Unreleased
+* Improved and documented ini update handling.
 * Fixed failures when the ini contains relative root paths, as in xampp portable, by running PHP
 from the drive it is installed on and using full paths to the php scripts. This unfortunately
 breaks Cygwin PHP installations. Reported in https://github.com/composer/windows-setup/issues/116.
 * Fixed runphp.exe reporting PHP fatal errors by calling PHP with the -n (no ini) option, which
-lets the user to see the error messages later: https://github.com/composer/windows-setup/issues/116.
+lets the user see the error later: https://github.com/composer/windows-setup/issues/116.
 * Added cmd.exe checking to flush out misconfigrations before it is used to call the php scripts.
 * Fixed missing captions on settings error page when cmd or php did not run.
 * Added logging of command-line params.
