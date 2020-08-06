@@ -1,4 +1,8 @@
 ## Unreleased
+* Fixed potential escalation of privileges by locking down the bin folder for admin installs.
+* Added a path security warning which requires the user to confirm that it is their responsibilty
+to ensure the access control of a folder being added or replaced on the system path. This affects
+standard admin installs, but not silent or Deverloper Mode installs with admin priveleges.
 * Improved and documented ini update handling.
 * Fixed failures when the ini contains relative root paths, as in xampp portable, by running PHP
 from the drive it is installed on and using full paths to the php scripts. This unfortunately
