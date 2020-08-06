@@ -10,8 +10,10 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 * [Php Ini File](#Php-Ini-File)
 * [Troubleshooting](#Troubleshooting)
 * [Uninstalling](#Uninstalling)
-* [Install Locations](#Locations)
-* [Environment Variables](#Environment)
+* [Install Locations](#Install-Locations)
+* [Environment Variables](#Environment-Variables)
+* [Command Line Parameters](#Command-Line-Parameters)
+* [Unattended Installs](#Unattended-Installs)
 * [License](#License)
 
 <a name="About"></a>
@@ -72,40 +74,68 @@ The uninstall program is available from the Control Panel. Go to Programs and Fe
 Uninstall. This offers the option to remove user cache and configuration data.
 
 The uninstall program will not be available if you installed in _Developer Mode_. To manually uninstall you must delete
-the composer files from the location you installed to and update the [environment](#Environment).
+the composer files from the location you installed to and update the [environment](#Environment-Variables).
 
 <a name="Locations"></a>
 ## Install Locations
 
-In a default installation, the install directories are pre-determined and depend on whether you are an Administrator or not.
+In a default installation, the install directories are pre-determined and depend on whether you are have chosen to
+install for _All Users_ or the _Current User_.
 
-**Admin install for all users:**
+**All Users install:**
 
-* `C:\<Program Files>\ComposerSetup` - uninstaller
-* `C:\ProgramData\ComposerSetup\bin` - composer files
+* `C:\<Program Files>\ComposerSetup` - uninstaller.
+* `C:\ProgramData\ComposerSetup\bin` - composer files.
 
-**User install:**
+**Current User install:**
 
-* `C:\Users\<user>\AppData\Local\ComposerSetup` - uninstaller
-* `C:\Users\<user>\AppData\Local\ComposerSetup\bin` - composer files
+* `C:\Users\<user>\AppData\Local\ComposerSetup` - uninstaller.
+* `C:\Users\<user>\AppData\Local\ComposerSetup\bin` - composer files.
 
-*Note:* These locations are fixed because Composer needs a guaranteed, persistent, writable location to perform its updates.
+In a _Developer Mode_ installation you can install the composer files to a location of your choice.
 
-<a name="Environment"></a>
+<a name="Environment-Variables"></a>
 ## Environment Variables
 
-The installer will modify your _system_ path for Admin installs, or your _user_ path for User installs:
+The installer will modify your System path for _All Users_ installs, or the User path for _Current User_ installs:
 
-* the path to PHP will be added/replaced
-* the path to the composer files directory will be added/replaced
+* the path to PHP will be added if missing, or replaced if a different PHP is selected. For default _All Users_
+installs you must confirm that you accept responsibility for the access control of this location. This is important
+if other people use the computer because it could enable escalation of priveleges exploits.
+* the path to the composer files directory will be added/replaced.
 
-In addition the installer will add the following to the _user_ environment:
+In addition the installer will add the following to the environment of the current user:
 
-* the `C:\Users\<user>\AppData\Roaming\Composer\vendor\bin` directory to your path
-* an `http_proxy` value, if specified in the installer
+* the `C:\Users\<user>\AppData\Roaming\Composer\vendor\bin` directory to your path.
+* an `http_proxy` value, if a proxy is specified in the installer.
 
 The uninstaller will remove the path to the composer files directory and, if the user data was removed, the
 `Composer\vendor\bin` path. The PHP path and any `http_proxy` value will be left intact.
+
+<a name="Command-Line-Parameters"></a>
+## Command Line Parameters
+
+The installer supports _Inno Setup's_ standard [command line parameters][innocmds], although not all of them are
+relevant. Of interest are the `/VERYSILENT` or `/SILENT` options for [Unattended Installs](#Unattended-Installs)
+and the `/SAVEINF=` and `/LOADINF=` directives for creating and using a settings file. The default
+[install log file](#Troubleshooting) location can be overridden with `/LOG="filename"`.
+
+The following installer-specific parameters are available:
+
+* `/PHP="folder-or-exe"` uses PHP from the specified location, adding it to the path if necessary.
+* `/DEV="path"` installs Composer to the specified path, but without an uninstaller. This selects _Developer Mode_.
+* `/PROXY=proxy-url` is the proxy url to use and [save](#Environment-Variables), but only if no proxy environment
+variables exist. Note that the proxy url will be visible in the [log file](#Troubleshooting) when specified on the
+command line, but not when invoked through a settings file. This is important if it contains a `user:password` value.
+
+<a name="Unattended-Installs"></a>
+## Unattended Installs
+
+Unattended installs/uninstalls require the `/VERYSILENT /SUPPRESSMSGBOXES` command line options.
+
+* The confirmation needed to add/replace a PHP folder on the System [path](#Environment-Variables) is bypassed on
+unattended installs.
+* User cache and configuration data is not removed on unattended uninstalls.
 
 <a name="License"></a>
 ## License
@@ -115,4 +145,5 @@ Composer-Setup is licensed under the MIT License - see the `LICENSE` file for de
 
   [composer]:   https://getcomposer.org/
   [download]:   https://github.com/johnstevenson/composer-setup/releases/latest
-  [inno]:       http://www.jrsoftware.org/isinfo.php
+  [inno]:       https://www.jrsoftware.org/isinfo.php
+  [innocmds]:   https://jrsoftware.org/ishelp/topic_setupcmdline.htm
