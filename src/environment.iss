@@ -20,7 +20,6 @@ function GetRawPath(Hive: Integer; var Value: String): Boolean; forward;
 function SplitPath(Value: String): TArrayOfString; forward;
 function GetPathKeyForHive(Hive: Integer): String; forward;
 function GetHiveName(Hive: Integer): String; forward;
-function GetHiveFriendlyName(Hive: Integer): String; forward;
 function IsPathEnv(Name: String): Boolean; forward;
 function NormalizePath(const Value: String): String; forward;
 function GetSafePathList(Hive: Integer): TSafeList; forward;
@@ -351,17 +350,6 @@ begin
     Result := 'HKLM'
   else
     Result := 'HKCU';
-
-end;
-
-
-function GetHiveFriendlyName(Hive: Integer): String;
-begin
-
-  if Hive = HKLM then
-    Result := 'System'
-  else
-    Result := 'User';
 
 end;
 

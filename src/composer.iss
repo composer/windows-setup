@@ -277,6 +277,7 @@ type
 
 type
   TFlagsRec = record
+    UserName      : String;   {The name of the current user}
     DevInstall    : Boolean;  {Set if a dev mode install is being used}
     LastDevDir    : String;   {The last destination selected in dev mode}
     LastFolder    : String;   {The last folder used in the file browser}
@@ -483,6 +484,7 @@ function GetPathExt(Hive: Integer; var Value: String): Boolean; forward;
 {Environment change functions}
 function EnvChangeIsRegistered(Hive, Action: Integer; const Name, Value: String): Boolean; forward;
 function EnvChangeToString(Rec: TEnvChangeRec; const Spacing: String): String; forward;
+function EnvGetHiveName(Hive: Integer): String; forward;
 function EnvGetMasked(Name, Value: String): String; forward;
 function EnvListChanges(List: TEnvChangeList): String; forward;
 function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Integer; forward;
@@ -1034,7 +1036,8 @@ end;
 procedure InitCommon;
 begin
 
-  {Initialize our flags - not strictly necessary}
+  {Initialize our flags}
+  GFlags.UserName := GetUserNameString;
   GFlags.DevInstall := False;
   GFlags.LastFolder := '';
   GFlags.CmdExeOk := False;
@@ -1166,7 +1169,7 @@ end;
 procedure InitSetData();
 begin
 
-  Debug('Initializing {#AppInstallName} {#SetupVersion} for user: ' + GetUserNameString);
+  Debug('Initializing {#AppInstallName} {#SetupVersion} for user: ' + GFlags.UserName);
 
   {Set environment variable for installer script}
   SetEnvironmentVariable(Uppercase('{#AppInstallName}'), '{#SetupVersion}');
@@ -2677,11 +2680,29 @@ begin
     if NotEmpty(Rec.Masked) then
       Value := Rec.Masked;
 
-    Value := Format('%s = %s', [Rec.Name, Rec.Value]);
+    Value := Format('%s = %s', [Rec.Name, Value]);
   end;
 
-  Action := Format('%s %s %s: ', [Action, GetHiveFriendlyName(Rec.Hive), Env]);
+  Action := Format('%s %s %s: ', [Action, EnvGetHiveName(Rec.Hive), Env]);
   Result := Action + Spacing + Value;
+
+end;
+
+
+{Returns a friendly name for the registry hive}
+function EnvGetHiveName(Hive: Integer): String;
+begin
+
+  if Hive = HKLM then
+  begin
+    Result := 'System';
+    Exit;
+  end;
+
+  Result := 'User';
+
+  if IsAdminInstallMode then
+    Result := Format('%s [%s]', [Result, GFlags.UserName]);
 
 end;
 
@@ -3200,7 +3221,7 @@ begin
   Proxy.Https := '';
 
   Key := GetPathKeyForHive(Hive);
-  Name := GetHiveFriendlyName(Hive);
+  Name := EnvGetHiveName(Hive);
 
   RegQueryStringValue(Hive, Key, PROXY_KEY, Proxy.Http);
   RegQueryStringValue(Hive, Key, PROXY_KEY_HTTPS, Proxy.Https);
@@ -3338,7 +3359,7 @@ var
 
 begin
 
-  Source := Format('%s registry', [GetHiveFriendlyName(Hive)]);
+  Source := Format('%s registry', [EnvGetHiveName(Hive)]);
   AddLine(Proxy.DebugMsg, Format('%s: ProxyServer found', [Source]));
 
   Proxy.Status := PROXY_REG;
