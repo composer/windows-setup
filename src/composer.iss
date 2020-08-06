@@ -246,7 +246,7 @@ type
     Action    : Integer;
     Name      : String;
     Value     : String;
-    Sensitive : Boolean;
+    Masked    : String;
     Show      : Boolean;
     Done      : Boolean;
   end;
@@ -483,7 +483,7 @@ function GetPathExt(Hive: Integer; var Value: String): Boolean; forward;
 {Environment change functions}
 function EnvChangeIsRegistered(Hive, Action: Integer; const Name, Value: String): Boolean; forward;
 function EnvChangeToString(Rec: TEnvChangeRec; const Spacing: String): String; forward;
-function EnvIsSensitive(Name: String): Boolean; forward;
+function EnvGetMasked(Name, Value: String): String; forward;
 function EnvListChanges(List: TEnvChangeList): String; forward;
 function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Integer; forward;
 procedure EnvRegisterChange(Hive, Action: Integer; const Name, Value: String; Show: Boolean); forward;
@@ -1115,10 +1115,10 @@ begin
   end;
 
   {Log params}
-  Proxy := Result.Proxy;
+  Proxy := EnvGetMasked(PROXY_KEY, Result.Proxy);
 
-  if NotEmpty(Proxy) then
-    Proxy := '[retracted]';
+  if IsEmpty(Proxy) then
+    Proxy := Result.Proxy;
 
   Debug(Format('Params: dev=%s, php=%s, proxy=%s, loadinf=%s', [Result.Dev,
     Result.Php, Proxy, LoadInf]));
@@ -2674,10 +2674,10 @@ begin
     Env := 'environment';
 
     {Ensure we don't log or display sensitive info}
-    if Rec.Sensitive then
-      Value := Rec.Name
-    else
-      Value := Format('%s = %s', [Rec.Name, Rec.Value]);
+    if NotEmpty(Rec.Masked) then
+      Value := Rec.Masked;
+
+    Value := Format('%s = %s', [Rec.Name, Rec.Value]);
   end;
 
   Action := Format('%s %s %s: ', [Action, GetHiveFriendlyName(Rec.Hive), Env]);
@@ -2686,11 +2686,50 @@ begin
 end;
 
 
-{Returns true if the environment variable might contain sensitive info}
-function EnvIsSensitive(Name: String): Boolean;
+{Returns a masked value if an environment variable might
+contain sensitive info, otherwise an empty string}
+function EnvGetMasked(Name, Value: String): String;
+var
+  Index: Integer;
+  HostPort: String;
+  Scheme: String;
+  UserPass: String;
+
 begin
 
-  Result := SameText(Name, PROXY_KEY) or SameText(Name, PROXY_KEY_HTTPS);
+  Result := '';
+
+  if not SameText(Name, PROXY_KEY) and not SameText(Name, PROXY_KEY_HTTPS) then
+    Exit;
+
+  {Look for a user:password@ segment}
+  Index := Pos('@', Value);
+
+  if Index = 0 then
+    Exit;
+
+  HostPort := Copy(Value, Index + 1, MaxInt);
+  Value := Copy(Value, 1, Index - 1);
+
+  {Look for a :// scheme segment}
+  Index := Pos('://', Value);
+
+  if Index = 0 then
+    Scheme := ''
+  else
+  begin
+    {Add the :// to the scheme}
+    Scheme := Copy(Value, 1, Index + 2);
+    Value := Copy(Value, Index + 3, MaxInt);
+  end;
+
+  {Look for user:password}
+  if Pos(':', Value) = 0 then
+    UserPass := '***'
+  else
+    UserPass := '***:***';
+
+  Result := Format('%s%s@%s', [Scheme, UserPass, HostPort]);
 
 end;
 
@@ -2728,9 +2767,9 @@ begin
 
     {Modify the environemnt}
     if List[I].Action = ENV_ADD then
-      Result := EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Sensitive)
+      Result := EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Masked)
     else
-      Result := EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Sensitive);
+      Result := EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Masked);
 
     {Check the result}
     if Result = ENV_CHANGED then
@@ -2766,7 +2805,7 @@ begin
   GEnvChanges[Next].Action := Action;
   GEnvChanges[Next].Name := Name;
   GEnvChanges[Next].Value := Value;
-  GEnvChanges[Next].Sensitive := EnvIsSensitive(Name);
+  GEnvChanges[Next].Masked := EnvGetMasked(Name, Value);
   GEnvChanges[Next].Show := Show;
   GEnvChanges[Next].Done := False;
 
@@ -2795,9 +2834,9 @@ begin
 
     {Reverse the action}
     if List[I].Action = ENV_ADD then
-      EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Sensitive)
+      EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Masked)
     else
-      EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Sensitive);
+      EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Masked);
 
   end;
 
