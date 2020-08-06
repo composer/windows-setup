@@ -23,7 +23,7 @@ Composer-Setup downloads and installs Composer so you can use it easily from the
 * it creates or modifies `php.ini`, if required
 * it adds PHP to the path
 * it installs Composer globally - just type `composer` from any location to use it
-* it lets you use the Command Prompt, Git Bash, Msys, Msys2 and Cygwin (including cygwin php)
+* it lets you use the Command Prompt, Git Bash, Msys, Msys2 and Cygwin
 * it can be deployed unattended for silent installs/uninstalls
 
 [Download][download] and run the latest release and in the majority of cases this is all you need to do. The install process is described in more detail below.
