@@ -1,4 +1,7 @@
 ## Unreleased
+* Updated to latest installer script, including certificate data from Wed Jul 22 03:12:14 2020 GMT.
+* Improve proxy handling by making proxy discovery match Composer behaviour and by reporting proxy
+urls in the log file, masked to hide sensitive data.
 * Fixed potential escalation of privileges by locking down the bin folder for admin installs.
 * Added a path security warning which requires the user to confirm that it is their responsibilty
 to ensure the access control of a folder being added or replaced on the system path. This affects

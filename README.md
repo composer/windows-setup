@@ -21,12 +21,12 @@ The Windows installer for the [Composer][composer] PHP Dependency Manager. [**Do
 
 Composer-Setup downloads and installs Composer so you can use it easily from the command line.
 
-* it looks for PHP on your computer
-* it creates or modifies `php.ini`, if required
-* it adds PHP to the path
-* it installs Composer globally - just type `composer` from any location to use it
-* it lets you use the Command Prompt, Git Bash, Msys, Msys2 and Cygwin
-* it can be deployed unattended for silent installs/uninstalls
+* it looks for PHP on your computer.
+* it creates or modifies `php.ini` if required.
+* it adds PHP to the path.
+* it installs Composer globally - just type `composer` from any location to use it.
+* it lets you use the Command Prompt, Git Bash, Msys, Msys2 and Cygwin.
+* it can be deployed unattended for silent installs/uninstalls.
 
 [Download][download] and run the latest release and in the majority of cases this is all you need to do. The install process is described in more detail below.
 
@@ -97,7 +97,7 @@ In a _Developer Mode_ installation you can install the composer files to a locat
 <a name="Environment-Variables"></a>
 ## Environment Variables
 
-The installer will modify your System path for _All Users_ installs, or the User path for _Current User_ installs:
+The installer will modify the System path for _All Users_ installs, or the User path for _Current User_ installs:
 
 * the path to PHP will be added if missing, or replaced if a different PHP is selected. For default _All Users_
 installs you must confirm that you accept responsibility for the access control of this location. This is important
@@ -117,16 +117,14 @@ The uninstaller will remove the path to the composer files directory and, if the
 
 The installer supports _Inno Setup's_ standard [command line parameters][innocmds], although not all of them are
 relevant. Of interest are the `/VERYSILENT` or `/SILENT` options for [Unattended Installs](#Unattended-Installs)
-and the `/SAVEINF=` and `/LOADINF=` directives for creating and using a settings file. The default
-[install log file](#Troubleshooting) location can be overridden with `/LOG="filename"`.
-
+and the `/SAVEINF=` and `/LOADINF=` directives for creating and using a settings file.
 The following installer-specific parameters are available:
 
 * `/PHP="folder-or-exe"` uses PHP from the specified location, adding it to the path if necessary.
-* `/DEV="path"` installs Composer to the specified path, but without an uninstaller. This selects _Developer Mode_.
+* `/DEV="path"` selects _Developer Mode_ and installs Composer to the specified path without an uninstaller.
 * `/PROXY=proxy-url` is the proxy url to use and [save](#Environment-Variables), but only if no proxy environment
-variables exist. Note that the proxy url will be visible in the [log file](#Troubleshooting) when specified on the
-command line, but not when invoked through a settings file. This is important if it contains a `user:password` value.
+variables exist. The [log file](#Troubleshooting) automatically reports the command line parameters so any sensitive
+data in the proxy url will be visible. This is not the case when the proxy url is specified in a settings file.
 
 <a name="Unattended-Installs"></a>
 ## Unattended Installs
