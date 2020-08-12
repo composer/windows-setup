@@ -1466,8 +1466,8 @@ begin
 
   Params := ArgCmdModule(Config.PhpExe);
 
-  {Add the ini overrides to keep errors on stderr}
-  AddParam(Params, '-d error_reporting=E_ALL');
+  {Add ini overrides to report all errors except deprecations on stderr}
+  AddParam(Params, '-d error_reporting="E_ALL & ~E_DEPRECATED"');
   AddParam(Params, '-d display_errors=Off');
   AddParam(Params, '-d display_startup_errors=Off');
   AddParam(Params, '-d error_log=');
