@@ -1,7 +1,9 @@
 ## Unreleased
 
 ## v6.0.0
-2020-08-07
+2020-08-13
+* Disabled deprecation warnings in php scripts.
+* Fixed PHP 8 openssl_free_key deprecation warning: https://github.com/composer/windows-setup/issues/122.
 * Updated to latest installer script, including certificate data from Wed Jul 22 03:12:14 2020 GMT.
 * Improve proxy handling by making proxy discovery match Composer behaviour and by reporting proxy
 urls in the log file, masked to hide sensitive data.
