@@ -3556,8 +3556,14 @@ var
 
 begin
 
-  Directory := RemoveBackslashUnlessRoot(Config.Output);
-  Result := SameText(RemoveBackslashUnlessRoot(WorkingDir), Directory);
+  Debug(Format('Directory from cmd.exe: %s [%s]', [Config.Output, WorkingDir]));
+
+  {The output encoding from cmd depends on the output codepage, so non-ascii
+  characters in the user profile path may get translated. Additionally, saving
+  the output to file and reading it from Inno may cause further translations.
+  So we can only safely compare the unique ascii folder name created by Inno.}
+  Directory := ExtractFileName(Config.Output);
+  Result := SameText(ExtractFileName(WorkingDir), Directory);
 
 end;
 
