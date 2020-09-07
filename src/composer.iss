@@ -428,7 +428,7 @@ function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean; fo
 function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
 function GetExecError(Config: TConfigRec): String; forward;
-function GetExecParams(Config: TConfigRec; Script, Args, Ini: String): String; forward;
+function GetPhpParams(Config: TConfigRec; Script, Args, Ini: String): String; forward;
 function GetRegHive: Integer; forward;
 function GetRunPhpError(ExitCode: Integer): String; forward;
 function GetStatusText(Status: Integer): String; forward;
@@ -516,7 +516,7 @@ function SetProxyValueFromReg(var Value: String; Protocol: String): Boolean; for
 
 {Check cmd.exe functions}
 function CheckCmdExe: Boolean; forward;
-function CheckCmdExeDirectory(WorkingDir: string; var Config: TConfigRec): Boolean; forward;
+function CheckCmdExeDirectory(WorkingDir: String; var Config: TConfigRec): Boolean; forward;
 function CheckCmdExeExists: Boolean; forward;
 function CheckCmdExeOutput(var Config: TConfigRec): Boolean; forward;
 function GetCmdExeError(Config: TConfigRec): String; forward;
@@ -1426,7 +1426,7 @@ begin
 
   ConfigSetExec(Config);
 
-  Params := GetExecParams(Config, Script, Args, Ini);
+  Params := GetPhpParams(Config, Script, Args, Ini);
   WorkingDir := ExtractFileDir(Config.PhpExe);
   Result := ExecCmd(Params, WorkingDir, Config.ExitCode);
 
@@ -1490,7 +1490,8 @@ begin
 end;
 
 
-function GetExecParams(Config: TConfigRec; Script, Args, Ini: String): String;
+{Wrapper function to set the appropriate params when calling php scripts}
+function GetPhpParams(Config: TConfigRec; Script, Args, Ini: String): String;
 begin
 
   Result := ArgCmdModule(Config.PhpExe);
@@ -1502,6 +1503,7 @@ begin
   AddParam(Result, '-d error_log=');
   AddParam(Result, '-d log_errors=On');
 
+  {Add the temp ini file to use if checking ini creation/changes}
   if NotEmpty(Ini) then
     AddParam(Result, Format('-c %s', [ArgCmd(Ini)]));
 
@@ -3571,7 +3573,7 @@ begin
 end;
 
 
-function CheckCmdExeDirectory(WorkingDir: string; var Config: TConfigRec): Boolean;
+function CheckCmdExeDirectory(WorkingDir: String; var Config: TConfigRec): Boolean;
 var
   Directory: String;
 
@@ -3589,6 +3591,7 @@ begin
 end;
 
 
+{Checks that the system native cmd.exe exists}
 function CheckCmdExeExists: Boolean;
 var
   OldState: Boolean;
