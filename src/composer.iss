@@ -423,6 +423,7 @@ procedure Debug(const Message: String); forward;
 procedure DebugExecBegin(const Exe, Params, WorkingDir: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 procedure DebugPageName(Id: Integer); forward;
+function ExecCmd(Params, WorkingDir: String; var ExitCode: Integer): Boolean; forward;
 function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean; forward;
 function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
@@ -516,6 +517,7 @@ function SetProxyValueFromReg(var Value: String; Protocol: String): Boolean; for
 {Check cmd.exe functions}
 function CheckCmdExe: Boolean; forward;
 function CheckCmdExeDirectory(WorkingDir: string; var Config: TConfigRec): Boolean; forward;
+function CheckCmdExeExists: Boolean; forward;
 function CheckCmdExeOutput(var Config: TConfigRec): Boolean; forward;
 function GetCmdExeError(Config: TConfigRec): String; forward;
 function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean; forward;
@@ -1380,6 +1382,41 @@ begin
 end;
 
 
+{Wrapper function to call the native system cmd.exe and direct its output
+to temp files, which is the only way to capture stdout and stderr in Inno}
+function ExecCmd(Params, WorkingDir: String; var ExitCode: Integer): Boolean;
+var
+  OutputArgs: String;
+  CommandLine: String;
+  OldState: Boolean;
+
+begin
+
+  DeleteFile(GTmpFile.StdOut);
+  DeleteFile(GTmpFile.StdErr);
+
+  {Always use the full path for the output streams, in case the directory is changed}
+  OutputArgs := Format('> %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]);
+  AddParam(Params, OutputArgs);
+
+  CommandLine := Format('/s /c "%s"', [Params]);
+  DebugExecBegin(GCmdExe, CommandLine, WorkingDir);
+
+  if IsWin64 then
+    OldState := EnableFsRedirection(False);
+
+  try
+    Result := Exec(GCmdExe, CommandLine, WorkingDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  finally
+    if IsWin64 then
+      EnableFsRedirection(OldState);
+  end;
+
+  DebugExecEnd(Result, ExitCode);
+
+end;
+
+
 function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean;
 var
   Params: String;
@@ -1387,16 +1424,11 @@ var
 
 begin
 
-  DeleteFile(GTmpFile.StdOut);
-  DeleteFile(GTmpFile.StdErr);
   ConfigSetExec(Config);
 
   Params := GetExecParams(Config, Script, Args, Ini);
   WorkingDir := ExtractFileDir(Config.PhpExe);
-  DebugExecBegin(GCmdExe, Params, WorkingDir);
-
-  Result := Exec(GCmdExe, Params, WorkingDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
-  DebugExecEnd(Result, Config.ExitCode);
+  Result := ExecCmd(Params, WorkingDir, Config.ExitCode);
 
   if not Result then
   begin
@@ -1459,32 +1491,24 @@ end;
 
 
 function GetExecParams(Config: TConfigRec; Script, Args, Ini: String): String;
-var
-  Params: String;
-
 begin
 
-  Params := ArgCmdModule(Config.PhpExe);
+  Result := ArgCmdModule(Config.PhpExe);
 
   {Add ini overrides to report all errors except deprecations on stderr}
-  AddParam(Params, '-d error_reporting="E_ALL & ~E_DEPRECATED"');
-  AddParam(Params, '-d display_errors=Off');
-  AddParam(Params, '-d display_startup_errors=Off');
-  AddParam(Params, '-d error_log=');
-  AddParam(Params, '-d log_errors=On');
+  AddParam(Result, '-d error_reporting="E_ALL & ~E_DEPRECATED"');
+  AddParam(Result, '-d display_errors=Off');
+  AddParam(Result, '-d display_startup_errors=Off');
+  AddParam(Result, '-d error_log=');
+  AddParam(Result, '-d log_errors=On');
 
   if NotEmpty(Ini) then
-    AddParam(Params, Format('-c %s', [ArgCmd(Ini)]));
+    AddParam(Result, Format('-c %s', [ArgCmd(Ini)]));
 
-  AddParam(Params, ArgCmd(Script));
+  AddParam(Result, ArgCmd(Script));
 
   if NotEmpty(Args) then
-    AddParam(Params, Args);
-
-  {Always use the full path for the output streams, in case the directory is changed}
-  AddParam(Params, Format('> %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]));
-
-  Result := Format('/c "%s"', [Params]);
+    AddParam(Result, Args);
 
 end;
 
@@ -3490,6 +3514,7 @@ function CheckCmdExe: Boolean;
 var
   Success: Boolean;
   Params: String;
+  WorkingDir: String;
 
 begin
 
@@ -3499,20 +3524,16 @@ begin
   Debug('Checking cmd.exe: ' + GCmdExe);
 
   {Check if cmd.exe is missing - it has happened}
-  if not FileExists(GCmdExe) then
+  if not CheckCmdExeExists() then
   begin
     SetErrorEx(ERR_CMD_MISSING, GConfigRec, ERR_CHECK_CMD);
     Exit;
   end;
 
-  DeleteFile(GTmpFile.StdOut);
-  DeleteFile(GTmpFile.StdErr);
-
-  Params := Format('/c cd > %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]);
-  DebugExecBegin(GCmdExe, Params, GTmpDir);
-
-  Success := Exec(GCmdExe, Params, GTmpDir, SW_HIDE, ewWaitUntilTerminated, GConfigRec.ExitCode);
-  DebugExecEnd(Success, GConfigRec.ExitCode);
+  {Get cmd to print out the current working directory}
+  Params := 'cd';
+  WorkingDir := GTmpDir;
+  Success := ExecCmd(Params, WorkingDir, GConfigRec.ExitCode);
 
   if not Success then
   begin
@@ -3564,6 +3585,26 @@ begin
   So we can only safely compare the unique ascii folder name created by Inno.}
   Directory := ExtractFileName(Config.Output);
   Result := SameText(ExtractFileName(WorkingDir), Directory);
+
+end;
+
+
+function CheckCmdExeExists: Boolean;
+var
+  OldState: Boolean;
+
+begin
+
+  if IsWin64 then
+    OldState := EnableFsRedirection(False);
+
+  try
+    {GCmdExe is the expanded 'cmd' constant}
+    Result := FileExists(GCmdExe);
+  finally
+    if IsWin64 then
+      EnableFsRedirection(OldState);
+  end;
 
 end;
 
