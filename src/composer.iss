@@ -2553,7 +2553,7 @@ begin
 
   {If we have got here, then we have an error}
   AddLine(Error, 'Composer is already installed in the following directory:');
-  AddLine(Error, Rec.Data.Path);
+  AddLine(Error, Format('%s [%s]', [Rec.Data.Path, ExtractFileName(Rec.Data.Cmd)]));
   AddPara(Error, 'You must remove it first, if you want to continue this installation.');
 
   Result := False;

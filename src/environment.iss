@@ -509,6 +509,7 @@ var
   I: Integer;
   Path: String;
   Filename: String;
+  OldState: Boolean;
 
 begin
 
@@ -521,19 +522,30 @@ begin
 
   Index := -1;
 
-  for I := Start to GetArrayLength(SafeList) - 1 do
-  begin
+  {Ensure we search in the native system directories}
+  if IsWin64 then
+    OldState := EnableFsRedirection(False);
 
-    Path := SafeList[I];
-    Filename := AddBackslash(Path) + Cmd;
+  try
 
-    if FileExists(Filename) then
+    for I := Start to GetArrayLength(SafeList) - 1 do
     begin
-      Result := Filename;
-      Index := I;
-      Exit;
+
+      Path := SafeList[I];
+      Filename := AddBackslash(Path) + Cmd;
+
+      if FileExists(Filename) then
+      begin
+        Result := Filename;
+        Index := I;
+        Exit;
+      end;
+
     end;
 
+  finally
+    if IsWin64 then
+      EnableFsRedirection(OldState);
   end;
 
 end;
