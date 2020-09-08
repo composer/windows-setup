@@ -1,11 +1,14 @@
 ## Unreleased
+* Fixed path searching to use native System32 directories on x64.
+* Fixed cmd.exe invocations to use the 64-bit version on x64.
+* Fixed codepage issues with cmd.exe output: https://github.com/composer/windows-setup/issues/123.
 
 ## v6.0.0
 2020-08-13
 * Disabled deprecation warnings in php scripts.
 * Fixed PHP 8 openssl_free_key deprecation warning: https://github.com/composer/windows-setup/issues/122.
 * Updated to latest installer script, including certificate data from Wed Jul 22 03:12:14 2020 GMT.
-* Improve proxy handling by making proxy discovery match Composer behaviour and by reporting proxy
+* Improved proxy handling by making proxy discovery match Composer behaviour and by reporting proxy
 urls in the log file, masked to hide sensitive data.
 * Fixed potential escalation of privileges by locking down the bin folder for admin installs.
 * Added a path security warning which requires the user to confirm that it is their responsibilty
