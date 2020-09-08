@@ -1,4 +1,7 @@
 ## Unreleased
+
+## v6.1.0
+2020-09-08
 * Fixed path searching to use native System32 directories on x64.
 * Fixed cmd.exe invocations to use the 64-bit version on x64.
 * Fixed codepage issues with cmd.exe output: https://github.com/composer/windows-setup/issues/123.
