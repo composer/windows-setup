@@ -27,7 +27,8 @@ Remember that any changes you make here are only temporary to this file.
 ## Code Signing
 The following instructions relate to [Certum CA](https://en.sklep.certum.pl), who provide cheap
 Open Source Code Signing certificates. Their SHA2 certificate lets you sign code with both SHA256
-and SHA1 (for older OSs that do not understand SHA256).
+and SHA1 (for older OSs that do not understand SHA256). Note that their certificate renewal process
+does not work for the Open Source Code Signing product, so you have to buy a new certificate instead.
 
 From 2017 Certum can only issue certificates using a smart card reader. If you purchase their
 card-reader package, you can install the software from the USB stick, which  also contains helpful
@@ -41,13 +42,22 @@ example). You may also have to set the appropriate level of security from the Ja
 item to allow you to run it.
 
 Insert the card-reader, go to the _Activate Certificates_ page in your account and follow the
-instructions to generate and store a key-pair on the card reader. You then need to verify your
-email and provide identification documentation.
+instructions. It can all be a bit clunky but the general idea is that you:
 
-Once the certificate has been activated, go to the _Manage Certificates_ page and select
-`Save binary` to download the `.cer` file (note that this works in any browser). Open the
-`proCertumCardManager`, read the card and choose your profile - probably the Common profile. Then
-click _Import certificate_ to add this file to the reader.
+* Select to store a key-pair on the card reader.
+* Download a `CertumCryptoAgent_**.jnlp` file.
+* Run the file (you will need to enter your PIN code).
+
+You should eventually get to a page that lets you add various certificate details. Put your name in
+the Organization field and fill in the Country, Locality (use your town rather than your address)
+and State fields. You will then be sent a verification email and another requesting identification
+documentation.
+
+Once the certificate has been fully activated (you will be notified by email when the certificate
+has been issued), go to the _Manage Certificates_ page and select `Save binary` to download the
+`.cer` file (note that this works in any browser). Open the `proCertumCardManager`, read the card
+and choose your profile - probably the Common profile. Then click _Import certificate_ to add this
+file to the reader.
 
 To register the certificate in the Windows Certificate Store, click _Show certificate details_ then
 _Install Certificate_. Choose Current User for the store location and let the system automatically
