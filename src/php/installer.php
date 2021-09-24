@@ -143,15 +143,44 @@ function setUseAnsi($argv)
     } elseif (in_array('--ansi', $argv)) {
         define('USE_ANSI', true);
     } else {
-        // On Windows, default to no ANSI, except in ANSICON and ConEmu.
-        // Everywhere else, default to ANSI if stdout is a terminal.
-        define(
-            'USE_ANSI',
-            (DIRECTORY_SEPARATOR == '\\')
-                ? (false !== getenv('ANSICON') || 'ON' === getenv('ConEmuANSI'))
-                : (function_exists('posix_isatty') && posix_isatty(1))
-        );
+        define('USE_ANSI', outputSupportsColor());
     }
+}
+
+/**
+ * Returns whether color output is supported
+ *
+ * @return bool
+ */
+function outputSupportsColor()
+{
+    if (false !== getenv('NO_COLOR') || !defined('STDOUT')) {
+        return false;
+    }
+
+    if ('Hyper' === getenv('TERM_PROGRAM')) {
+        return true;
+    }
+
+    if (defined('PHP_WINDOWS_VERSION_BUILD')) {
+        return (function_exists('sapi_windows_vt100_support')
+            && sapi_windows_vt100_support(STDOUT))
+            || false !== getenv('ANSICON')
+            || 'ON' === getenv('ConEmuANSI')
+            || 'xterm' === getenv('TERM');
+    }
+
+    if (function_exists('stream_isatty')) {
+        return stream_isatty(STDOUT);
+    }
+
+    if (function_exists('posix_isatty')) {
+        return posix_isatty(STDOUT);
+    }
+
+    $stat = fstat(STDOUT);
+    // Check if formatted mode is S_IFCHR
+    return $stat ? 0020000 === ($stat['mode'] & 0170000) : false;
 }
 
 /**
@@ -1646,13 +1675,12 @@ class HttpClient {
 ##
 ## Bundle of CA Root Certificates for Let's Encrypt
 ##
-## See https://letsencrypt.org/certificates/
+## See https://letsencrypt.org/certificates/#root-certificates
 ##
 ## ISRG Root X1 (RSA 4096) expires Jun 04 11:04:38 2035 GMT
 ## ISRG Root X2 (ECDSA P-384) expires Sep 17 16:00:00 2040 GMT
-## DST Root CA X3 (RSA 2048) expires Sep 30 14:01:15 2021 GMT
 ##
-## Notes: DST Root CA X3 should be removed after expiry data.
+## Both these are self-signed CA root certificates
 ##
 
 ISRG Root X1
@@ -1704,29 +1732,6 @@ AQH/BAUwAwEB/zAdBgNVHQ4EFgQUfEKWrt5LSDv6kviejM9ti6lyN5UwCgYIKoZI
 zj0EAwMDaAAwZQIwe3lORlCEwkSHRhtFcP9Ymd70/aTSVaYgLXTWNLxBo1BfASdW
 tL4ndQavEi51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1
 /q4AaOeMSQ+2b1tbFfLn
------END CERTIFICATE-----
-
-DST Root CA X3
-==============
------BEGIN CERTIFICATE-----
-MIIDSjCCAjKgAwIBAgIQRK+wgNajJ7qJMDmGLvhAazANBgkqhkiG9w0BAQUFADA/
-MSQwIgYDVQQKExtEaWdpdGFsIFNpZ25hdHVyZSBUcnVzdCBDby4xFzAVBgNVBAMT
-DkRTVCBSb290IENBIFgzMB4XDTAwMDkzMDIxMTIxOVoXDTIxMDkzMDE0MDExNVow
-PzEkMCIGA1UEChMbRGlnaXRhbCBTaWduYXR1cmUgVHJ1c3QgQ28uMRcwFQYDVQQD
-Ew5EU1QgUm9vdCBDQSBYMzCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB
-AN+v6ZdQCINXtMxiZfaQguzH0yxrMMpb7NnDfcdAwRgUi+DoM3ZJKuM/IUmTrE4O
-rz5Iy2Xu/NMhD2XSKtkyj4zl93ewEnu1lcCJo6m67XMuegwGMoOifooUMM0RoOEq
-OLl5CjH9UL2AZd+3UWODyOKIYepLYYHsUmu5ouJLGiifSKOeDNoJjj4XLh7dIN9b
-xiqKqy69cK3FCxolkHRyxXtqqzTWMIn/5WgTe1QLyNau7Fqckh49ZLOMxt+/yUFw
-7BZy1SbsOFU5Q9D8/RhcQPGX69Wam40dutolucbY38EVAjqr2m7xPi71XAicPNaD
-aeQQmxkqtilX4+U9m5/wAl0CAwEAAaNCMEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNV
-HQ8BAf8EBAMCAQYwHQYDVR0OBBYEFMSnsaR7LHH62+FLkHX/xBVghYkQMA0GCSqG
-SIb3DQEBBQUAA4IBAQCjGiybFwBcqR7uKGY3Or+Dxz9LwwmglSBd49lZRNI+DT69
-ikugdB/OEIKcdBodfpga3csTS7MgROSR6cz8faXbauX+5v3gTt23ADq1cEmv8uXr
-AvHRAosZy5Q6XkjEGB5YGV8eAlrwDPGxrancWYaLbumR9YbK+rlmM6pZW87ipxZz
-R8srzJmwN0jP41ZL9c8PDHIyh8bwRLtTcm1D9SZImlJnt1ir/md2cXjbDaJWFBM5
-JDGFoqgCWjBH4d1QB7wCCZAA62RjYJsWvIjJEubSfZGL+T0yjWW06XyxV3bqxbYo
-Ob8VZRzI9neWagqNdwvYkQsEjgfbKbYK7p2CNTUQ
 -----END CERTIFICATE-----
 CACERT;
     }
