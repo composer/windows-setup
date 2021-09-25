@@ -44,7 +44,6 @@ SolidCompression=yes
 
 ; runtime directives
 DisableWelcomePage=yes
-MinVersion=6.0
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 UsePreviousPrivileges=no
