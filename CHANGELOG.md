@@ -1,4 +1,7 @@
 ## Unreleased
+* Removed MinVersion to use the default. Windows Vista is no longer supported. This is required to
+make the installer more secure on supported versions (Windows 7 updwards).
+* Removed expiring DST Root CA X3 certificate so that OpenSSL and Curl will work using ISRG Root X1.
 
 ## v6.1.0
 2020-09-08
