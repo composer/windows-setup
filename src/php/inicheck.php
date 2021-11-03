@@ -8,7 +8,7 @@
  * Returns a single line of output that contains info required by the setup. The
  * line must start with PHP_CHECK_ID (which is the same value as the define in
  * the main install script), followed by pipe (|) separated values and ending
- * with an eol.
+ * with an eol. Note that the last value MUST not be an empty string.
  *
  * The values required are 0 or 1, signifying whether any changes have been
  * made, and an informational status message, which may contain an error.

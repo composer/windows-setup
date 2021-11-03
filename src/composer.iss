@@ -142,10 +142,10 @@ FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a comman
 
 type
   TIniInfoRec = record
-    Secure      : Boolean;        {If openssl is enabled}
     Cafile      : String;         {The openssl.cafile ini value, if openssl enabled}
     Capath      : String;         {The openssl.capath ini value, if openssl enabled}
-    Compat      : Boolean;        {If openssl and allow_url_fopen are enabled}
+    Missing     : String;         {Missing settings if not compatible}
+    Compat      : Boolean;        {If required settings and extensions are enabled}
   end;
 
 type
@@ -156,7 +156,7 @@ type
     PhpIni      : String;         {The php.ini file in use}
     PhpOtherOS  : String;         {The PHP_OS if not Windows}
     PhpDetails  : Boolean;        {If the details line is valid}
-    IniInfo     : TIniInfoRec;    {The openssl values from the ini file}
+    IniInfo     : TIniInfoRec;    {The openssl values and missing entries from the ini file}
     ExitCode    : Integer;        {The exit code of the last call}
     StatusCode  : Integer;        {The status/error code from the last call}
     StdOut      : TArrayOfString; {Lines read from stdout file}
@@ -3858,27 +3858,27 @@ begin
   end;
 
   {Output ok}
-  Debug(Format('Config: version=%s, id=%d, ini=%s, other=%s, tls=%d, cafile=%s, capath=%s, compat=%d', [
+  Debug(Format('Config: version=%s, id=%d, ini=%s, other=%s, cafile=%s, capath=%s, missing=%s, compat=%d', [
     Config.PhpVersion,
     Config.PhpId,
     Config.PhpIni,
     Config.PhpOtherOS,
-    Config.IniInfo.Secure,
     Config.IniInfo.Cafile,
     Config.IniInfo.Capath,
+    Config.IniInfo.Missing,
     Config.IniInfo.Compat]));
 
   {Check for non-Windows PHP}
   if NotEmpty(Config.PhpOtherOS) then
   begin
-    SetErrorEx(ERR_PHP_OS, GConfigRec, ERR_CHECK_PHP);
+    SetErrorEx(ERR_PHP_OS, Config, ERR_CHECK_PHP);
     Exit;
   end;
 
   {Check for old php version}
   if not CheckPhpVersion(Config.PhpId, False) then
   begin
-    SetErrorEx(ERR_PHP_VERSION, GConfigRec, ERR_CHECK_PHP);
+    SetErrorEx(ERR_PHP_VERSION, Config, ERR_CHECK_PHP);
     Exit;
   end;
 
@@ -4045,12 +4045,9 @@ begin
 
     Config.PhpIni := List.Strings[2];
     Config.PhpOtherOS := List.Strings[3];
-
-    if not BoolFromString(List.Strings[4], Config.IniInfo.Secure) then
-      Result := False;
-
-    Config.IniInfo.Cafile := List.Strings[5];
-    Config.IniInfo.Capath := List.Strings[6];
+    Config.IniInfo.Cafile := List.Strings[4];
+    Config.IniInfo.Capath := List.Strings[5];
+    Config.IniInfo.Missing := List.Strings[6];
 
     if not BoolFromString(List.Strings[7], Config.IniInfo.Compat) then
       Result := False;
