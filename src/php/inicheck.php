@@ -80,7 +80,7 @@ class IniChecker
         if ($new) {
             $this->status = 'New ini created: '.$changes;
         } else {
-            $this->status = 'Changes required: '.$changes;
+            $this->status = 'Changes made: '.$changes;
         }
 
         return true;

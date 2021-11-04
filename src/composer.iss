@@ -255,15 +255,11 @@ type
 
 type
   TModIniRec = record
-    Active          : Boolean;      {Set if the ini needs modifying}
-    InUse           : Boolean;      {Set if the user has chosen to use the modified ini}
+    InUse           : Boolean;      {Set if the ini has been created/modified}
     New             : Boolean;      {Set if this is a new ini created from php.ini-production}
-    BackupFile      : String;       {The tmp location to backup an existing ini}
+    UserBackup      : String;       {The user location to backup an existing ini}
     IniFile         : String;       {The new or modified ini}
-    OriginalIniFile : String;       {The existing ini}
     IniInfo         : TIniInfoRec;  {The new ini info}
-    OriginalIniInfo : TIniInfoRec;  {The existing ini info}
-    UpdateError     : String;       {Storage for error messages}
   end;
 
 type
@@ -292,7 +288,6 @@ type
     Settings          : TWizardPage;
     ProgressSettings  : TOutputProgressWizardPage;
     ErrorSettings     : TWizardPage;
-    Ini               : TWizardPage;
     Proxy             : TWizardPage;
     ProgressInstaller : TOutputProgressWizardPage;
     ErrorInstaller    : TWizardPage;
@@ -316,13 +311,6 @@ type
     Confirm   : TNewCheckbox;
     Warning   : TNewStaticText;
 end;
-
-type
-  TIniPageRec = record
-    Text      : TNewStaticText;
-    Checkbox  : TNewCheckbox;
-    Info      : TNewStaticText;
-  end;
 
 type
   TProxyPageRec = record
@@ -350,7 +338,6 @@ var
   GFlags: TFlagsRec;               {contains global flags that won't go anywhere else}
   GPages: TCustomPagesRec;         {group of custom pages}
   GOptionsPage: TOptionsPageRec;   {contains Options page controls}
-  GIniPage: TIniPageRec;           {contains Ini page controls}
   GSettingsPage: TSettingsPageRec; {contains Settings page controls}
   GProxyPage: TProxyPageRec;       {contains Proxy page controls}
 
@@ -550,12 +537,10 @@ function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean; forwa
 function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
 function IniCheckTmp(Existing: Boolean): Boolean; forward;
 procedure IniDebug(Message: String); forward;
-function IniFileRestore: Boolean; forward;
-function IniFileSave: Boolean; forward;
-function IniFileUpdate(Save: Boolean): Boolean; forward;
+procedure IniDebugFileAction(Success, Save: Boolean; var Rec: TModIniRec); forward;
+procedure IniFileRestore; forward;
+function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
 function IniGetDetails(Details: String; var Modify: Boolean; var Status: String): Boolean; forward;
-function IniHasMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
-procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec); forward;
 
 {Composer installer functions}
 function ComposerPharMissing: Boolean; forward;
@@ -579,7 +564,6 @@ function EnvironmentPageCreate(Id: Integer; Caption, Description: String): TWiza
 procedure ErrorInstallerUpdate; forward;
 procedure ErrorSettingsUpdate; forward;
 function GetBase(Control: TWinControl): Integer; forward;
-function IniPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure IniPageUpdate; forward;
 function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
 procedure OptionsCheckboxClick(Sender: TObject); forward;
@@ -684,10 +668,7 @@ begin
   GPages.ErrorSettings := MessagePageCreate(GPages.Settings.ID,
     '', '', 'Please review and fix the issues listed below, then click Back and try again');
 
-  GPages.Ini := IniPageCreate(GPages.ErrorSettings.ID,
-    'PHP Configuration Error', '');
-
-  GPages.Proxy := ProxyPageCreate(GPages.Ini.ID,
+  GPages.Proxy := ProxyPageCreate(GPages.ErrorSettings.ID,
     'Proxy Settings', 'Choose if you need to use a proxy.');
 
   GPages.ProgressInstaller := CreateOutputProgressPage('Downloading Composer', 'Please wait');
@@ -726,13 +707,6 @@ begin
     ShowErrorIfSilent();
 
   end
-  else if CurPageID = GPages.Ini.ID then
-  begin
-
-    IniPageUpdate();
-    WizardForm.ActiveControl := nil;
-
-  end
   else if CurPageID = GPages.Proxy.ID then
   begin
 
@@ -769,8 +743,6 @@ begin
     Result := not GFlags.DevInstall
   else if PageID = GPages.ErrorSettings.ID then
     Result := not GFlags.SettingsError
-  else if PageID = GPages.Ini.ID then
-    Result := not GModIniRec.Active
   else if PageID = GPages.ErrorInstaller.ID then
     Result := GConfigRec.StatusCode = ERR_SUCCESS
   else if PageID = GPages.Environment.ID then
@@ -784,14 +756,7 @@ begin
 
   Result := True;
 
-  if CurPageID = GPages.Ini.ID then
-  begin
-
-    {Delete/replace the ini file}
-    Result := IniFileUpdate(False);
-
-  end
-  else if CurPageID = GPages.Proxy.ID then
+  if CurPageID = GPages.Proxy.ID then
   begin
 
     {Reset UserIgnore value}
@@ -824,13 +789,6 @@ begin
       {Show the progress page which calls the check function}
       ProgressPageSettings(GSettingsPage.Combo.Text);
     end;
-
-  end
-  else if CurPageID = GPages.Ini.ID then
-  begin
-
-    {Create/delete/replace the ini file}
-    Result := IniFileUpdate(GIniPage.Checkbox.Checked);
 
   end
   else if CurPageID = GPages.Proxy.ID then
@@ -1287,7 +1245,6 @@ end;
 function ConfigInit(Exe: String): TConfigRec;
 var
   IniInfo: TIniInfoRec;
-  ModIni: TModIniRec;
 
 begin
 
@@ -1300,7 +1257,6 @@ begin
   Result.IniInfo := IniInfo;
 
   ConfigSetExec(Result);
-  GModIniRec := ModIni;
 
 end;
 
@@ -1366,7 +1322,6 @@ begin
     GPages.Settings.ID         : Name := 'Settings Check';
     GPages.ProgressSettings.ID : Name := 'Running Settings Check';
     GPages.ErrorSettings.ID    : Name := 'Settings Errors';
-    GPages.Ini.ID              : Name := 'PHP Configuration Error';
     GPages.Proxy.ID            : Name := 'Proxy Settings';
     GPages.ProgressInstaller.ID: Name := 'Running Composer Install';
     GPages.ErrorInstaller.ID   : Name := 'Composer Install Errors';
@@ -3744,9 +3699,7 @@ begin
 
   Result := False;
 
-  {Important to restore/delete any modified/created ini file.
-  The result is not checked because the ini is only saved if
-  everything worked}
+  {Important to restore/delete any modified/created ini file}
   IniFileRestore();
 
   GConfigRec := ConfigInit(Filename);
@@ -4362,11 +4315,11 @@ begin
   end;
 
   {See if php.ini has been modified or created}
-  if not IniHasMod(ModIni, Config) then
+  if not IniFileUpdate(ModIni, Config) then
     Exit;
 
   Result := FileCopy(GTmpFile.Ini, ModIni.IniFile, False);
-  IniSetMessage(Result, True, ModIni);
+  IniDebugFileAction(Result, True, ModIni);
 
   if Result then
   begin
@@ -4406,7 +4359,7 @@ begin
 end;
 
 
-{Returns true if the ini needs creating or modifying, the tmp files have been
+{Returns true if the ini has been created or modified, the tmp files have been
 written and the new ini works okay}
 function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
 var
@@ -4479,85 +4432,171 @@ begin
 end;
 
 
+procedure IniDebugFileAction(Success, Save: Boolean; var Rec: TModIniRec);
+var
+  Msg: String;
+
+begin
+
+  if Success then
+  begin
+
+    if Save then
+    begin
+      if Rec.New then
+        Msg := 'Created new'
+      else
+        Msg := 'Updated';
+    end
+    else
+    begin
+      if Rec.New then
+        Msg := 'Deleted new'
+      else
+        Msg := 'Restored original';
+    end;
+
+  end
+  else
+  begin
+
+    if Save then
+    begin
+      if Rec.New then
+        Msg := 'Failed to create new'
+      else
+        Msg := 'Failed to update';
+    end
+    else
+    begin
+      if Rec.New then
+        Msg := 'Failed to delete new'
+      else
+        Msg := 'Failed to restore original';
+    end;
+
+  end;
+
+  IniDebug(Format('%s ini: %s', [Msg, Rec.IniFile]));
+
+end;
+
+
 {Restores the original state by either deleting the new ini from the
-php directory or restoring the backup}
-function IniFileRestore: Boolean;
+php directory or restoring the backup, then resets the global state
+Any failure }
+procedure IniFileRestore;
 var
   IniFile: String;
+  Msg: String;
+  Success: Boolean;
+  EmptyRec: TModIniRec;
 
 begin
 
   IniFile := GModIniRec.IniFile;
 
-  {Return true if the new/modified ini is not in use}
+  {Return if a or new/modified ini is not being used}
   if not GModIniRec.InUse then
   begin
-    Result := True;
+    {Reset record anyway as a safeguard}
+    GModIniRec := EmptyRec;
     Exit;
   end;
 
   if GModIniRec.New then
   begin
     DelayDeleteFile(IniFile, 2);
-    Result := not FileExists(IniFile);
+    Success := not FileExists(IniFile);
   end
   else
-    Result := FileCopy(GTmpFile.IniBackup, IniFile, False);
+    Success := FileCopy(GTmpFile.IniBackup, IniFile, False);
 
-  IniSetMessage(Result, False, GModIniRec);
+  IniDebugFileAction(Success, False, GModIniRec);
 
-  if Result then
+  if Success and not GModIniRec.New then
   begin
-    {Update the global config with the original ini data}
-    GConfigRec.PhpIni := GModIniRec.OriginalIniFile;
-    GConfigRec.IniInfo := GModIniRec.OriginalIniInfo;
-    GModIniRec.InUse := False;
+    DelayDeleteFile(GModIniRec.UserBackup, 2);
+
+    if not FileExists(GModIniRec.UserBackup) then
+      Msg := 'Deleted'
+    else
+      Msg := 'Failed to delete';
+
+    IniDebug(Format('%s backup ini: %s', [Msg, GModIniRec.UserBackup]));
   end;
+
+  {Reset global states}
+  GModIniRec := EmptyRec;
+  DeleteFile(GTmpFile.Ini);
+  DeleteFile(GTmpFile.IniBackup);
 
 end;
 
 
-{Copies the new/modified ini to the php directory}
-function IniFileSave: Boolean;
+{Returns true if a new ini was created or an existing one was modified.
+The new/modified ini is saved in the tmp directory. The original ini is
+backed up in the tmp directory and also in the user's php directory}
+function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
 var
-  IniFile: String;
+  Args: String;
+  Msg: String;
 
 begin
 
-  IniFile := GModIniRec.IniFile;
+  Result := False;
+  ModIni.New := IsEmpty(Config.PhpIni);
 
-  {Return true if the new/modified ini is in use}
-  if GModIniRec.InUse then
+  if ModIni.New then
   begin
-    Result := True;
-    Exit;
+    ModIni.IniFile := ExtractFilePath(Config.PhpExe) + 'php.ini';
+    IniDebug(Format('Checking if ini can be created: %s', [ModIni.IniFile]));
+  end
+  else
+  begin
+    ModIni.IniFile := Config.PhpIni;
+    ModIni.UserBackup := Config.PhpIni + '~orig';
+    IniDebug(Format('Checking if ini can be updated: %s', [Config.PhpIni]));
   end;
 
-  Result := FileCopy(GTmpFile.Ini, IniFile, False);
-  IniSetMessage(Result, True, GModIniRec);
+  {Get a new config rec}
+  Config := ConfigInit(Config.PhpExe);
 
+  {The script needs the tmp ini and tmp backup ini locations}
+  Args := ArgCmd(GTmpFile.Ini);
+  AddStr(Args, #32 + ArgCmd(GTmpFile.IniBackup));
+
+  {ExecPhp should only fail calling cmd.exe}
+  if not ExecPhp(GTmpFile.PhpIniCheck, Args, '', Config) then
+    Exit;
+
+  {See if we can make changes}
+  if not IniCheckResult(ModIni, Config) then
+    Exit;
+
+  if ModIni.New then
+    Result := True
+  else
+  begin
+
+    {Make a backup for the user in the php directory, in case something goes wrong}
+    Result := FileCopy(ModIni.IniFile, ModIni.UserBackup, False);
+
+    if not Result then
+      IniDebug(Format('Failed to backup existing ini: %s', [ModIni.IniFile]));
+
+  end;
+
+  {Debug successful result}
   if Result then
   begin
-    {Update the global config with the new ini data}
-    GConfigRec.PhpIni := IniFile;
-    GConfigRec.IniInfo := GModIniRec.IniInfo;
-    GModIniRec.InUse := True;
+    Msg := Format('Compatible ini available at %s', [GTmpFile.Ini]);
+
+    if not ModIni.New then
+      AddStr(Msg, Format(', user backup created at %s', [ModIni.UserBackup]));
+
+    IniDebug(Msg);
   end;
-
-end;
-
-
-{A wrapper around saving and restoring the ini}
-function IniFileUpdate(Save: Boolean): Boolean;
-begin
-
-  if Save then
-    Result := IniFileSave()
-  else
-    Result := IniFileRestore();
-
-  if not Result then
-    ShowErrorMessage(GModIniRec.UpdateError);
 
 end;
 
@@ -4584,131 +4623,6 @@ begin
   finally
     List.Free;
   end;
-
-end;
-
-
-{Returns true if a new ini was created or an existing one was modified.
-The new/modified ini is saved in the tmp directory. The original ini is
-backed up in the tmp directory and also in the user's php directory}
-function IniHasMod(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
-var
-  Args: String;
-  Msg: String;
-
-begin
-
-  Result := False;
-  ModIni.New := IsEmpty(Config.PhpIni);
-
-  if ModIni.New then
-  begin
-    ModIni.IniFile := ExtractFilePath(Config.PhpExe) + 'php.ini';
-    IniDebug(Format('Checking if ini can be created: %s', [ModIni.IniFile]));
-  end
-  else
-  begin
-    ModIni.IniFile := Config.PhpIni;
-    ModIni.BackupFile := Config.PhpIni + '~orig';
-    IniDebug(Format('Checking if ini can be updated: %s', [Config.PhpIni]));
-  end;
-
-  {Get a new config rec}
-  Config := ConfigInit(Config.PhpExe);
-
-  {We must delete any existing tmp inis}
-  DeleteFile(GTmpFile.Ini);
-  DeleteFile(GTmpFile.IniBackup);
-
-  {The script needs the tmp ini and tmp backup ini locations}
-  Args := ArgCmd(GTmpFile.Ini);
-  AddStr(Args, #32 + ArgCmd(GTmpFile.IniBackup));
-
-  {ExecPhp should only fail calling cmd.exe}
-  if not ExecPhp(GTmpFile.PhpIniCheck, Args, '', Config) then
-    Exit;
-
-  {See if can make changes}
-  if not IniCheckResult(ModIni, Config) then
-    Exit;
-
-  if ModIni.New then
-    Result := True
-  else
-  begin
-
-    {Make a backup for the user in the php directory, in case something goes wrong}
-    Result := FileCopy(ModIni.IniFile, ModIni.BackupFile, False);
-
-    if not Result then
-      IniDebug(Format('Failed to backup existing ini: %s', [ModIni.IniFile]));
-
-  end;
-
-  {Debug successful result}
-  if Result then
-  begin
-    Msg := Format('Compatible ini available at %s', [GTmpFile.Ini]);
-
-    if not ModIni.New then
-      AddStr(Msg, Format(', user backup created at %s', [ModIni.BackupFile]));
-
-    IniDebug(Msg);
-  end;
-
-end;
-
-
-procedure IniSetMessage(Success, Save: Boolean; var Rec: TModIniRec);
-var
-  Msg: String;
-
-begin
-
-  if Success then
-  begin
-
-    if Save then
-    begin
-      if Rec.New then
-        Msg := 'Created new'
-      else
-        Msg := 'Updated';
-    end
-    else
-    begin
-      if Rec.New then
-        Msg := 'Deleted new'
-      else
-        Msg := 'Restored original';
-    end;
-
-    Rec.UpdateError := '';
-
-  end
-  else
-  begin
-
-    if Save then
-    begin
-      if Rec.New then
-        Msg := 'Failed to create new'
-      else
-        Msg := 'Failed to update';
-    end
-    else
-    begin
-      if Rec.New then
-        Msg := 'Failed to delete new'
-      else
-        Msg := 'Failed to restore original';
-    end;
-
-    Rec.UpdateError := Format('%s ini file at this time. Please try again.', [Msg]);
-
-  end;
-
-  IniDebug(Format('%s ini: %s', [Msg, Rec.IniFile]));
 
 end;
 
@@ -5309,49 +5223,6 @@ begin
   Result := Control.Top + Control.Height;
 end;
 
-
-function IniPageCreate(Id: Integer; Caption, Description: String): TWizardPage;
-var
-  Base: Integer;
-
-begin
-
-  Result := CreateCustomPage(Id, Caption, Description);
-
-  GIniPage.Text := TNewStaticText.Create(Result);
-  GIniPage.Text.Parent := Result.Surface;
-  GIniPage.Text.Width := Result.SurfaceWidth;
-  GIniPage.Text.Anchors := [akLeft, akTop, akRight];
-  GIniPage.Text.WordWrap := True;
-  GIniPage.Text.AutoSize := True;
-  GIniPage.Text.Caption := '';
-
-  Base := GetBase(GIniPage.Text);
-
-  GIniPage.Checkbox := TNewCheckbox.Create(Result);
-  GIniPage.Checkbox.Parent := Result.Surface;
-  GIniPage.Checkbox.Top := Base + ScaleY(60);
-  {It seems we need to adjust the checkbox height}
-  GIniPage.Checkbox.Height := ScaleY(15);
-  GIniPage.Checkbox.Width := Result.SurfaceWidth;
-  GIniPage.Checkbox.Caption := '';
-  GIniPage.Checkbox.Enabled := True;
-  GIniPage.Checkbox.Checked := True;
-
-  Base := GetBase(GIniPage.Checkbox);
-
-  GIniPage.Info := TNewStaticText.Create(Result);
-  GIniPage.Info.Parent := Result.Surface;
-  GIniPage.Info.Top := Base + ScaleY(5);
-  GIniPage.Info.Width := Result.SurfaceWidth;
-  GIniPage.Info.Anchors := [akLeft, akTop, akRight];
-  GIniPage.Info.WordWrap := True;
-  GIniPage.Info.AutoSize := True;
-  GIniPage.Info.Caption := '';
-
-end;
-
-
 procedure IniPageUpdate;
 var
   S: String;
@@ -5364,7 +5235,7 @@ begin
   else
     S := 'Your php.ini file needs updating. Setup can do this for you.';
 
-  GPages.Ini.Description := S;
+  //GPages.Ini.Description := S;
 
   {Main text caption}
   S := 'Composer expects PHP to be configured with some basic settings,';
@@ -5381,13 +5252,13 @@ begin
   end;
 
   S := S + LF2 + TAB + GModIniRec.IniFile;
-  GIniPage.Text.Caption := S;
+  //GIniPage.Text.Caption := S;
 
   {Checkbox caption}
   if GModIniRec.New then
-    GIniPage.Checkbox.Caption := 'Create a php.ini file'
+    //GIniPage.Checkbox.Caption := 'Create a php.ini file'
   else
-    GIniPage.Checkbox.Caption := 'Update this php.ini';
+    //GIniPage.Checkbox.Caption := 'Update this php.ini';
 
   {Info text caption}
   if GModIniRec.New then
@@ -5399,10 +5270,10 @@ begin
   begin
     S := 'Your existing php.ini will be modified.';
     S := S + ' A back-up has been made and saved to:' + LF2 + TAB;
-    S := S + GModIniRec.BackupFile;
+    S := S + GModIniRec.UserBackup;
   end;
 
-  GIniPage.Info.Caption := S;
+  //GIniPage.Info.Caption := S;
 
 end;
 
