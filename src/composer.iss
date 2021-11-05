@@ -540,6 +540,7 @@ procedure IniDebug(Message: String); forward;
 procedure IniDebugFileAction(Success, Save: Boolean; var Rec: TModIniRec); forward;
 procedure IniFileRestore; forward;
 function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
+function IniGetChanges(ModIni: TModIniRec): String; forward;
 function IniGetDetails(Details: String; var Modify: Boolean; var Status: String): Boolean; forward;
 
 {Composer installer functions}
@@ -843,12 +844,14 @@ begin
   Result := '';
 
   if GFlags.DevInstall then
-    AddStr(Result, MemoDirInfo + NewLine + NewLine);
+    AddStr(Result, MemoDirInfo);
 
-  AddStr(Result, 'PHP version ' + GConfigRec.PhpVersion);
+  AddPara(Result, 'PHP version ' + GConfigRec.PhpVersion);
   AddStr(Result, NewLine + Space + GConfigRec.PhpExe);
+
+  AddPara(Result, IniGetChanges(GModIniRec));
   AddPara(Result, 'Proxy: ' + ProxyGetSource(GProxyInfo, 'from'));
-  AddStr(Result, EnvListChanges(GEnvChanges));
+  AddPara(Result, EnvListChanges(GEnvChanges));
 
   Debug('UpdateReadyMemo' + NewLine + Result);
 
@@ -2748,7 +2751,7 @@ begin
   for I := 0 to GetArrayLength(List) - 1 do
   begin
     if List[I].Show then
-      Result := Result + LF2 + EnvChangeToString(List[I], Spacing);
+      AddPara(Result, EnvChangeToString(List[I], Spacing));
   end;
 
 end;
@@ -4597,6 +4600,34 @@ begin
 
     IniDebug(Msg);
   end;
+
+end;
+
+
+{Returns any changes for the UpdateReadyMemo event}
+function IniGetChanges(ModIni: TModIniRec): String;
+var
+  Spacing: String;
+
+begin
+
+  Result := '';
+  Spacing := LF + TAB;
+
+  if not ModIni.InUse then
+    Exit;
+
+  Result := 'Config: '
+
+  if ModIni.New then
+    AddStr(Result, 'create ini file')
+  else
+    AddStr(Result, 'modify ini file');
+
+  AddStr(Result, Spacing + ModIni.IniFile);
+
+  if not ModIni.New then
+    AddStr(Result, Format('%s%s (backup)', [Spacing, ModIni.UserBackup]));
 
 end;
 
