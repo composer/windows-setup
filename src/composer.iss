@@ -379,6 +379,7 @@ const
   ERR_RUN_CMD = 201;
   ERR_PHP_VERSION = 300;
   ERR_PHP_OS = 301;
+  ERR_PHP_INI = 302;
   ERR_CHECK_CMD = 400;
   ERR_CHECK_PHP = 401;
   ERR_CHECK_PATH = 402;
@@ -522,6 +523,7 @@ function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean;
 function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean; forward;
 function GetPhpError(var Config: TConfigRec): String; forward;
+function GetPhpErrorIni(Config: TConfigRec): String; forward;
 function GetPhpErrorOS(Config: TConfigRec): String; forward;
 function GetPhpErrorVersion(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
@@ -532,7 +534,7 @@ procedure ReportIniEnvironment; forward;
 procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
 {Ini file functions}
-function CheckPhpIni(Config: TConfigRec): Boolean; forward;
+function CheckPhpIni(var Config: TConfigRec): Boolean; forward;
 function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean; forward;
 function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
 function IniCheckTmp(Existing: Boolean): Boolean; forward;
@@ -565,7 +567,6 @@ function EnvironmentPageCreate(Id: Integer; Caption, Description: String): TWiza
 procedure ErrorInstallerUpdate; forward;
 procedure ErrorSettingsUpdate; forward;
 function GetBase(Control: TWinControl): Integer; forward;
-procedure IniPageUpdate; forward;
 function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
 procedure OptionsCheckboxClick(Sender: TObject); forward;
 function OptionsCheckExisting(Rec: TExistingRec): Boolean; forward;
@@ -1525,6 +1526,7 @@ begin
     ERR_RUN_CMD:            Result := 'ERR_RUN_CMD';
     ERR_PHP_VERSION:        Result := 'ERR_PHP_VERSION';
     ERR_PHP_OS:             Result := 'ERR_PHP_OS';
+    ERR_PHP_INI:            Result := 'ERR_PHP_INI';
     ERR_CHECK_CMD:          Result := 'ERR_CHECK_CMD';
     ERR_CHECK_PHP:          Result := 'ERR_CHECK_PHP';
     ERR_CHECK_PATH:         Result := 'ERR_CHECK_PATH';
@@ -1575,6 +1577,7 @@ begin
 
     ERR_PHP_VERSION: Config.Message := GetPhpErrorVersion(Config);
     ERR_PHP_OS: Config.Message := GetPhpErrorOS(Config);
+    ERR_PHP_INI: Config.Message := GetPhpErrorIni(Config);
 
     ERR_CHECK_PHP: Config.Message := GetPhpError(Config);
     ERR_CHECK_PATH: Config.Message := Config.Output;
@@ -3729,8 +3732,8 @@ begin
   {Handle modifying or creating ini, if needed}
   if not CheckPhpIni(GConfigRec) then
   begin
-
-      Exit;
+    SetErrorEx(ERR_PHP_INI, GConfigRec, ERR_CHECK_PHP);
+    Exit;
   end;
 
 
@@ -4061,6 +4064,36 @@ begin
 end;
 
 
+function GetPhpErrorIni(Config: TConfigRec): String;
+var
+  List: TStringList;
+  Settings: String;
+  I: Integer;
+
+begin
+
+  Result := 'Composer needs the following settings to be enabled in your php.ini file.';
+  Settings := 'Required settings:';
+
+  StringChangeEx(Config.IniInfo.Missing, ',', #13, True);
+  List := TStringList.Create;
+
+  try
+    List.Text := Config.IniInfo.Missing;
+
+    for I := 0 to List.Count - 1 do
+      AddLine(Settings, TAB + List.Strings[I]);
+
+  finally
+    List.Free;
+  end;
+
+  AddPara(Result, Settings);
+  AddPara(Result, GetPhpIni(Config, False));
+
+end;
+
+
 function GetPhpErrorOS(Config: TConfigRec): String;
 var
   Error: String;
@@ -4302,7 +4335,7 @@ end;
 
 {*************** Ini file functions ***************}
 
-function CheckPhpIni(Config: TConfigRec): Boolean;
+function CheckPhpIni(var Config: TConfigRec): Boolean;
 var
   ModIni: TModIniRec;
 
@@ -5252,60 +5285,6 @@ end;
 function GetBase(Control: TWinControl): Integer;
 begin
   Result := Control.Top + Control.Height;
-end;
-
-procedure IniPageUpdate;
-var
-  S: String;
-
-begin
-
-  {Page description}
-  if GModIniRec.New then
-    S := 'Your php.ini file is missing. Setup can create one for you.'
-  else
-    S := 'Your php.ini file needs updating. Setup can do this for you.';
-
-  //GPages.Ini.Description := S;
-
-  {Main text caption}
-  S := 'Composer expects PHP to be configured with some basic settings,';
-
-  if GModIniRec.New then
-  begin
-    S := S + ' but this requires a php.ini file.';
-    S := S + ' Setup can create one at the following location:';
-  end
-  else
-  begin
-    S := S + ' but not all of these are enabled.';
-    S := S + ' The php.ini used by your command-line PHP is:';
-  end;
-
-  S := S + LF2 + TAB + GModIniRec.IniFile;
-  //GIniPage.Text.Caption := S;
-
-  {Checkbox caption}
-  if GModIniRec.New then
-    //GIniPage.Checkbox.Caption := 'Create a php.ini file'
-  else
-    //GIniPage.Checkbox.Caption := 'Update this php.ini';
-
-  {Info text caption}
-  if GModIniRec.New then
-  begin
-    S := 'This will be a copy of your php.ini-production file,';
-    S := S + ' with the minimum settings enabled.';
-  end
-  else
-  begin
-    S := 'Your existing php.ini will be modified.';
-    S := S + ' A back-up has been made and saved to:' + LF2 + TAB;
-    S := S + GModIniRec.UserBackup;
-  end;
-
-  //GIniPage.Info.Caption := S;
-
 end;
 
 
