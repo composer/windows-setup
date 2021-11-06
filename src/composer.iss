@@ -1458,8 +1458,6 @@ begin
   AddParam(Result, '-d error_reporting="E_ALL & ~E_DEPRECATED"');
   AddParam(Result, '-d display_errors=Off');
   AddParam(Result, '-d display_startup_errors=Off');
-  AddParam(Result, '-d error_log=');
-  AddParam(Result, '-d log_errors=On');
 
   {Add the temp ini file to use if checking ini creation/changes}
   if NotEmpty(Ini) then
