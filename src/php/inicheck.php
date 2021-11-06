@@ -29,6 +29,7 @@ class IniChecker
 {
     public $status;
     private $phpDir;
+    private $srcIni;
     private $modIni;
     private $origIni;
     private $content;
@@ -47,7 +48,6 @@ class IniChecker
      */
     public function __construct(array $argv)
     {
-        $this->phpDir = dirname(PHP_BINARY);
         $this->modIni = $argv[1];
         $this->origIni = $argv[2];
 
@@ -67,6 +67,16 @@ class IniChecker
         }
 
         if (!$this->processChanges()) {
+            return;
+        }
+
+        if (empty($this->changes)) {
+            $this->status = 'No changes to ini file required';
+            return;
+        }
+
+        if (!$this->iniBackup($new)) {
+            $this->writeError('Failed to save backup ini: '.$this->origIni);
             return;
         }
 
@@ -105,10 +115,12 @@ class IniChecker
             return;
         }
 
-        if (!$this->needsChanges()) {
-            $this->status = 'No changes to ini file required';
+        if (!defined('PHP_BINARY')) {
+            $this->writeError('PHP_BINARY not defined');
             return;
         }
+
+        $this->phpDir = dirname(PHP_BINARY);
 
         // We need to be in the php directory
         if (!chdir($this->phpDir)) {
@@ -122,24 +134,24 @@ class IniChecker
             return;
         }
 
-        if ($srcIni = strval(php_ini_loaded_file())) {
-            // We need the ini to be in the php directory
-            if (strtolower($this->phpDir) !== strtolower(dirname($srcIni))) {
-                $this->writeError('Loaded ini is not in php directory');
-                return;
-            }
+        // We can only handle a single ini
+        if (!$this->checkScanDirConfig() || php_ini_scanned_files()) {
+            $this->writeError('Multiple php ini files are being used');
+            return;
+        }
 
-            // We must save a tmp backup
-            if (!copy($srcIni, $this->origIni)) {
-                $this->writeError('Failed to backup source ini: '.$srcIni);
+        if ($this->srcIni = strval(php_ini_loaded_file())) {
+            // We need the ini to be in the php directory
+            if (strtolower($this->phpDir) !== strtolower(dirname($this->srcIni))) {
+                $this->writeError('Loaded ini is not in php directory');
                 return;
             }
         } else {
             $new = true;
-            $srcIni = $this->phpDir.'/php.ini-production';
+            $this->srcIni = $this->phpDir.'\\php.ini-production';
         }
 
-        if (!$this->iniRead($srcIni)) {
+        if (!$this->iniRead($this->srcIni)) {
             $this->writeError('Failed to read source ini: '.$srcIni);
             return;
         }
@@ -150,30 +162,6 @@ class IniChecker
         }
 
         return true;
-    }
-
-    /**
-     * Returns true if the ini needs modifying
-     *
-     * @return bool
-     *
-     */
-    private function needsChanges()
-    {
-        if (!ini_get('allow_url_fopen')) {
-            return true;
-        }
-
-        if (!ini_get('date.timezone')) {
-            if (PHP_MAJOR_VERSION < 7) {
-                return true;
-            }
-        }
-
-        $exts = array('curl', 'mbstring', 'openssl');
-        $missing = $this->getMissingExts($exts);
-
-        return !empty($missing);
     }
 
     /**
@@ -238,11 +226,16 @@ class IniChecker
             $this->iniSet('date.timezone', 'UTC');
         }
 
+        // extension_dir
+        if (!$extensionDir = $this->getExtensionDir()) {
+            return false;
+        }
+
         // extensions
         $exts = array('curl', 'mbstring', 'openssl');
 
         if ($missing = $this->getMissingExts($exts)) {
-            return $this->enableExtensions($missing);
+            return $this->enableExtensions($missing, $extensionDir);
         }
 
         return true;
@@ -252,19 +245,15 @@ class IniChecker
      * Returns true if all extensions are enabled in the ini file
      *
      * @param array $extensions
+     * @param string $extensionDir
      *
      * @return bool
      */
-    private function enableExtensions(array $extensions)
+    private function enableExtensions(array $extensions, $extensionDir)
     {
-        if (!$this->getExtDir($extDir)) {
-            $this->writeError('Unable to find extension dir');
-            return false;
-        }
-
         foreach ($extensions as $name) {
             $dll = $this->extensionGetDllName($name);
-            $path = $extDir.'/'.$dll;
+            $path = $extensionDir.'\\'.$dll;
 
             if (!file_exists($path)) {
                 $this->writeError('Unable to find extension: '.$path);
@@ -289,27 +278,48 @@ class IniChecker
     }
 
     /**
-     * Returns true if the extension dir is found
+     * Checks and sets the extension directory if needed
      *
-     * @param null|string $path Set by method
-     *
-     * @return bool
+     * @return null|string The extension directory if valid
      */
-    private function getExtDir(&$path)
+    private function getExtensionDir()
     {
+        $extDir = $this->phpDir.'\\ext';
+
+        if (!file_exists($extDir)) {
+            $this->writeError('Normal extension directory does not exist: '.$extDir);
+            return;
+        }
+
         if ($this->iniGet('extension_dir', $value)) {
-            $path = realpath($value);
+            // Parsing ini content does not use the default value if it is not set
 
-            return !empty($path);
+            if (!$path = realpath($value)) {
+                // See if we are ext with surrounding forward or back slashes
+                if (preg_match('{^(?:\\\\|/)*ext(?:\\\\|/)*$}i', $value)) {
+                    $path = $extDir;
+                    $this->iniSet('extension_dir', '"ext"');
+                } else {
+                    $this->writeError('The extension directory does not exist: '.$value);
+                    return;
+                }
+            }
+
+            if (strtolower($path) !== strtolower($extDir)) {
+                $this->writeError('Normal extension directory is not being used: '.$path);
+                return;
+            }
+
+        } else {
+            // Just in case this gets fixed in php and the correct default is used
+            $path = realpath(ini_get('extension_dir'));
+
+            if (strtolower($path) !== strtolower($extDir)) {
+                $this->iniSet('extension_dir', '"ext"');
+            }
         }
 
-        $path = $this->phpDir.'/ext';
-
-        if ($result = file_exists($path)) {
-            $this->iniSet('extension_dir', '"ext"');
-        }
-
-        return $result;
+        return $extDir;
     }
 
     /**
@@ -412,6 +422,22 @@ class IniChecker
     }
 
     /**
+     * Returns true if an existing ini was backed up
+     *
+     * @param mixed $new
+     *
+     * @return bool
+     */
+    private function iniBackup($new)
+    {
+        if (!$new) {
+            return copy($this->srcIni, $this->origIni);
+        }
+
+        return true;
+    }
+
+    /**
      * Returns true if the source ini is read
      *
      * @param string $path
@@ -449,6 +475,22 @@ class IniChecker
         }
 
         return @file_put_contents($this->modIni, $this->content);
+    }
+
+    /**
+     * Returns true if there are scanned inis and PHP is able to report them
+     *
+     * php_ini_scanned_files will fail when PHP_CONFIG_FILE_SCAN_DIR is empty.
+     * Fixed in 7.1.13 and 7.2.1
+     *
+     * @return bool
+     */
+    private function checkScanDirConfig()
+    {
+        return !(getenv('PHP_INI_SCAN_DIR')
+            && !PHP_CONFIG_FILE_SCAN_DIR
+            && (PHP_VERSION_ID < 70113
+            || PHP_VERSION_ID === 70200));
     }
 
     /**
