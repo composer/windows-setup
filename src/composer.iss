@@ -508,6 +508,8 @@ function CheckCmdExeExists: Boolean; forward;
 function CheckCmdExeOutput(var Config: TConfigRec): Boolean; forward;
 function GetCmdExeError(Config: TConfigRec): String; forward;
 function GetErrorAutorun(var Message: String; Config: TConfigRec): Boolean; forward;
+function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
+function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean; forward;
 procedure UpdateErrorIfAnsicon(var Message: String; Autorun: String); forward;
 
 {Check php functions}
@@ -528,8 +530,6 @@ function GetPhpErrorOS(Config: TConfigRec): String; forward;
 function GetPhpErrorVersion(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec); forward;
-function GetRegistryAutorun(var Name, Value: String): Boolean; forward;
-function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean; forward;
 procedure ReportIniEnvironment; forward;
 procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
@@ -3676,6 +3676,38 @@ begin
 end;
 
 
+function GetRegistryAutorun(var Name, Value: String): Boolean;
+begin
+
+  if QueryRegistryAutorun(HKCU, Name, Value) then
+    Result := True
+  else
+    Result := QueryRegistryAutorun(HKLM, Name, Value);
+
+end;
+
+
+function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean;
+var
+  Key: String;
+
+begin
+
+  Result := False;
+  Key := 'Software\Microsoft\Command Processor';
+
+  if not RegQueryStringValue(Hive, Key, 'AutoRun', Value) then
+    Exit;
+
+  if NotEmpty(Value) then
+  begin
+    Name := Format('%s\%s\AutoRun', [GetHiveName(Hive), Key]);
+    Result := True;
+  end;
+
+end;
+
+
 {ANSICON is unreliable if installed in the system directory, resulting in a
 non-zero exit code being returned.}
 procedure UpdateErrorIfAnsicon(var Message: String; Autorun: String);
@@ -3918,9 +3950,6 @@ begin
     ShowIni := CanShowIni;
     Exit;
   end;
-
-  if GetErrorAutorun(Result, Config) then
-    Exit;
 
 end;
 
@@ -4220,37 +4249,6 @@ begin
 
 end;
 
-
-function GetRegistryAutorun(var Name, Value: String): Boolean;
-begin
-
-  if QueryRegistryAutorun(HKCU, Name, Value) then
-    Result := True
-  else
-    Result := QueryRegistryAutorun(HKLM, Name, Value);
-
-end;
-
-
-function QueryRegistryAutorun(Hive: Integer; var Name, Value: String): Boolean;
-var
-  Key: String;
-
-begin
-
-  Result := False;
-  Key := 'Software\Microsoft\Command Processor';
-
-  if not RegQueryStringValue(Hive, Key, 'AutoRun', Value) then
-    Exit;
-
-  if NotEmpty(Value) then
-  begin
-    Name := Format('%s\%s\AutoRun', [GetHiveName(Hive), Key]);
-    Result := True;
-  end;
-
-end;
 
 {Report PHPRC and PHP_INI_SCAN_DIR values since they could be helpful when
 troubleshooting errors}
