@@ -378,8 +378,9 @@ const
   ERR_RUN_PHP = 200;
   ERR_RUN_CMD = 201;
   ERR_PHP_VERSION = 300;
-  ERR_PHP_OS = 301;
-  ERR_PHP_INI = 302;
+  ERR_PHP_DETAILS = 301;
+  ERR_PHP_OS = 302;
+  ERR_PHP_INI = 303;
   ERR_CHECK_CMD = 400;
   ERR_CHECK_PHP = 401;
   ERR_CHECK_PATH = 402;
@@ -515,16 +516,16 @@ procedure UpdateErrorIfAnsicon(var Message: String; Autorun: String); forward;
 {Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
-function CheckPhpOutput(var Config: TConfigRec): Boolean; forward;
+function CheckPhpOutputDetails(var Config: TConfigRec): Boolean; forward;
 function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean; forward;
 function CheckPhpVersion(VersionId: Integer; FromFile: Boolean): Boolean; forward;
 function FormatPhpError(Config: TConfigRec; ShowIni: Boolean; Message: String): String; forward;
 function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String; forward;
-function GetErrorDetails(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorExtDuplicate(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetPhpDetails(Details: String; var Config: TConfigRec): Boolean; forward;
 function GetPhpError(var Config: TConfigRec): String; forward;
+function GetPhpErrorDetails(Config: TConfigRec): String; forward;
 function GetPhpErrorIni(Config: TConfigRec): String; forward;
 function GetPhpErrorOS(Config: TConfigRec): String; forward;
 function GetPhpErrorVersion(Config: TConfigRec): String; forward;
@@ -1524,6 +1525,7 @@ begin
     ERR_RUN_PHP:            Result := 'ERR_RUN_PHP';
     ERR_RUN_CMD:            Result := 'ERR_RUN_CMD';
     ERR_PHP_VERSION:        Result := 'ERR_PHP_VERSION';
+    ERR_PHP_DETAILS:        Result := 'ERR_PHP_DETAILS';
     ERR_PHP_OS:             Result := 'ERR_PHP_OS';
     ERR_PHP_INI:            Result := 'ERR_PHP_INI';
     ERR_CHECK_CMD:          Result := 'ERR_CHECK_CMD';
@@ -1575,6 +1577,7 @@ begin
     ERR_RUN_CMD: Config.Message := GetExecError(Config);
 
     ERR_PHP_VERSION: Config.Message := GetPhpErrorVersion(Config);
+    ERR_PHP_DETAILS: Config.Message := GetPhpErrorDetails(Config);
     ERR_PHP_OS: Config.Message := GetPhpErrorOS(Config);
     ERR_PHP_INI: Config.Message := GetPhpErrorIni(Config);
 
@@ -3806,7 +3809,7 @@ begin
 end;
 
 
-function CheckPhpOutput(var Config: TConfigRec): Boolean;
+function CheckPhpOutputDetails(var Config: TConfigRec): Boolean;
 var
   Details: String;
 
@@ -3831,8 +3834,9 @@ begin
     Exit;
   end;
 
-  {Config.Output will contain output other than the details line}
-  Result := IsEmpty(Config.Output) and (Config.ExitCode = 0);
+  {Config.Output could contain stderr, so we check stdout for the
+  required single line of output}
+  Result := Length(Config.StdOut) = 1;
 
 end;
 
@@ -3843,18 +3847,18 @@ begin
   Result := False;
   Debug('Checking php configuration');
 
-  {ExecPhp should only fail calling cmd.exe}
+  {This should only fail calling cmd.exe which has already been checked}
   if not ExecPhp(GTmpFile.PhpCheck, '', Ini, Config) then
     Exit;
 
-  {CheckPhpOutput will fail if we have unexpected output}
-  if not CheckPhpOutput(Config) then
+  {Check that required details can be read}
+  if not CheckPhpOutputDetails(Config) then
   begin
-    SetError(ERR_CHECK_PHP, Config);
+    SetErrorEx(ERR_PHP_DETAILS, Config, ERR_CHECK_PHP);
     Exit;
   end;
 
-  {Output ok}
+  {Details ok}
   Debug(Format('Config: version=%s, id=%d, ini=%s, other=%s, cafile=%s, capath=%s, missing=%s, compat=%d', [
     Config.PhpVersion,
     Config.PhpId,
@@ -3876,6 +3880,13 @@ begin
   if not CheckPhpVersion(Config.PhpId, False) then
   begin
     SetErrorEx(ERR_PHP_VERSION, Config, ERR_CHECK_PHP);
+    Exit;
+  end;
+
+  {Check for extra or stderr output, or a non-zero exit code}
+  if NotEmpty(Config.Output) or (Config.ExitCode <> 0) then
+  begin
+    SetError(ERR_CHECK_PHP, Config);
     Exit;
   end;
 
@@ -3950,28 +3961,6 @@ begin
     ShowIni := CanShowIni;
     Exit;
   end;
-
-end;
-
-
-function GetErrorDetails(var Message: String; Config: TConfigRec): Boolean;
-var
-  Error: String;
-
-begin
-
-  Result := not Config.PhpDetails;
-
-  if not Result then
-    Exit;
-
-  {The details line is stripped from the output so put it back in
-  if there isn't already any output}
-  if IsEmpty(Config.Output) then
-    Config.Output := OutputFromArray(Config.StdOut);
-
-  Error := 'Required information is missing or invalid';
-  Message := FormatPhpError(Config, False, Error);
 
 end;
 
@@ -4060,31 +4049,24 @@ var
 
 begin
 
-  {Check we have the required details}
-  if GetErrorDetails(Message, Config) then
-  begin
-    Result := Message;
-    Exit;
-  end;
-
-  {Check we are Windows PHP}
-  if NotEmpty(Config.PhpOtherOS) then
-  begin
-    Result := GetPhpErrorOS(Config);
-    Config.StatusCode := ERR_PHP_OS;
-    Exit;
-  end;
-
-  {Check version}
-  if not CheckPhpVersion(Config.PhpId, False) then
-  begin
-    Result := GetPhpErrorVersion(Config);
-    Config.StatusCode := ERR_PHP_VERSION;
-    Exit;
-  end;
-
   Message := GetCommonErrors(Config, ShowIni);
   Result := FormatPhpError(Config, ShowIni, Message);
+
+end;
+
+
+function GetPhpErrorDetails(Config: TConfigRec): String;
+var
+  Error: String;
+
+begin
+
+  {The details line could be stripped from the output so rebuild it}
+  Config.Output := Trim(OutputFromArray(Config.StdOut));
+  AddPara(Config.Output, Trim(OutputFromArray(Config.StdErr)));
+
+  Error := 'Required information is missing or invalid';
+  Result := FormatPhpError(Config, False, Error);
 
 end;
 
@@ -4242,10 +4224,10 @@ begin
   Output := Trim(Output);
 
   {Add any error output}
-  AddPara(Output, OutputFromArray(Config.StdErr));
+  AddPara(Output, Trim(OutputFromArray(Config.StdErr)));
 
   {Set the stripped/merged output as a single string}
-  Config.Output := Trim(Output);
+  Config.Output := Output;
 
 end;
 
