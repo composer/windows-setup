@@ -410,7 +410,7 @@ procedure Debug(const Message: String); forward;
 procedure DebugExecBegin(const Exe, Params, WorkingDir: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 procedure DebugPageName(Id: Integer); forward;
-function ExecCmd(Params, WorkingDir: String; var ExitCode: Integer): Boolean; forward;
+function ExecCmd(Params, WorkingDir: String; var Config: TConfigRec): Boolean; forward;
 function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean; forward;
 function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
@@ -1342,7 +1342,7 @@ end;
 
 {Wrapper function to call the native system cmd.exe and direct its output
 to temp files, which is the only way to capture stdout and stderr in Inno}
-function ExecCmd(Params, WorkingDir: String; var ExitCode: Integer): Boolean;
+function ExecCmd(Params, WorkingDir: String; var Config: TConfigRec): Boolean;
 var
   OutputArgs: String;
   CommandLine: String;
@@ -1364,13 +1364,17 @@ begin
     OldState := EnableFsRedirection(False);
 
   try
-    Result := Exec(GCmdExe, CommandLine, WorkingDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
+    Result := Exec(GCmdExe, CommandLine, WorkingDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
   finally
     if IsWin64 then
       EnableFsRedirection(OldState);
   end;
 
-  DebugExecEnd(Result, ExitCode);
+  DebugExecEnd(Result, Config.ExitCode);
+
+  {Put the output into Config arrays on success}
+  if Result then
+    OutputReadStdFiles(Config);
 
 end;
 
@@ -1386,16 +1390,13 @@ begin
 
   Params := GetPhpParams(Config, Script, Args, Ini);
   WorkingDir := ExtractFileDir(Config.PhpExe);
-  Result := ExecCmd(Params, WorkingDir, Config.ExitCode);
+  Result := ExecCmd(Params, WorkingDir, Config);
 
   if not Result then
   begin
     SetErrorEx(ERR_RUN_CMD, Config, ERR_CHECK_PHP);
     Exit;
   end;
-
-  {Put the output into Config}
-  OutputReadStdFiles(Config);
 
 end;
 
@@ -3493,16 +3494,13 @@ begin
   {Get cmd to print out the current working directory}
   Params := 'cd';
   WorkingDir := GTmpDir;
-  Success := ExecCmd(Params, WorkingDir, GConfigRec.ExitCode);
+  Success := ExecCmd(Params, WorkingDir, GConfigRec);
 
   if not Success then
   begin
     SetErrorEx(ERR_RUN_CMD, GConfigRec, ERR_CHECK_CMD);
     Exit;
   end;
-
-  {Put the output into config}
-  OutputReadStdFiles(GConfigRec);
 
   {Check for a non-zero exit code}
   if GConfigRec.ExitCode <> 0 then
