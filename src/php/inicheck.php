@@ -311,12 +311,8 @@ class IniChecker
             }
 
         } else {
-            // Just in case this gets fixed in php and the correct default is used
-            $path = realpath(ini_get('extension_dir'));
-
-            if (strtolower($path) !== strtolower($extDir)) {
-                $this->iniSet('extension_dir', '"ext"');
-            }
+            // extension_dir not set in ini
+            $this->iniSet('extension_dir', '"ext"');
         }
 
         return $extDir;
