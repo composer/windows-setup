@@ -3787,20 +3787,18 @@ var
 begin
 
   {We check that we can run the supplied exe file by running it via runphp.exe.
-  We need to do this separately because our other calls use cmd to invoke php
-  and it is more difficult to get a true error message. Also, Inno use
-  CreateProcess with the dwCreationFlags set to CREATE_DEFAULT_ERROR_MODE. This
-  stops processes from inheriting any error mode we can set here, which we need
-  to do to stop message boxes being shown for certain error conditions. The
-  common use case is to catch situations where the VC redistributable runtime
-  required for a specific php version has not been installed.}
+  We need to do this because Inno Setup calls CreateProcess with the
+  dwCreationFlags set to CREATE_DEFAULT_ERROR_MODE. This stops processes from
+  inheriting any error mode we can set here, which we need to do to stop
+  message boxes being shown for certain error conditions. These include
+  situations where the specific VC redistributable runtime is missing or dll
+  extensions do not match the php version.}
 
   Debug('Checking if php will execute');
-  Params := ArgWin(Config.PhpExe);
-  WorkingDir := ExtractFileDir(Config.PhpExe);
 
-  if WizardSilent then
-    Params := Params + ' silent';
+  Params := ArgWin(Config.PhpExe);
+  AddParam(Params, '-v');
+  WorkingDir := ExtractFileDir(Config.PhpExe);
 
   DebugExecBegin(GTmpFile.RunPhp, Params, WorkingDir);
   Result := Exec(GTmpFile.RunPhp, Params, WorkingDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);

@@ -4,78 +4,66 @@ program runphp;
 
 {$SETPEOSVERSION 6.0}
 {$SETPESUBSYSVERSION 6.0}
-{$WEAKLINKRTTI ON}
-
-uses
-  Windows;
 
 {$R *.res}
+
+uses
+  Windows,
+  Escape in 'Escape.pas';
 
 const
   STATUS_UNSUCCESSFUL = $C0000001;
 
 var
-  CmdLine: String;
-  Mode: DWord;
-  Wait: Cardinal;
+  Cmd: String;
+  ArgsCount: Integer;
+  I: Integer;
+  Mode: DWORD;
+  Wait: DWORD;
+  Flags: DWORD;
+  Success: Boolean;
   StartInfo: TStartupInfo;
   ProcInfo: TProcessInformation;
 
 begin
 
-  {Params are the path to php.exe and 'silent', if applicable}
-  CmdLine := ParamStr(1);
+  ArgsCount := ParamCount;
+  if ArgsCount = 0 then
+    Exit;
 
-  if Pos(#32, CmdLine) <> 0 then
-    CmdLine := '"' + CmdLine + '"';
+  Cmd := EscapeArg(ParamStr(1));
+  for I := 2 to ArgsCount do
+    Cmd := Cmd + ' ' + EscapeArg(ParamStr(I));
 
-  {We call php.exe with the -n -v params. This simply prints the version without
-  loading any extensions from the ini}
-  CmdLine := CmdLine + ' -n -v';
-
-  {Set up our wait interval and error mode. Note that SEM_NOALIGNMENTFAULTEXCEPT
-  is sticky, so we need not concern ourselves with it here.}
-  if ParamStr(2) = 'silent' then
-  begin
-    Wait := 30000;
-    Mode := SEM_FAILCRITICALERRORS or SEM_NOGPFAULTERRORBOX or SEM_NOOPENFILEERRORBOX;
-  end
-  else
-  begin
-    Wait := INFINITE;
-    Mode := 0;
-  end;
-
+  Mode := SEM_FAILCRITICALERRORS or SEM_NOGPFAULTERRORBOX or SEM_NOOPENFILEERRORBOX;
   SetErrorMode(Mode);
+  Wait := 10000;
 
   FillChar(StartInfo, SizeOf(StartInfo), #0);
   StartInfo.cb := SizeOf(StartInfo);
   StartInfo.dwFlags := STARTF_USESHOWWINDOW;
   StartInfo.wShowWindow := SW_HIDE;
 
-  if not CreateProcess(nil, PChar(CmdLine), nil, nil, False,
-    0, nil, nil, StartInfo, ProcInfo) then
+  FillChar(ProcInfo, SizeOf(ProcInfo), #0);
+  Flags := NORMAL_PRIORITY_CLASS;
+
+  if not CreateProcess(nil, PChar(Cmd), nil, nil, False,
+    Flags, nil, nil, StartInfo, ProcInfo) then
   begin
-    {The program is probably locked by another application}
     ExitCode := GetLastError;
     Exit;
   end;
 
   try
 
-    if WaitForSingleObject(ProcInfo.hProcess, Wait) = WAIT_FAILED then
-    begin
-      {Unlikely. The error ExitCode may or may not be useful}
-      ExitCode := GetLastError;
-      Exit;
-    end;
+    WaitForSingleObject(ProcInfo.hProcess, Wait);
+    Success := GetExitCodeProcess(ProcInfo.hProcess, DWORD(ExitCode));
 
-    if not GetExitCodeProcess(ProcInfo.hProcess, DWord(ExitCode)) then
-      {Unlikely. The error ExitCode may or may not be useful}
-      ExitCode := GetLastError
-    else if ExitCode = STILL_ACTIVE then
-      {Unlikely. The error ExitCode uses an NtStatus code to differentiate it}
+    if not Success or (ExitCode = STILL_ACTIVE) then
+    begin
+      ExitCode := Integer(STATUS_UNSUCCESSFUL);
       TerminateProcess(ProcInfo.hProcess, STATUS_UNSUCCESSFUL);
+    end;
 
   finally
     CloseHandle(ProcInfo.hThread);
