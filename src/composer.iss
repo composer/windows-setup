@@ -166,6 +166,13 @@ type
   end;
 
 type
+  TPhpParams = record
+    Script      : String;         {The php file or command to run}
+    EscapedArgs : String;         {Escaped arguments for the script}
+    Ini         : String;         {The php.ini to use}
+  end;
+
+type
   TExistingRec = record
     Installed   : Boolean;
     Version     : String;
@@ -411,12 +418,12 @@ procedure Debug(const Message: String); forward;
 procedure DebugExecBegin(const Exe, Params, WorkingDir: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 procedure DebugPageName(Id: Integer); forward;
-function ExecCmd(Params, WorkingDir: String; var Config: TConfigRec): Boolean; forward;
-function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean; forward;
+function ExecCmd(Command, WorkingDir: String; var Config: TConfigRec): Boolean; forward;
+function ExecPhp(Params: TPhpParams; var Config: TConfigRec): Boolean; forward;
 function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
 function GetExecError(Config: TConfigRec): String; forward;
-function GetPhpParams(Config: TConfigRec; Script, Args, Ini: String): String; forward;
+function GetPhpParams(Config: TConfigRec; Params: TPhpParams): String; forward;
 function GetRegHive: Integer; forward;
 function GetRunPhpError(ExitCode: Integer): String; forward;
 function GetStatusText(Status: Integer): String; forward;
@@ -1343,7 +1350,7 @@ end;
 
 {Wrapper function to call the native system cmd.exe and direct its output
 to temp files, which is the only way to capture stdout and stderr in Inno}
-function ExecCmd(Params, WorkingDir: String; var Config: TConfigRec): Boolean;
+function ExecCmd(Command, WorkingDir: String; var Config: TConfigRec): Boolean;
 var
   OutputArgs: String;
   CommandLine: String;
@@ -1356,9 +1363,9 @@ begin
 
   {Always use the full path for the output streams, in case the directory is changed}
   OutputArgs := Format('> %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]);
-  AddParam(Params, OutputArgs);
+  AddParam(Command, OutputArgs);
 
-  CommandLine := Format('/s /c "%s"', [Params]);
+  CommandLine := Format('/s /c "%s"', [Command]);
   DebugExecBegin(GCmdExe, CommandLine, WorkingDir);
 
   if IsWin64 then
@@ -1380,18 +1387,18 @@ begin
 end;
 
 
-function ExecPhp(Script, Args, Ini: String; var Config: TConfigRec): Boolean;
+function ExecPhp(Params: TPhpParams; var Config: TConfigRec): Boolean;
 var
-  Params: String;
+  Command: String;
   WorkingDir: String;
 
 begin
 
   ConfigSetExec(Config);
 
-  Params := GetPhpParams(Config, Script, Args, Ini);
+  Command := GetPhpParams(Config, Params);
   WorkingDir := ExtractFileDir(Config.PhpExe);
-  Result := ExecCmd(Params, WorkingDir, Config);
+  Result := ExecCmd(Command, WorkingDir, Config);
 
   if not Result then
   begin
@@ -1400,7 +1407,6 @@ begin
   end;
 
 end;
-
 
 function FormatError(const Error, Filename: String): String;
 begin
@@ -1451,7 +1457,7 @@ end;
 
 
 {Wrapper function to set the appropriate params when calling php scripts}
-function GetPhpParams(Config: TConfigRec; Script, Args, Ini: String): String;
+function GetPhpParams(Config: TConfigRec; Params: TPhpParams): String;
 begin
 
   Result := ArgCmdModule(Config.PhpExe);
@@ -1462,13 +1468,13 @@ begin
   AddParam(Result, '-d display_startup_errors=Off');
 
   {Add the temp ini file to use if checking ini creation/changes}
-  if NotEmpty(Ini) then
-    AddParam(Result, Format('-c %s', [ArgCmd(Ini)]));
+  if NotEmpty(Params.Ini) then
+    AddParam(Result, Format('-c %s', [ArgCmd(Params.Ini)]));
 
-  AddParam(Result, ArgCmd(Script));
+  AddParam(Result, ArgCmd(Params.Script));
 
-  if NotEmpty(Args) then
-    AddParam(Result, Args);
+  if NotEmpty(Params.EscapedArgs) then
+    AddParam(Result, Params.EscapedArgs);
 
 end;
 
@@ -3477,7 +3483,7 @@ and returns a zero exit code.}
 function CheckCmdExe: Boolean;
 var
   Success: Boolean;
-  Params: String;
+  Command: String;
   WorkingDir: String;
 
 begin
@@ -3495,9 +3501,9 @@ begin
   end;
 
   {Get cmd to print out the current working directory}
-  Params := 'cd';
+  Command := 'cd';
   WorkingDir := GTmpDir;
-  Success := ExecCmd(Params, WorkingDir, GConfigRec);
+  Success := ExecCmd(Command, WorkingDir, GConfigRec);
 
   if not Success then
   begin
@@ -3842,13 +3848,19 @@ end;
 
 
 function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean;
+var
+  Params: TPhpParams;
+
 begin
 
   Result := False;
   Debug('Checking php configuration');
 
+  Params.Script := GTmpFile.PhpCheck;
+  Params.Ini := Ini;
+
   {This should only fail calling cmd.exe which has already been checked}
-  if not ExecPhp(GTmpFile.PhpCheck, '', Ini, Config) then
+  if not ExecPhp(Params, Config) then
     Exit;
 
   {Check that required details can be read}
@@ -4551,7 +4563,7 @@ The new/modified ini is saved in the tmp directory. The original ini is
 backed up in the tmp directory and also in the user's php directory}
 function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
 var
-  Args: String;
+  Params: TPhpParams;
   Msg: String;
 
 begin
@@ -4574,12 +4586,15 @@ begin
   {Get a new config rec}
   Config := ConfigInit(Config.PhpExe);
 
-  {The script needs the tmp ini and tmp backup ini locations}
-  Args := ArgCmd(GTmpFile.Ini);
-  AddStr(Args, #32 + ArgCmd(GTmpFile.IniBackup));
+  Params.Script := GTmpFile.PhpIniCheck;
 
-  {ExecPhp should only fail calling cmd.exe}
-  if not ExecPhp(GTmpFile.PhpIniCheck, Args, '', Config) then
+  {The script needs the tmp ini and tmp backup ini locations}
+  Params.EscapedArgs := ArgCmd(GTmpFile.Ini);
+  AddParam(Params.EscapedArgs, ArgCmd(GTmpFile.IniBackup));
+
+
+  {This should only fail calling cmd.exe, which has already been checked}
+  if not ExecPhp(Params, Config) then
     Exit;
 
   {See if we can make changes}
@@ -5020,23 +5035,23 @@ end;
 procedure RunInstaller(var Config: TConfigRec);
 var
   EnvRec: TEnvChangeRec;
-  Script: String;
-  Args: String;
+  Params: TPhpParams;
   Success: Boolean;
   Status: Integer;
 
 begin
 
   Debug('Running Composer installer script');
-  Script := GTmpFile.PhpInstaller;
   DeleteFile(GetComposerPharPath());
-  Args := GetInstallerArgs(Config);
+
+  Params.Script := GTmpFile.PhpInstaller;
+  Params.EscapedArgs := GetInstallerArgs(Config);
 
   EnvRec := ProxyEnvSet();
-  Success := ExecPhp(Script, Args, '', Config);
+  Success := ExecPhp(Params, Config);
   ProxyEnvUnset(EnvRec);
 
-  {ExecPhp will only have failed calling cmd.exe, which has already been checked.}
+  {We will only have failed calling cmd.exe, which has already been checked}
   if not Success then
     Exit;
 
