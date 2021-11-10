@@ -522,9 +522,9 @@ procedure UpdateErrorIfAnsicon(var Message: String; Autorun: String); forward;
 
 {Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
-function CheckPhpExe(var Config: TConfigRec): Boolean; forward;
+function CheckPhpExe(var Config: TConfigRec; Params: TPhpParams): Boolean; forward;
 function CheckPhpOutputDetails(var Config: TConfigRec): Boolean; forward;
-function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean; forward;
+function CheckPhpSetup(var Config: TConfigRec; Params: TPhpParams): Boolean; forward;
 function CheckPhpVersion(VersionId: Integer; FromFile: Boolean): Boolean; forward;
 function FormatPhpError(Config: TConfigRec; ShowIni: Boolean; Message: String): String; forward;
 function GetCommonErrors(Config: TConfigRec; var ShowIni: Boolean): String; forward;
@@ -543,14 +543,14 @@ procedure ReportIniEnvironment; forward;
 procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
 {Ini file functions}
-function CheckPhpIni(var Config: TConfigRec): Boolean; forward;
+function CheckPhpIni(var Config: TConfigRec; Params: TPhpParams): Boolean; forward;
 function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean; forward;
-function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
+function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec; Params: TPhpParams): Boolean; forward;
 function IniCheckTmp(Existing: Boolean): Boolean; forward;
 procedure IniDebug(Message: String); forward;
 procedure IniDebugFileAction(Success, Save: Boolean; var Rec: TModIniRec); forward;
 procedure IniFileRestore; forward;
-function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec): Boolean; forward;
+function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec; Params: TPhpParams): Boolean; forward;
 function IniGetChanges(ModIni: TModIniRec): String; forward;
 function IniGetDetails(Details: String; var Modify: Boolean; var Status: String): Boolean; forward;
 
@@ -3718,6 +3718,9 @@ end;
 {*************** Check php functions ***************}
 
 function CheckPhp(const Filename: String): Boolean;
+var
+  Params: TPhpParams;
+
 begin
 
   Result := False;
@@ -3726,6 +3729,9 @@ begin
   IniFileRestore();
 
   GConfigRec := ConfigInit(Filename);
+  {Use runphp for all php checks}
+  Params.SafePhp := True;
+
   Debug('Checking selected php: ' + Filename);
 
   ReportIniEnvironment();
@@ -3739,30 +3745,26 @@ begin
   end;
 
   {Make sure whatever we've been given can execute}
-  if not CheckPhpExe(GConfigRec) then
+  if not CheckPhpExe(GConfigRec, Params) then
     Exit;
 
   {Run php to check everything is okay}
-  if not CheckPhpSetup(GConfigRec, '') then
+  if not CheckPhpSetup(GConfigRec, Params) then
     Exit;
 
   {Handle modifying or creating ini, if needed}
-  if not CheckPhpIni(GConfigRec) then
+  if not CheckPhpIni(GConfigRec, Params) then
   begin
     SetErrorEx(ERR_PHP_INI, GConfigRec, ERR_CHECK_PHP);
     Exit;
   end;
-
 
   Result := True;
 
 end;
 
 
-function CheckPhpExe(var Config: TConfigRec): Boolean;
-var
-  Params: TPhpParams;
-
+function CheckPhpExe(var Config: TConfigRec; Params: TPhpParams): Boolean;
 begin
 
   {We check that we can run the supplied exe file by running it via runphp.exe.
@@ -3776,7 +3778,6 @@ begin
   Result := False;
   Debug('Checking if php will execute');
 
-  Params.SafePhp := True;
   Params.Script := '-v';
 
   {This should only fail calling cmd.exe which has already been checked}
@@ -3826,17 +3827,13 @@ begin
 end;
 
 
-function CheckPhpSetup(var Config: TConfigRec; Ini: String): Boolean;
-var
-  Params: TPhpParams;
-
+function CheckPhpSetup(var Config: TConfigRec; Params: TPhpParams): Boolean;
 begin
 
   Result := False;
   Debug('Checking php configuration');
 
   Params.Script := GTmpFile.PhpCheck;
-  Params.Ini := Ini;
 
   {This should only fail calling cmd.exe which has already been checked}
   if not ExecPhp(Params, Config) then
@@ -4340,7 +4337,7 @@ end;
 
 {*************** Ini file functions ***************}
 
-function CheckPhpIni(var Config: TConfigRec): Boolean;
+function CheckPhpIni(var Config: TConfigRec; Params: TPhpParams): Boolean;
 var
   ModIni: TModIniRec;
 
@@ -4356,7 +4353,7 @@ begin
   end;
 
   {See if php.ini has been modified or created}
-  if not IniFileUpdate(ModIni, Config) then
+  if not IniFileUpdate(ModIni, Config, Params) then
     Exit;
 
   Result := FileCopy(GTmpFile.Ini, ModIni.IniFile, False);
@@ -4402,7 +4399,7 @@ end;
 
 {Returns true if the ini has been created or modified, the tmp files have been
 written and the new ini works okay}
-function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
+function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec; Params: TPhpParams): Boolean;
 var
   Modify: Boolean;
 
@@ -4429,9 +4426,10 @@ begin
 
   IniDebug('Checking tmp ini with selected php');
   Config := ConfigInit(Config.PhpExe);
+  Params.Ini := GTmpFile.Ini;
 
   {See if everything works with the new/modified ini}
-  if CheckPhpSetup(Config, GTmpFile.Ini) then
+  if CheckPhpSetup(Config, Params) then
   begin
     ModIni.IniInfo := Config.IniInfo;
     Result := Config.IniInfo.Compat;
@@ -4578,9 +4576,8 @@ end;
 {Returns true if a new ini was created or an existing one was modified.
 The new/modified ini is saved in the tmp directory. The original ini is
 backed up in the tmp directory and also in the user's php directory}
-function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec): Boolean;
+function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec; Params: TPhpParams): Boolean;
 var
-  Params: TPhpParams;
   Msg: String;
 
 begin
@@ -4609,13 +4606,12 @@ begin
   Params.EscapedArgs := ArgCmd(GTmpFile.Ini);
   AddParam(Params.EscapedArgs, ArgCmd(GTmpFile.IniBackup));
 
-
   {This should only fail calling cmd.exe, which has already been checked}
   if not ExecPhp(Params, Config) then
     Exit;
 
   {See if we can make changes}
-  if not IniCheckResult(ModIni, Config) then
+  if not IniCheckResult(ModIni, Config, Params) then
     Exit;
 
   if ModIni.New then
