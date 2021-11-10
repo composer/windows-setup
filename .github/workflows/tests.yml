@@ -1,0 +1,66 @@
+name: PHP ini
+on:
+  - pull_request
+  - push
+
+jobs:
+  ini-tests:
+    name: Ini Tests
+
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php-versions: ['5.5', '8.1']
+
+    env:
+      SETUP_CMD: builds\output\Composer-Setup.dev.exe /VERYSILENT /SUPPRESSMSGBOXES /DEV=C:\composer
+      LOG_DIR: C:\install-logs
+
+    defaults:
+      run:
+        shell: cmd
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 1
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-versions }}
+          extensions: none
+
+      - name: Compile Composer-Setup
+        run: iscc src\composer.iss
+
+      - name: Create log directory
+        run: mkdir ${{ env.LOG_DIR }}
+
+      - name: Setup no-extensions
+        run: php .github\workflows\ini-util.php --no-extensions
+
+      - name: Test no-extensions
+        run:  ${{ env.SETUP_CMD }} /LOG=${{ env.LOG_DIR }}/no-extensions.txt
+
+      - name: Setup no-ini
+        run: php .github\workflows\ini-util.php --no-ini
+
+      - name: Test no-ini
+        run:  ${{ env.SETUP_CMD }} /LOG=${{ env.LOG_DIR }}/no-ini.txt
+
+      - name: Setup wrong-extdir
+        run: php .github\workflows\ini-util.php --wrong-extdir
+
+      - name: Test wrong-extdir
+        run: ${{ env.SETUP_CMD }} /LOG=${{ env.LOG_DIR }}/wrong-extdir.txt
+
+      - name: Upload install logs
+        uses: actions/upload-artifact@v2
+        if: ${{ always() }}
+        with:
+          name: install-${{ matrix.php-versions }}-log
+          path: ${{ env.LOG_DIR }}

@@ -1,12 +1,10 @@
-# https://help.github.com/en/categories/automating-your-workflow-with-github-actions
-
+name: Builds
 on:
   - pull_request
   - push
-name: build
 
 jobs:
-  builds:
+  build-and-deploy:
     name: Build & deploy
 
     runs-on: windows-latest
