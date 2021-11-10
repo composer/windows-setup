@@ -167,6 +167,7 @@ type
 
 type
   TPhpParams = record
+    SafePhp     : Boolean;        {Whether to use timeout-limited runphp.exe}
     Script      : String;         {The php file or command to run}
     EscapedArgs : String;         {Escaped arguments for the script}
     Ini         : String;         {The php.ini to use}
@@ -425,7 +426,6 @@ procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
 function GetExecError(Config: TConfigRec): String; forward;
 function GetPhpParams(Config: TConfigRec; Params: TPhpParams): String; forward;
 function GetRegHive: Integer; forward;
-function GetRunPhpError(ExitCode: Integer): String; forward;
 function GetStatusText(Status: Integer): String; forward;
 function IsEmpty(const Value: String): Boolean; forward;
 function NotEmpty(const Value: String): Boolean; forward;
@@ -538,6 +538,7 @@ function GetPhpErrorOS(Config: TConfigRec): String; forward;
 function GetPhpErrorVersion(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec); forward;
+function GetRunPhpError(Config: TConfigRec): String; forward;
 procedure ReportIniEnvironment; forward;
 procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
@@ -1442,10 +1443,11 @@ begin
   begin
     Filename := Config.PhpExe;
     Prog := 'The PHP exe file you specified';
-    SysError := GetRunPhpError(Config.ExitCode);
+    SysError := GetRunPhpError(Config);
   end;
 
   Error := Format('%s did not run correctly', [Prog]);
+  FormatExitCode(Error, Config);
 
   if StringChangeEx(SysError, '%1', '%s', True) = 1 then
     SysError := Format(SysError, [Filename]);
@@ -1460,7 +1462,13 @@ end;
 function GetPhpParams(Config: TConfigRec; Params: TPhpParams): String;
 begin
 
-  Result := ArgCmdModule(Config.PhpExe);
+  if not Params.SafePhp then
+    Result := ArgCmdModule(Config.PhpExe)
+  else
+  begin
+    Result := ArgCmdModule(GTmpFile.RunPhp)
+    AddParam(Result, ArgCmd(Config.PhpExe));
+  end;
 
   {Add ini overrides to report all errors except deprecations on stderr}
   AddParam(Result, '-d error_reporting="E_ALL & ~E_DEPRECATED"');
@@ -1486,34 +1494,6 @@ begin
     Result := HKLM
   else
     Result := HKCU;
-
-end;
-
-
-{Returns a string representing the ExitCode received from runphp.exe. This will
-be a code from GetLastError that we can use with SysErrorMessage if the
-process cannot be created or a WinApi call has failed. Otherwise it will
-return NTStatus errors.}
-function GetRunPhpError(ExitCode: Integer): String;
-var
-  UintCode: DWord;
-  Suffix: String;
-
-begin
-
-  Result := '';
-  UintCode := ExitCode;
-  Suffix := ' Try reinstalling the program to fix this problem.';
-  AddStr(Suffix, ' Make sure you have installed the appropriate Visual C++ Redistributable.');
-
-  if ExitCode > 0 then
-    Result := Format('Reported error: %s', [SysErrorMessage(ExitCode)])
-  else if UintCode = $C0000135 then
-    {STATUS_DLL_NOT_FOUND}
-    Result := 'The program cannot start because a dll was not found.' + Suffix;
-
-  if IsEmpty(Result) then
-    Result := 'The program failed to run correctly.' + Suffix;
 
 end;
 
@@ -3781,8 +3761,7 @@ end;
 
 function CheckPhpExe(var Config: TConfigRec): Boolean;
 var
-  Params: String;
-  WorkingDir: String;
+  Params: TPhpParams;
 
 begin
 
@@ -3794,21 +3773,23 @@ begin
   situations where the specific VC redistributable runtime is missing or dll
   extensions do not match the php version.}
 
+  Result := False;
   Debug('Checking if php will execute');
 
-  Params := ArgWin(Config.PhpExe);
-  AddParam(Params, '-v');
-  WorkingDir := ExtractFileDir(Config.PhpExe);
+  Params.SafePhp := True;
+  Params.Script := '-v';
 
-  DebugExecBegin(GTmpFile.RunPhp, Params, WorkingDir);
-  Result := Exec(GTmpFile.RunPhp, Params, WorkingDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
-  DebugExecEnd(Result, Config.ExitCode);
+  {This should only fail calling cmd.exe which has already been checked}
+  if not ExecPhp(Params, Config) then
+    Exit;
 
-  if not Result or (Config.ExitCode <> 0) then
+  if Config.ExitCode <> 0 then
   begin
     SetErrorEx(ERR_RUN_PHP, Config, ERR_CHECK_PHP);
-    Result := False;
+    Exit;
   end;
+
+  Result := True;
 
 end;
 
@@ -4238,6 +4219,44 @@ begin
 
   {Set the stripped/merged output as a single string}
   Config.Output := Output;
+
+end;
+
+
+{Returns a string representing the ExitCode received from runphp.exe. This will
+be a code from GetLastError that we can use with SysErrorMessage if the
+process cannot be created or an NTStatus error.}
+function GetRunPhpError(Config: TConfigRec): String;
+var
+  UintCode: DWord;
+  Msg: String;
+
+begin
+
+  Result := '';
+  UintCode := Config.ExitCode;
+
+  if Config.ExitCode > 0 then
+    Result := Format('Reported error: %s', [SysErrorMessage(Config.ExitCode)])
+  else if UintCode = $C0000135 then
+  begin
+    {STATUS_DLL_NOT_FOUND}
+    Result := 'The program cannot start because a dll was not found.'
+    AddStr(Result, ' Make sure you have installed the appropriate Visual C++ Redistributable.');
+  end;
+
+  {Show any error output, or provide a help message}
+  if Length(Config.StdErr) <> 0 then
+  begin
+    AddPara(Result, 'Program Output:');
+    AddLine(Result, OutputFromArray(Config.StdErr));
+  end
+  else
+  begin
+    Msg := 'Run the following command for more information:';
+    AddLine(Msg, Format('%s%s -v', [TAB, ArgCmd(Config.PhpExe)]));
+    AddPara(Result, Msg);
+  end;
 
 end;
 

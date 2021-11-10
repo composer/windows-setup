@@ -4,6 +4,7 @@ program runphp;
 
 {$SETPEOSVERSION 6.0}
 {$SETPESUBSYSVERSION 6.0}
+{$WEAKLINKRTTI ON}
 
 {$R *.res}
 
