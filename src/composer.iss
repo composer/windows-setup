@@ -171,6 +171,7 @@ type
     Script      : String;         {The php file or command to run}
     EscapedArgs : String;         {Escaped arguments for the script}
     Ini         : String;         {The php.ini to use}
+    ForceExtDir : Boolean;        {Force extension_dir=ext with SafePhp}
   end;
 
 type
@@ -523,6 +524,7 @@ procedure UpdateErrorIfAnsicon(var Message: String; Autorun: String); forward;
 {Check php functions}
 function CheckPhp(const Filename: String): Boolean; forward;
 function CheckPhpExe(var Config: TConfigRec; Params: TPhpParams): Boolean; forward;
+function CheckPhpNeedsExtDir(Config: TConfigRec;Params: TPhpParams): Boolean; forward;
 function CheckPhpOutputDetails(var Config: TConfigRec): Boolean; forward;
 function CheckPhpSetup(var Config: TConfigRec; Params: TPhpParams): Boolean; forward;
 function CheckPhpVersion(VersionId: Integer; FromFile: Boolean): Boolean; forward;
@@ -1468,6 +1470,9 @@ begin
   begin
     Result := ArgCmdModule(GTmpFile.RunPhp)
     AddParam(Result, ArgCmd(Config.PhpExe));
+
+    if Params.ForceExtDir then
+      AddParam(Result, '-d extension_dir="ext"');
   end;
 
   {Add ini overrides to report all errors except deprecations on stderr}
@@ -3748,6 +3753,9 @@ begin
   if not CheckPhpExe(GConfigRec, Params) then
     Exit;
 
+  {See if we need to force the default extension_dir for remaining checks}
+  Params.ForceExtDir := CheckPhpNeedsExtDir(GConfigRec, Params);
+
   {Run php to check everything is okay}
   if not CheckPhpSetup(GConfigRec, Params) then
     Exit;
@@ -3791,6 +3799,21 @@ begin
   end;
 
   Result := True;
+
+end;
+
+
+{Checks if using the default extension_dir eliminates error output}
+function CheckPhpNeedsExtDir(Config: TConfigRec; Params: TPhpParams): Boolean;
+begin
+
+  Result := False;
+
+  if Length(Config.StdErr) <> 0 then
+  begin
+    Params.ForceExtDir := True;
+    Result := CheckPhpExe(Config, Params) and (Length(Config.StdErr) = 0);
+  end;
 
 end;
 
@@ -4345,7 +4368,7 @@ begin
 
   Result := False;
 
-  if Config.IniInfo.Compat then
+  if not Params.ForceExtDir and Config.IniInfo.Compat then
   begin
     IniDebug(Format('Ini is compatible: %s', [Config.PhpIni]));
     Result := True;
@@ -4426,6 +4449,9 @@ begin
 
   IniDebug('Checking tmp ini with selected php');
   Config := ConfigInit(Config.PhpExe);
+
+  {Important not to use default extension dir}
+  Params.ForceExtDir := False;
   Params.Ini := GTmpFile.Ini;
 
   {See if everything works with the new/modified ini}
