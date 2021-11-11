@@ -865,6 +865,7 @@ begin
   AddPara(Result, IniGetChanges(GModIniRec));
   AddPara(Result, 'Proxy: ' + ProxyGetSource(GProxyInfo, 'from'));
   AddPara(Result, EnvListChanges(GEnvChanges));
+  Result := TrimRight(Result);
 
   Debug('UpdateReadyMemo' + NewLine + Result);
 
