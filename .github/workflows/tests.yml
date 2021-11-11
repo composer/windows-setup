@@ -1,7 +1,11 @@
 name: PHP ini
 on:
-  - pull_request
-  - push
+  push:
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
 
 jobs:
   ini-tests:
