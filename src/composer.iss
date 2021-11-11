@@ -4478,8 +4478,9 @@ begin
   DebugCheckFile('tmp ini with selected php');
   Config := ConfigInit(Config.PhpExe);
 
-  {Important not to use default extension dir}
+  {Important to clear previous values}
   Params.ForceExtDir := False;
+  Params.EscapedArgs := '';
   Params.Ini := GTmpFile.Ini;
 
   {See if everything works with the new/modified ini}
