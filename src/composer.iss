@@ -4282,8 +4282,15 @@ begin
   else if UintCode = $C0000135 then
   begin
     {STATUS_DLL_NOT_FOUND}
-    Result := 'The program cannot start because a dll was not found.'
+    Result := 'The program cannot start because a dll was not found.';
     AddStr(Result, ' Make sure you have installed the appropriate Visual C++ Redistributable.');
+  end
+  else if UintCode = $C00000B5 then
+  begin
+    {STATUS_IO_TIMEOUT}
+    Result := 'Setup timed-out waiting for the program to finish.';
+    AddStr(Result, ' Trying again may resolve this issue.');
+    Exit;
   end;
 
   {Show any error output, or provide a help message}

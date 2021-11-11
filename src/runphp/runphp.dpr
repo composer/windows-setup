@@ -14,6 +14,7 @@ uses
 
 const
   STATUS_UNSUCCESSFUL = $C0000001;
+  STATUS_IO_TIMEOUT = $C00000B5;
 
 var
   Cmd: String;
@@ -22,7 +23,6 @@ var
   Mode: DWORD;
   Wait: DWORD;
   Flags: DWORD;
-  Success: Boolean;
   StartInfo: TStartupInfo;
   ProcInfo: TProcessInformation;
 
@@ -38,7 +38,7 @@ begin
 
   Mode := SEM_FAILCRITICALERRORS or SEM_NOGPFAULTERRORBOX or SEM_NOOPENFILEERRORBOX;
   SetErrorMode(Mode);
-  Wait := 10000;
+  Wait := 30000;
 
   FillChar(StartInfo, SizeOf(StartInfo), #0);
   StartInfo.cb := SizeOf(StartInfo);
@@ -58,12 +58,18 @@ begin
   try
 
     WaitForSingleObject(ProcInfo.hProcess, Wait);
-    Success := GetExitCodeProcess(ProcInfo.hProcess, DWORD(ExitCode));
 
-    if not Success or (ExitCode = STILL_ACTIVE) then
+    if not GetExitCodeProcess(ProcInfo.hProcess, DWORD(ExitCode)) then
     begin
+      {Use STATUS_UNSUCCESSFUL as GetLastError might not be useful}
       ExitCode := Integer(STATUS_UNSUCCESSFUL);
       TerminateProcess(ProcInfo.hProcess, STATUS_UNSUCCESSFUL);
+    end
+    else if ExitCode = STILL_ACTIVE then
+    begin
+      {Use STATUS_IO_TIMEOUT to signify a timeout}
+      ExitCode := Integer(STATUS_IO_TIMEOUT);
+      TerminateProcess(ProcInfo.hProcess, STATUS_IO_TIMEOUT);
     end;
 
   finally
