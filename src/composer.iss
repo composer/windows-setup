@@ -417,6 +417,8 @@ function BoolFromString(Input: String; var Value: Boolean): Boolean; forward;
 function ConfigInit(Exe: String): TConfigRec; forward;
 procedure ConfigSetExec(var Config: TConfigRec); forward;
 procedure Debug(const Message: String); forward;
+procedure DebugCheckFile(const Message: String); forward;
+procedure DebugCheckPhpExe(Params: TPhpParams); forward;
 procedure DebugExecBegin(const Exe, Params, WorkingDir: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 procedure DebugPageName(Id: Integer); forward;
@@ -549,7 +551,6 @@ function CheckPhpIni(var Config: TConfigRec; Params: TPhpParams): Boolean; forwa
 function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean; forward;
 function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec; Params: TPhpParams): Boolean; forward;
 function IniCheckTmp(Existing: Boolean): Boolean; forward;
-procedure IniDebug(Message: String); forward;
 procedure IniDebugFileAction(Success, Save: Boolean; var Rec: TModIniRec); forward;
 procedure IniFileRestore; forward;
 function IniFileUpdate(var ModIni: TModIniRec; Config: TConfigRec; Params: TPhpParams): Boolean; forward;
@@ -1292,6 +1293,27 @@ end;
 procedure Debug(const Message: String);
 begin
   Log('$ ' + Message);
+end;
+
+procedure DebugCheckFile(const Message: String);
+begin
+  Debug(Format('-- Checking %s --', [Message]));
+end;
+
+
+procedure DebugCheckPhpExe(Params: TPhpParams);
+var
+  Msg: String;
+
+begin
+
+  Msg := 'if php will execute';
+
+  if Params.ForceExtDir then
+    AddStr(Msg, ' with default extension_dir');
+
+  DebugCheckFile(Msg);
+
 end;
 
 
@@ -3476,7 +3498,7 @@ begin
   Result := False;
 
   GConfigRec := ConfigInit(GCmdExe);
-  Debug('Checking cmd.exe: ' + GCmdExe);
+  DebugCheckFile('cmd.exe: ' + GCmdExe);
 
   {Check if cmd.exe is missing - it has happened}
   if not CheckCmdExeExists() then
@@ -3737,7 +3759,7 @@ begin
   {Use runphp for all php checks}
   Params.SafePhp := True;
 
-  Debug('Checking selected php: ' + Filename);
+  DebugCheckFile('selected php: ' + Filename);
 
   ReportIniEnvironment();
   SetPhpVersionInfo(GConfigRec);
@@ -3784,8 +3806,7 @@ begin
   extensions do not match the php version.}
 
   Result := False;
-  Debug('Checking if php will execute');
-
+  DebugCheckPhpExe(Params);
   Params.Script := '-v';
 
   {This should only fail calling cmd.exe which has already been checked}
@@ -3854,7 +3875,7 @@ function CheckPhpSetup(var Config: TConfigRec; Params: TPhpParams): Boolean;
 begin
 
   Result := False;
-  Debug('Checking php configuration');
+  DebugCheckFile('php configuration');
 
   Params.Script := GTmpFile.PhpCheck;
 
@@ -4370,7 +4391,7 @@ begin
 
   if not Params.ForceExtDir and Config.IniInfo.Compat then
   begin
-    IniDebug(Format('Ini is compatible: %s', [Config.PhpIni]));
+    Debug(Format('Ini is compatible: %s', [Config.PhpIni]));
     Result := True;
     Exit;
   end;
@@ -4408,11 +4429,11 @@ begin
 
   if not IniGetDetails(Details, Modify, Status) then
   begin
-    IniDebug('Invalid details: ' + Details);
+    Debug('Invalid details: ' + Details);
     Exit;
   end;
 
-  IniDebug(Format('modify=%d, status=%s', [Modify, Status]));
+  Debug(Format('modify=%d, status=%s', [Modify, Status]));
 
   {Config.Output will contain output other than the details line}
   Result := IsEmpty(Config.Output) and (Config.ExitCode = 0);
@@ -4432,13 +4453,13 @@ begin
 
   if not IniCheckOutput(Modify, Config) then
   begin
-    IniDebug(Format('Error, script %s failed', [PHP_INICHECK]));
+    Debug(Format('Error: Script %s failed', [PHP_INICHECK]));
     Exit;
   end;
 
   if not Modify then
   begin
-    IniDebug(Format('Unexpected error, nothing to modify from script %s', [PHP_INICHECK]));
+    Debug(Format('Unexpected error: Nothing to modify from script %s', [PHP_INICHECK]));
     Result := True;
     Exit;
   end;
@@ -4447,7 +4468,7 @@ begin
   if not IniCheckTmp(not ModIni.New) then
     Exit;
 
-  IniDebug('Checking tmp ini with selected php');
+  DebugCheckFile('tmp ini with selected php');
   Config := ConfigInit(Config.PhpExe);
 
   {Important not to use default extension dir}
@@ -4472,28 +4493,22 @@ var
 begin
 
   Result := False;
-  Error := Format('Error, script %s did not create ', [PHP_INICHECK]);
+  Error := Format('Error: Script %s did not create ', [PHP_INICHECK]);
 
   if not FileExists(GTmpFile.Ini) then
   begin
-    IniDebug(Error + ExtractFileName(GTmpFile.Ini));
+    Debug(Error + ExtractFileName(GTmpFile.Ini));
     Exit;
   end;
 
   if Existing and not FileExists(GTmpFile.IniBackup) then
   begin
-    IniDebug(Error + ExtractFileName(GTmpFile.IniBackup));
+    Debug(Error + ExtractFileName(GTmpFile.IniBackup));
     Exit;
   end;
 
   Result := True;
 
-end;
-
-
-procedure IniDebug(Message: String);
-begin
-  Debug(Format('PhpIni: %s', [Message]));
 end;
 
 
@@ -4542,7 +4557,7 @@ begin
 
   end;
 
-  IniDebug(Format('%s ini: %s', [Msg, Rec.IniFile]));
+  Debug(Format('%s ini: %s', [Msg, Rec.IniFile]));
 
 end;
 
@@ -4588,7 +4603,7 @@ begin
     else
       Msg := 'Failed to delete';
 
-    IniDebug(Format('%s backup ini: %s', [Msg, GModIniRec.UserBackup]));
+    Debug(Format('%s backup ini: %s', [Msg, GModIniRec.UserBackup]));
   end;
 
   {Reset global states}
@@ -4614,14 +4629,16 @@ begin
   if ModIni.New then
   begin
     ModIni.IniFile := ExtractFilePath(Config.PhpExe) + 'php.ini';
-    IniDebug(Format('Checking if ini can be created: %s', [ModIni.IniFile]));
+    Msg := 'created';
   end
   else
   begin
     ModIni.IniFile := Config.PhpIni;
     ModIni.UserBackup := Config.PhpIni + '~orig';
-    IniDebug(Format('Checking if ini can be updated: %s', [Config.PhpIni]));
+    Msg := 'updated';
   end;
+
+  DebugCheckFile(Format('if ini can be %s: %s', [Msg, ModIni.IniFile]));
 
   {Get a new config rec}
   Config := ConfigInit(Config.PhpExe);
@@ -4649,7 +4666,7 @@ begin
     Result := FileCopy(ModIni.IniFile, ModIni.UserBackup, False);
 
     if not Result then
-      IniDebug(Format('Failed to backup existing ini: %s', [ModIni.IniFile]));
+      Debug(Format('Error: Failed to backup existing ini: %s', [ModIni.IniFile]));
 
   end;
 
@@ -4661,7 +4678,7 @@ begin
     if not ModIni.New then
       AddStr(Msg, Format(', user backup created at %s', [ModIni.UserBackup]));
 
-    IniDebug(Msg);
+    Debug(Msg);
   end;
 
 end;
