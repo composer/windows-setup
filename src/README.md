@@ -18,12 +18,6 @@ Note that `release.iss` is git-ignored.
 Only the _major_ and _minor_ version parts are used for a release, with a zero _patch_ element. The
 current release version is stored in `version.iss`.
 
-## Debugging
-Because the Inno IDE only allows one script open at a time, it is only possible to debug the
-main `composer.iss`. To get round this a `debug.iss` file is created each time you compile
-`composer.iss`. This concatenates all the include files so that you can debug from this script.
-Remember that any changes you make here are only temporary to this file.
-
 ## Code Signing
 The following instructions relate to [Certum CA](https://en.sklep.certum.pl), who provide cheap
 Open Source Code Signing certificates. Their SHA2 certificate lets you sign code with both SHA256

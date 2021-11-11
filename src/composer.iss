@@ -6148,7 +6148,3 @@ begin
   GSettingsPage.Confirm.Visible := not Show;
   GSettingsPage.Warning.Visible := not Show and not GSettingsPage.Confirm.Checked;
 end;
-
-{Keep this at the very bottom so it compiles
-all includes into a single git-ignored file}
-#expr SaveToFile("debug.iss")
