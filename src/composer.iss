@@ -12,7 +12,6 @@
 #define CmdPhp "php.exe"
 #define CmdBat "composer.bat"
 #define CmdShell "composer"
-#define DllData "userdata.dll"
 #define PermsBat "acls.bat"
 #define RunPhp "runphp.exe"
 
@@ -106,9 +105,6 @@ Source: php\{#PhpIniCheck}; Flags: dontcopy;
 Source: runphp\{#RunPhp}; Flags: dontcopy signonce;
 Source: scripts\{#PermsBat}; Flags: dontcopy;
 Source: shims\{#CmdShell}; Flags: dontcopy;
-
-; app files
-Source: userdata\{#DllData}; DestDir: "{app}"; Flags: ignoreversion signonce; Check: IncludeUninstaller;
 
 ; shim files
 Source: shims\{#CmdBat}; DestDir: {code:GetBinDir}; Flags: ignoreversion;
@@ -960,8 +956,8 @@ begin
   if CurUninstallStep = usUninstall then
   begin
 
-    {We must call this in usUninstall otherwise the dll and app dir will not be
-    deleted. Also we need to know if the user data folders still exist}
+    {We must call this in usUninstall as we need to know if the user data
+    folders still exist}
     UserDataDelete();
 
     {Remove composer from the bin path if it matches the default location,

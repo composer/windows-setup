@@ -45,12 +45,6 @@ const
   DELETE_LOCAL = 1;
   DELETE_ALL = 2;
 
-function DeleteData(HParent: HWND; DirList: String; Silent: Boolean): Boolean;
-  external 'DeleteData@{app}\{#DllData} stdcall delayload uninstallonly';
-
-function GetResult(StrBuf: String; BufCount: DWord): DWord;
-  external 'GetResult@{app}\{#DllData} stdcall delayload uninstallonly';
-
 procedure UserDataDelete; forward;
 function UserDataGet(Status: Integer): TUserDataList; forward;
 procedure UserDataGetAll(const User: String; var List: TUserDataList); forward;
@@ -60,37 +54,41 @@ procedure UserAddProfileRec(const User, Profile: String; var Accounts: TUserProf
 procedure UserAddDataItem(User, Folder, Caption: String; Local: Boolean; var List: TUserDataList); forward;
 procedure UserAddDataRec(Rec: TUserFolderRec; var List: TUserDataList); forward;
 function UserGetFolderPrefix(const Folder: String; var Prefix: String): Boolean; forward;
-procedure UserDeleteData(List: TUserDataList; const DllData: String); forward;
 function UserDataSelect(Status: Integer; var List: TUserDataList): Boolean; forward;
 procedure UserDataCreateForm(Status: Integer; var Form: TDataForm); forward;
 procedure UserCheckboxClick(Sender: TObject); forward;
-function UserGetDelete: Integer; forward;
+function UserGetDeleteParams: Integer; forward;
 
 
 procedure UserDataDelete;
 var
   List: TUserDataList;
-  DllData: String;
   Status: Integer;
+  I: Integer;
+  Action: String;
 
 begin
 
-  {The main function, must be called from Uninstall step usUninstall,
-  otherwise the dll and app dir will not be deleted}
+  {The main function, must be called from Uninstall step usUninstall}
+  Status := UserGetDeleteParams();
+  List := UserDataGet(Status);
 
-  DllData := ExpandConstant('{app}\{#DllData}');
-  Status := UserGetDelete();
+  if not UserDataSelect(Status, List) then
+    Exit;
 
-  try
+  for I := 0 to GetArrayLength(List) - 1 do
+  begin
 
-    List := UserDataGet(Status);
+    if List[I].Delete then
+    begin
+      if DelTree(List[I].Folder, True, True, True) then
+        Action := 'Deleted'
+      else
+        Action := 'Failed to delete';
 
-    if UninstallSilent or UserDataSelect(Status, List) then
-      UserDeleteData(List, DllData);
+      Debug(Format('%s directory: %s', [Action, List[I].Folder]));
+    end;
 
-  finally
-    {Important to unload dll, or it will not be deleted}
-    UnloadDLL(DllData);
   end;
 
 end;
@@ -354,59 +352,11 @@ begin
 
   Prefix := Copy(Prefix, Length(Profile) + 1, MaxInt);
   StringChangeEx(Prefix, '/', '\', True);
+
+  if Pos('\', Prefix) = 1 then
+    Prefix := Copy(Prefix, 2, MaxInt);
+
   Result := Prefix <> '';
-
-end;
-
-
-procedure UserDeleteData(List: TUserDataList; const DllData: String);
-var
-  Data: String;
-  I: Integer;
-  CharCount: DWord;
-  InfoList: TStringList;
-
-begin
-
-  for I := 0 to GetArrayLength(List) - 1 do
-  begin
-
-    if List[I].Delete then
-      Data := Data + List[I].Folder + ';';
-
-  end;
-
-  if Data = '' then
-    Exit;
-
-  Debug('Calling dll: ' + DllData);
-  DeleteData(UninstallProgressForm.Handle, Data, UninstallSilent);
-
-  CharCount := 0;
-  CharCount := GetResult(Data, CharCount);
-  SetLength(Data, CharCount);
-
-  if GetResult(Data, CharCount) <> CharCount then
-    Exit;
-
-  Data := TrimRight(Data);
-  StringChangeEx(Data, ';', #13, True);
-
-  InfoList := TStringList.Create;
-
-  try
-    InfoList.Text := Data;
-
-    for I := 0 to InfoList.Count - 1 do
-      Debug(InfoList.Strings[I]);
-
-  finally
-    InfoList.Free;
-  end;
-
-  {Update uninstall form so it repaints}
-  Sleep(10);
-  UninstallProgressForm.Update;
 
 end;
 
@@ -423,6 +373,12 @@ begin
   if GetArrayLength(List) = 0 then
   begin
     Debug('No user data found');
+    Exit;
+  end;
+
+  if UninstallSilent then
+  begin
+    Result := True;
     Exit;
   end;
 
@@ -540,7 +496,7 @@ begin
 end;
 
 
-function UserGetDelete: Integer;
+function UserGetDeleteParams: Integer;
 var
   Param: String;
 
