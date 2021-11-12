@@ -131,7 +131,7 @@ var
   Accounts: TUserProfileList;
   I: Integer;
   SafeDir: String;
-  SystemDir: String;
+  SystemRoot: String;
   Rec: TUserFolderRec;
 
 begin
@@ -152,7 +152,7 @@ begin
   if not UserGetAccounts(Accounts) then
     Exit;
 
-  SystemDir := AnsiLowercase(GetSystemDir());
+  SystemRoot := AnsiLowercase(GetWinDir());
 
   {Check profile paths and add suffixes}
   for I := 0 to GetArrayLength(Accounts) - 1 do
@@ -164,7 +164,7 @@ begin
 
     SafeDir := NormalizePath(Accounts[I].Profile);
 
-    if (SafeDir = '') or (Pos('\\',SafeDir) = 1) or (Pos(SystemDir, AnsiLowercase(SafeDir)) = 1) then
+    if (SafeDir = '') or (Pos('\\',SafeDir) = 1) or (Pos(SystemRoot, AnsiLowercase(SafeDir)) = 1) then
       Continue;
 
     Rec.User := Accounts[I].User;

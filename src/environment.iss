@@ -201,8 +201,8 @@ begin
     Exit;
   end;
 
-  {Paranoid check to make sure we are not removing a system path - should not happen}
-  if Pos(AnsiLowercase(GetSystemDir()), AnsiLowercase(SafeDirectory)) = 1 then
+  {Paranoid check to make sure we are not removing a system root path - should not happen}
+  if Pos(AnsiLowercase(GetWinDir()), AnsiLowercase(SafeDirectory)) = 1 then
   begin
     Result := ENV_FAILED;
     Exit;
