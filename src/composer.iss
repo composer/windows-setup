@@ -5,7 +5,7 @@
 
 #define AppId "{7315AF68-E777-496A-A6A2-4763A98ED35A}"
 #define AppInstallName "ComposerSetup"
-#define AppDescription "Composer - Php Dependency Manager"
+#define AppDescription "Composer - PHP Dependency Manager"
 #define AppUrl "getcomposer.org"
 #define AppYear GetDateTimeString('yyyy', '', '');
 
