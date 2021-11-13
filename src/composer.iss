@@ -142,7 +142,8 @@ type
     PhpCheck      : String;
     PhpIniCheck   : String;
     PhpInstaller  : String;
-    Composer      : String;
+    ComposerShell : String;
+    ComposerPhar  : String;
     StdOut        : String;
     StdErr        : String;
     Ini           : String;
@@ -166,7 +167,7 @@ type
     PhpOtherOS  : String;         {The PHP_OS if not Windows}
     PhpDetails  : Boolean;        {If the details line is valid}
     WorkingDir  : String;         {The working dir for Exec calls}
-    TmpFile     : TTmpFile;       {Absolute or relative file names, depending on WorkingDir}
+    TmpFile     : TTmpFile;       {Absolute or relative file names of some values for Exec calls}
     IniInfo     : TIniInfoRec;    {The openssl values and missing entries from the ini file}
     ExitCode    : Integer;        {The exit code of the last call}
     StatusCode  : Integer;        {The status/error code from the last call}
@@ -561,7 +562,6 @@ function IniGetDetails(Details: String; var Modify: Boolean; var Status: String)
 function ComposerPharMissing: Boolean; forward;
 function FormatCertLocation(Prefix, Name, Source, Location: String): String; forward;
 function GetCertLocation(Config: TConfigRec; var IsFile: Boolean): String; forward;
-function GetComposerPharPath: String; forward;
 function GetErrorCertificateVerify(Config: TConfigRec; Reason: String): String; forward;
 function GetErrorProxy(var Message: String; Config: TConfigRec): Boolean; forward;
 function GetErrorSSL(var Message: String; Config: TConfigRec): Boolean; forward;
@@ -635,11 +635,12 @@ begin
   GTmpFile.PhpCheck := GTmpDir + '\' + PHP_CHECK;
   GTmpFile.PhpIniCheck := GTmpDir + '\' + PHP_INICHECK;
   GTmpFile.PhpInstaller := GTmpDir + '\' + PHP_INSTALLER;
-  GTmpFile.Composer := GTmpDir + '\' + CMD_SHELL;
+  GTmpFile.ComposerShell := GTmpDir + '\' + CMD_SHELL;
+  GTmpFile.ComposerPhar := GTmpDir + '\composer.phar';
   GTmpFile.StdOut := GTmpDir + '\stdout.txt';
   GTmpFile.StdErr := GTmpDir + '\stderr.txt';
-  GTmpFile.Ini := GTmpDir + '\php.ini';
-  GTmpFile.IniBackup := GTmpDir + '\php.ini.backup';
+  GTmpFile.Ini := GTmpDir + '\tmp.ini';
+  GTmpFile.IniBackup := GTmpDir + '\tmp.ini.backup';
 
   {Set our initial data}
   InitSetData();
@@ -879,7 +880,7 @@ begin
 
   Debug('Running PrepareToInstall tasks...');
 
-  if not UnixifyShellFile(GTmpFile.Composer, Result) then
+  if not UnixifyShellFile(GTmpFile.ComposerShell, Result) then
     Exit;
 
   RemoveSystemUserData();
@@ -4577,7 +4578,7 @@ begin
       if Rec.New then
         Msg := 'Created new'
       else
-        Msg := 'Updated';
+        Msg := 'Updated existing';
     end
     else
     begin
@@ -4596,7 +4597,7 @@ begin
       if Rec.New then
         Msg := 'Failed to create new'
       else
-        Msg := 'Failed to update';
+        Msg := 'Failed to update existing';
     end
     else
     begin
@@ -4724,12 +4725,10 @@ begin
   {Debug successful result}
   if Result then
   begin
-    Msg := Format('Compatible ini available at %s', [GTmpFile.Ini]);
+    Debug(Format('Compatible ini available at %s', [GTmpFile.Ini]));
 
     if not ModIni.New then
-      AddStr(Msg, Format(', user backup created at %s', [ModIni.UserBackup]));
-
-    Debug(Msg);
+      Debug(Format('User backup created at %s', [ModIni.UserBackup]));
   end;
 
 end;
@@ -4793,7 +4792,7 @@ end;
 
 function ComposerPharMissing: Boolean;
 begin
-  Result := not FileExists(GetComposerPharPath());
+  Result := not FileExists(GTmpFile.ComposerPhar);
 end;
 
 
@@ -4866,12 +4865,6 @@ begin
     Exit;
   end;
 
-end;
-
-
-function GetComposerPharPath: String;
-begin
-  Result := GTmpDir + '\composer.phar';
 end;
 
 
@@ -5153,7 +5146,7 @@ var
 begin
 
   Debug('Running Composer installer script');
-  DeleteFile(GetComposerPharPath());
+  DeleteFile(GTmpFile.ComposerPhar);
 
   Params.Script := Config.TmpFile.PhpInstaller;
   Params.EscapedArgs := GetInstallerArgs(Config);
