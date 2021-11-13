@@ -544,7 +544,7 @@ function GetPhpErrorVersion(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec); forward;
 function GetRunPhpError(Config: TConfigRec): String; forward;
-function ParseErrorOutput(Config: TConfigRec): String; forward;
+function ParseErrorOutput(StdErr: TArrayOfString): String; forward;
 procedure ReportIniEnvironment; forward;
 procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
@@ -4305,7 +4305,7 @@ begin
   Output := Trim(Output);
 
   {Add any error output}
-  AddPara(Output, Trim(ParseErrorOutput(Config)));
+  AddPara(Output, Trim(ParseErrorOutput(Config.StdErr)));
 
   {Set the stripped/merged output as a single string}
   Config.Output := Output;
@@ -4346,7 +4346,7 @@ begin
   if Length(Config.StdErr) <> 0 then
   begin
     AddPara(Result, 'Program Output:');
-    AddLine(Result, OutputFromArray(Config.StdErr));
+    AddLine(Result, ParseErrorOutput(Config.StdErr));
   end
   else
   begin
@@ -4359,7 +4359,7 @@ end;
 
 
 {Parses out in Unknown on line 0 lines}
-function ParseErrorOutput(Config: TConfigRec): String;
+function ParseErrorOutput(StdErr: TArrayOfString): String;
 var
   TmpList: TArrayOfString;
   Count: Integer;
@@ -4372,7 +4372,7 @@ var
 
 begin
 
-  Count := GetArrayLength(Config.StdErr);
+  Count := GetArrayLength(StdErr);
   SetArrayLength(TmpList, Count);
 
   Next := 0;
@@ -4382,7 +4382,7 @@ begin
   for I := 0 to Count - 1 do
   begin
 
-    Line := Config.StdErr[I];
+    Line := StdErr[I];
     Index := Pos(Target, Lowercase(Line));
 
     if Index <> 0 then
