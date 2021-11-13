@@ -544,6 +544,7 @@ function GetPhpErrorVersion(Config: TConfigRec): String; forward;
 function GetPhpIni(Config: TConfigRec; Indent: Boolean): String; forward;
 procedure GetPhpOutput(var Details: String; var Config: TConfigRec); forward;
 function GetRunPhpError(Config: TConfigRec): String; forward;
+function ParseErrorOutput(Config: TConfigRec): String; forward;
 procedure ReportIniEnvironment; forward;
 procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
@@ -570,7 +571,7 @@ function GetInstallerCommonErrors(Config: TConfigRec): String; forward;
 function GetInstallerErrors(Config: TConfigRec): String; forward;
 function GetInstallerUnexpected(Config: TConfigRec): String; forward;
 function GetInstallerWarnings(Config: TConfigRec): String; forward;
-function ParseErrorOutput(StdOut: TArrayOfString): String; forward;
+function ParseInstallerOutput(StdOut: TArrayOfString): String; forward;
 procedure RunInstaller(var Config: TConfigRec); forward;
 procedure SetErrorsSSL(Config: TConfigRec; ReasonList: TStringList); forward;
 
@@ -3535,7 +3536,6 @@ function CheckCmdExe: Boolean;
 var
   Success: Boolean;
   Command: String;
-  WorkingDir: String;
 
 begin
 
@@ -3970,11 +3970,8 @@ begin
 end;
 
 
-{This allows us to bail early on old PHP versions, so we can control subsequent
-error output more effectively. Old versions show a MessageBox on some errors,
-which is not suitable for silent installations. This was changed in 5.1.2 to
-show only if display_startup_errors is set. The MessageBox was removed entirely
-for 5.5.0}
+{This allows us to bail early on old PHP versions that do no support the
+modern TLS protocols required by Composer}
 function CheckPhpVersion(VersionId: Integer; FromFile: Boolean): Boolean;
 begin
 
@@ -4308,7 +4305,7 @@ begin
   Output := Trim(Output);
 
   {Add any error output}
-  AddPara(Output, Trim(OutputFromArray(Config.StdErr)));
+  AddPara(Output, Trim(ParseErrorOutput(Config)));
 
   {Set the stripped/merged output as a single string}
   Config.Output := Output;
@@ -4357,6 +4354,54 @@ begin
     AddLine(Msg, Format('%s%s -v', [TAB, ArgCmd(Config.PhpExe)]));
     AddPara(Result, Msg);
   end;
+
+end;
+
+
+{Parses out in Unknown on line 0 lines}
+function ParseErrorOutput(Config: TConfigRec): String;
+var
+  TmpList: TArrayOfString;
+  Count: Integer;
+  I: Integer;
+  Next: Integer;
+  Index: Integer;
+  Line: String;
+  Target: String;
+  TargetLength: Integer;
+
+begin
+
+  Count := GetArrayLength(Config.StdErr);
+  SetArrayLength(TmpList, Count);
+
+  Next := 0;
+  Target := Lowercase('in Unknown on line 0');
+  TargetLength := Length(Target);
+
+  for I := 0 to Count - 1 do
+  begin
+
+    Line := Config.StdErr[I];
+    Index := Pos(Target, Lowercase(Line));
+
+    if Index <> 0 then
+    begin
+      Delete(Line, Index, TargetLength);
+      Line := Trim(Line);
+
+      If IsEmpty(Line) then
+        Continue;
+    end;
+
+    TmpList[Next] := Line;
+    Inc(Next);
+  end;
+
+  if Count > Next then
+    SetArrayLength(TmpList, Next);
+
+  Result := OutputFromArray(TmpList);
 
 end;
 
@@ -5004,7 +5049,7 @@ begin
     Result := Config.Output
   else
   begin
-    Config.Output := ParseErrorOutput(Config.StdOut);
+    Config.Output := ParseInstallerOutput(Config.StdOut);
     CommonErrors := GetInstallerCommonErrors(Config);
 
     Result := 'The Composer installer script was not successful';
@@ -5097,7 +5142,7 @@ end;
 
 
 {Parses out duplicate errors from the output}
-function ParseErrorOutput(StdOut: TArrayOfString): String;
+function ParseInstallerOutput(StdOut: TArrayOfString): String;
 var
   TmpList: TArrayOfString;
   Count: Integer;
