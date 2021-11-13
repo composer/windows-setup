@@ -1,4 +1,8 @@
 ## Unreleased
+* Reworked ini update handling to fix extension_dir errors.
+* Improved PHP checks which now use runphp for all scripts.
+* Changed to calling runphp with cmd.exe so the output can be captured.
+* Changed runphp to safely execute PHP scripts with a 30 second timeout.
 
 ## v6.2.0
 2021-09-25
