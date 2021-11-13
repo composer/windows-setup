@@ -22,8 +22,21 @@ current release version is stored in `version.iss`.
 The following instructions relate to [Certum CA](https://en.sklep.certum.pl), who provide cheap
 Open Source Code Signing certificates. Their SHA2 certificate lets you sign code with both SHA256
 and SHA1 (for older OSs that do not understand SHA256). Note that their certificate renewal process
-does not work for the Open Source Code Signing product, so you have to buy a new certificate instead.
+does not always work for the Open Source Code Signing product, depending on the delivery method,
+so you have to buy a new certificate instead.
 
+### Current procedure
+From 2021 Certum have changed their certificate issue mechanisms yet again. Now you can buy a
+product named `Open Source Code Signing in the Cloud` which is much easier to use, but proved
+incredibly hard to setup due to things not happening as per the documentation (so no surprises there
+going on past experience).
+
+You need to install a desktop package (Simply Sign Desktop) and the Simply Sign mobile app. Once
+this is all working, you just click `Generate token` on the app, and enter this into the Simply Sign
+Desktop window that pops up when compiling.
+
+
+### Previous procedure
 From 2017 Certum can only issue certificates using a smart card reader. If you purchase their
 card-reader package, you can install the software from the USB stick, which  also contains helpful
 instruction manuals. The main interface is the `proCertumCardManager` application. Also included is
