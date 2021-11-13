@@ -4041,13 +4041,22 @@ end;
 
 
 function GetErrorExtDirectory(var Message: String; Config: TConfigRec): Boolean;
+var
+  Output: String;
+  Error: Boolean;
+
 begin
 
-  {The old wrong extension_dir problem}
+  {The old wrong extension_dir problem - which we have been unable to fix}
   Result := False;
+  Output := Lowercase(Config.Output);
+
 
   {Check for startup errors and errors loading zend extensions}
-  if (Pos('dynamic library', Config.Output) = 0) and (Pos('loading ext\', Config.Output) = 0) then
+  Error := (Pos('failed loading', Output) <> 0) or
+    (Pos('unable to load', Output) <> 0) or (Pos('unable to initialize', Output) <> 0);
+
+  if not Error then
     Exit;
 
   AddStr(Message, 'A setting in your php.ini could be causing the problem:');
