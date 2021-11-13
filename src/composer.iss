@@ -137,6 +137,19 @@ FinishedLabel=Setup has installed [name] on your computer.%nUsage: Open a comman
 [Code]
 
 type
+  TTmpFile = record
+    RunPhp        : String;
+    PhpCheck      : String;
+    PhpIniCheck   : String;
+    PhpInstaller  : String;
+    Composer      : String;
+    StdOut        : String;
+    StdErr        : String;
+    Ini           : String;
+    IniBackup     : String;
+  end;
+
+type
   TIniInfoRec = record
     Cafile      : String;         {The openssl.cafile ini value, if openssl enabled}
     Capath      : String;         {The openssl.capath ini value, if openssl enabled}
@@ -152,6 +165,8 @@ type
     PhpIni      : String;         {The php.ini file in use}
     PhpOtherOS  : String;         {The PHP_OS if not Windows}
     PhpDetails  : Boolean;        {If the details line is valid}
+    WorkingDir  : String;         {The working dir for Exec calls}
+    TmpFile     : TTmpFile;       {Absolute or relative file names, depending on WorkingDir}
     IniInfo     : TIniInfoRec;    {The openssl values and missing entries from the ini file}
     ExitCode    : Integer;        {The exit code of the last call}
     StatusCode  : Integer;        {The status/error code from the last call}
@@ -229,19 +244,6 @@ type
     CanIgnore   : Boolean;  {If a proxy value can be ignored}
     UserIgnore  : Boolean;  {If a proxy value has been ignored}
     DebugMsg    : String;   {Reports proxy search information}
-  end;
-
-type
-  TTmpFile = record
-    RunPhp        : String;
-    PhpCheck      : String;
-    PhpIniCheck   : String;
-    PhpInstaller  : String;
-    Composer      : String;
-    StdOut        : String;
-    StdErr        : String;
-    Ini           : String;
-    IniBackup     : String;
   end;
 
 type
@@ -410,15 +412,17 @@ procedure AddPara(var Existing: String; const Value: String); forward;
 procedure AddParam(var Params: String; const Value: String); forward;
 procedure AddStr(var Existing: String; const Value: String); forward;
 function BoolFromString(Input: String; var Value: Boolean): Boolean; forward;
-function ConfigInit(Exe: String): TConfigRec; forward;
+function ConfigGetFile(const Filename: String; UseRelativePath: Boolean): String; forward;
+function ConfigInit(const PhpExe: String): TConfigRec; forward;
 procedure ConfigSetExec(var Config: TConfigRec); forward;
+procedure ConfigSetFiles(var Config: TConfigRec); forward;
 procedure Debug(const Message: String); forward;
 procedure DebugCheckFile(const Message: String); forward;
 procedure DebugCheckPhpExe(Params: TPhpParams); forward;
 procedure DebugExecBegin(const Exe, Params, WorkingDir: String); forward;
 procedure DebugExecEnd(Res: Boolean; ExitCode: Integer); forward;
 procedure DebugPageName(Id: Integer); forward;
-function ExecCmd(Command, WorkingDir: String; var Config: TConfigRec): Boolean; forward;
+function ExecCmd(Command: String; var Config: TConfigRec): Boolean; forward;
 function ExecPhp(Params: TPhpParams; var Config: TConfigRec): Boolean; forward;
 function FormatError(const Error, Filename: String): String; forward;
 procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
@@ -1255,20 +1259,31 @@ begin
 end;
 
 
-function ConfigInit(Exe: String): TConfigRec;
+function ConfigGetFile(const Filename: String; UseRelativePath: Boolean): String;
+begin
+
+  if UseRelativePath then
+    Result := ExtractFileName(Filename)
+  else
+    Result := Filename;
+
+end;
+
+
+function ConfigInit(const PhpExe: String): TConfigRec;
 var
   IniInfo: TIniInfoRec;
 
 begin
 
-  Result.PhpExe := Exe;
+  Result.PhpExe := PhpExe;
   Result.PhpVersion := '';
   Result.PhpId := 0;
   Result.PhpIni := '';
   Result.PhpOtherOS := '';
   Result.PhpDetails := False;
+  ConfigSetFiles(Result);
   Result.IniInfo := IniInfo;
-
   ConfigSetExec(Result);
 
 end;
@@ -1283,6 +1298,38 @@ begin
   SetArrayLength(Config.StdErr, 0);
   Config.Output := '';
   Config.Message := '';
+
+end;
+
+
+{Sets WorkingDir and TmpFile Config values for use in Exec calls, mainly
+to make debug output more readable when error-checking. Absolute filenames
+are used only when PHP is on a different drive to Setup.}
+procedure ConfigSetFiles(var Config: TConfigRec);
+var
+  UseRelative: Boolean;
+  TmpFile: TTmpFile;
+
+begin
+
+  UseRelative := IsEmpty(Config.PhpExe) or
+    (ExtractFileDrive(GTmpDir) = ExtractFileDrive(Config.PhpExe));
+
+  if UseRelative then
+    Config.WorkingDir := GTmpDir
+  else
+    Config.WorkingDir := ExtractFileDir(Config.PhpExe);
+
+  TmpFile.RunPhp := ConfigGetFile(GTmpFile.RunPhp, UseRelative);
+  TmpFile.PhpCheck := ConfigGetFile(GTmpFile.PhpCheck, UseRelative);
+  TmpFile.PhpIniCheck := ConfigGetFile(GTmpFile.PhpIniCheck, UseRelative);
+  TmpFile.PhpInstaller := ConfigGetFile(GTmpFile.PhpInstaller, UseRelative);
+  TmpFile.StdOut := ConfigGetFile(GTmpFile.StdOut, UseRelative);
+  TmpFile.StdErr := ConfigGetFile(GTmpFile.StdErr, UseRelative);
+  TmpFile.Ini := ConfigGetFile(GTmpFile.Ini, UseRelative);
+  TmpFile.IniBackup := ConfigGetFile(GTmpFile.IniBackup, UseRelative);
+
+  Config.TmpFile := TmpFile;
 
 end;
 
@@ -1372,10 +1419,10 @@ end;
 
 {Wrapper function to call the native system cmd.exe and direct its output
 to temp files, which is the only way to capture stdout and stderr in Inno}
-function ExecCmd(Command, WorkingDir: String; var Config: TConfigRec): Boolean;
+function ExecCmd(Command: String; var Config: TConfigRec): Boolean;
 var
   OutputArgs: String;
-  CommandLine: String;
+  CmdLine: String;
   OldState: Boolean;
 
 begin
@@ -1384,17 +1431,17 @@ begin
   DeleteFile(GTmpFile.StdErr);
 
   {Always use the full path for the output streams, in case the directory is changed}
-  OutputArgs := Format('> %s 2> %s', [ArgCmd(GTmpFile.StdOut), ArgCmd(GTmpFile.StdErr)]);
+  OutputArgs := Format('> %s 2> %s', [ArgCmd(Config.TmpFile.StdOut), ArgCmd(Config.TmpFile.StdErr)]);
   AddParam(Command, OutputArgs);
 
-  CommandLine := Format('/s /c "%s"', [Command]);
-  DebugExecBegin(GCmdExe, CommandLine, WorkingDir);
+  CmdLine := Format('/s /c "%s"', [Command]);
+  DebugExecBegin(GCmdExe, CmdLine, Config.WorkingDir);
 
   if IsWin64 then
     OldState := EnableFsRedirection(False);
 
   try
-    Result := Exec(GCmdExe, CommandLine, WorkingDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
+    Result := Exec(GCmdExe, CmdLine, Config.WorkingDir, SW_HIDE, ewWaitUntilTerminated, Config.ExitCode);
   finally
     if IsWin64 then
       EnableFsRedirection(OldState);
@@ -1412,15 +1459,14 @@ end;
 function ExecPhp(Params: TPhpParams; var Config: TConfigRec): Boolean;
 var
   Command: String;
-  WorkingDir: String;
 
 begin
 
   ConfigSetExec(Config);
 
   Command := GetPhpParams(Config, Params);
-  WorkingDir := ExtractFileDir(Config.PhpExe);
-  Result := ExecCmd(Command, WorkingDir, Config);
+
+  Result := ExecCmd(Command, Config);
 
   if not Result then
   begin
@@ -1487,7 +1533,7 @@ begin
     Result := ArgCmdModule(Config.PhpExe)
   else
   begin
-    Result := ArgCmdModule(GTmpFile.RunPhp)
+    Result := ArgCmdModule(Config.TmpFile.RunPhp)
     AddParam(Result, ArgCmd(Config.PhpExe));
 
     if Params.ForceExtDir then
@@ -3494,7 +3540,7 @@ begin
 
   Result := False;
 
-  GConfigRec := ConfigInit(GCmdExe);
+  GConfigRec := ConfigInit('');
   DebugCheckFile('cmd.exe: ' + GCmdExe);
 
   {Check if cmd.exe is missing - it has happened}
@@ -3506,8 +3552,7 @@ begin
 
   {Get cmd to print out the current working directory}
   Command := 'cd';
-  WorkingDir := GTmpDir;
-  Success := ExecCmd(Command, WorkingDir, GConfigRec);
+  Success := ExecCmd(Command, GConfigRec);
 
   if not Success then
   begin
@@ -3874,7 +3919,7 @@ begin
   Result := False;
   DebugCheckFile('php configuration');
 
-  Params.Script := GTmpFile.PhpCheck;
+  Params.Script := Config.TmpFile.PhpCheck;
 
   {This should only fail calling cmd.exe which has already been checked}
   if not ExecPhp(Params, Config) then
@@ -4412,6 +4457,7 @@ begin
     {Update config with the new ini data}
     Config.PhpIni := ModIni.IniFile;
     Config.IniInfo := ModIni.IniInfo;
+    ConfigSetExec(Config);
     {Set the global ini rec with the current details}
     GModIniRec := ModIni;
     GModIniRec.InUse := True;
@@ -4478,7 +4524,7 @@ begin
   {Important to clear previous values}
   Params.ForceExtDir := False;
   Params.EscapedArgs := '';
-  Params.Ini := GTmpFile.Ini;
+  Params.Ini := Config.TmpFile.Ini;
 
   {See if everything works with the new/modified ini}
   if CheckPhpSetup(Config, Params) then
@@ -4648,11 +4694,11 @@ begin
   {Get a new config rec}
   Config := ConfigInit(Config.PhpExe);
 
-  Params.Script := GTmpFile.PhpIniCheck;
+  Params.Script := Config.TmpFile.PhpIniCheck;
 
   {The script needs the tmp ini and tmp backup ini locations}
-  Params.EscapedArgs := ArgCmd(GTmpFile.Ini);
-  AddParam(Params.EscapedArgs, ArgCmd(GTmpFile.IniBackup));
+  Params.EscapedArgs := ArgCmd(Config.TmpFile.Ini);
+  AddParam(Params.EscapedArgs, ArgCmd(Config.TmpFile.IniBackup));
 
   {This should only fail calling cmd.exe, which has already been checked}
   if not ExecPhp(Params, Config) then
@@ -4917,8 +4963,12 @@ begin
   Result := '--';
   AddParam(Result, '--no-ansi');
   AddParam(Result, '--quiet');
-  AddParam(Result, '--install-dir');
-  AddParam(Result, ArgCmd(GTmpDir));
+
+  if Config.WorkingDir <> GTmpDir then
+  begin
+    AddParam(Result, '--install-dir');
+    AddParam(Result, ArgCmd(GTmpDir));
+  end;
 
 end;
 
@@ -5105,7 +5155,7 @@ begin
   Debug('Running Composer installer script');
   DeleteFile(GetComposerPharPath());
 
-  Params.Script := GTmpFile.PhpInstaller;
+  Params.Script := Config.TmpFile.PhpInstaller;
   Params.EscapedArgs := GetInstallerArgs(Config);
 
   EnvRec := ProxyEnvSet();

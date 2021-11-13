@@ -115,18 +115,13 @@ class IniChecker
             return;
         }
 
+        // We should have this, but just in case
         if (!defined('PHP_BINARY')) {
             $this->writeError('PHP_BINARY not defined');
             return;
         }
 
         $this->phpDir = dirname(PHP_BINARY);
-
-        // We need to be in the php directory
-        if (!chdir($this->phpDir)) {
-            $this->writeError('Unable to cd to: '.$this->phpDir);
-            return;
-        }
 
         // Make sure we can write to the php directory
         if (!is_writable($this->phpDir)) {
