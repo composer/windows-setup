@@ -550,7 +550,7 @@ procedure SetPhpVersionInfo(var Config: TConfigRec); forward;
 
 {Ini file functions}
 function CheckPhpIni(var Config: TConfigRec; Params: TPhpParams): Boolean; forward;
-function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean; forward;
+function IniCheckOutput(var Modify: Boolean; var Status: String; Config: TConfigRec): Boolean; forward;
 function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec; Params: TPhpParams): Boolean; forward;
 function IniCheckTmp(Existing: Boolean): Boolean; forward;
 procedure IniDebugFileAction(Success, Save: Boolean; var Rec: TModIniRec); forward;
@@ -4521,10 +4521,9 @@ begin
 end;
 
 
-function IniCheckOutput(var Modify: Boolean; Config: TConfigRec): Boolean;
+function IniCheckOutput(var Modify: Boolean; var Status: String; Config: TConfigRec): Boolean;
 var
   Details: String;
-  Status: String;
 
 begin
 
@@ -4538,8 +4537,6 @@ begin
     Exit;
   end;
 
-  Debug(Format('modify=%d, status=%s', [Modify, Status]));
-
   {Config.Output will contain output other than the details line}
   Result := IsEmpty(Config.Output) and (Config.ExitCode = 0);
 
@@ -4551,23 +4548,22 @@ written and the new ini works okay}
 function IniCheckResult(var ModIni: TModIniRec; Config: TConfigRec; Params: TPhpParams): Boolean;
 var
   Modify: Boolean;
+  Status: String;
 
 begin
 
   Result := False;
 
-  if not IniCheckOutput(Modify, Config) then
+  if not IniCheckOutput(Modify, Status, Config) then
   begin
     Debug(Format('Error: Script %s failed', [PHP_INICHECK]));
     Exit;
   end;
 
+  Debug(Format('IniCheck: modify=%d, status=%s', [Modify, Status]));
+
   if not Modify then
-  begin
-    Debug(Format('Unexpected error: Nothing to modify from script %s', [PHP_INICHECK]));
-    Result := True;
     Exit;
-  end;
 
   {Check tmp files have been written}
   if not IniCheckTmp(not ModIni.New) then
