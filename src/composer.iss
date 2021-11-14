@@ -187,9 +187,19 @@ type
   end;
 
 type
+  TVersionInfo = record
+    Major:    Word;
+    Minor:    Word;
+    Revision: Word;
+    Build:    Word;
+    Num:      Int64;
+  end;
+
+type
   TExistingRec = record
     Installed   : Boolean;
     Version     : String;
+    Info        : TVersionInfo;
     Conflict    : Boolean;
   end;
 
@@ -437,8 +447,8 @@ procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
 procedure SetErrorEx(StatusCode: Integer; var Config: TConfigRec; NewStatusCode: Integer); forward;
 procedure ShowErrorIfSilent; forward;
 procedure ShowErrorMessage(const Message: String); forward;
-function StrToVer(Version: String): DWord; forward;
-function VersionGetConflict(VerCurrent, VerExisting: String): Boolean; forward;
+function VersionGetConflict(Current, Installed: TVersionInfo): Boolean; forward;
+function VersionGetInfo(const Version: String): TVersionInfo; forward;
 
 {Exec output functions}
 procedure OutputDebug(Output, Name: String); forward;
@@ -582,7 +592,7 @@ procedure ErrorSettingsUpdate; forward;
 function GetBase(Control: TWinControl): Integer; forward;
 function MessagePageCreate(Id: Integer; Caption, Description, Text: String): TWizardPage; forward;
 procedure OptionsCheckboxClick(Sender: TObject); forward;
-function OptionsCheckExisting(Rec: TExistingRec): Boolean; forward;
+function OptionsCheckExisting(Existing: TExistingRec): Boolean; forward;
 function OptionsPageCreate(Id: Integer; Caption, Description: String): TWizardPage; forward;
 procedure OptionsPageInit; forward;
 procedure OptionsPageUpdate; forward;
@@ -1036,6 +1046,7 @@ function InitGetExisting: TExistingRec;
 var
   Key: String;
   Hive: Integer;
+  CurrentVersion: TVersionInfo;
 
 begin
 
@@ -1058,11 +1069,14 @@ begin
     end;
   end;
 
+  Result.Info := VersionGetInfo(Result.Version);
+
   if not Result.Installed then
     Exit;
 
   {Check if there is a conflict}
-  Result.Conflict := VersionGetConflict('{#SetupVersion}', Result.Version);
+  CurrentVersion := VersionGetInfo('{#SetupVersion}');
+  Result.Conflict := VersionGetConflict(CurrentVersion, Result.Info);
 
 end;
 
@@ -1689,67 +1703,32 @@ begin
 end;
 
 
-{Returns the components of a version string packed into a 32bit unsigned
-integer, or zero if the string contains non-digits or an overflowing value.}
-function StrToVer(Version: String): DWord;
-var
-  List: TStringList;
-  I: Integer;
-  Part: Integer;
-
+function VersionGetConflict(Current, Installed: TVersionInfo): Boolean;
 begin
 
-  Result := 0;
-  StringChangeEx(Version, '.', #13, True);
-  List := TStringList.Create;
-
-  try
-    List.Text := Version;
-
-    for I := 0 to List.Count - 1 do
-    begin
-      Part := StrToIntDef(List.Strings[I], -1);
-
-      if (Part < 0) or (Part > 255) then
-      begin
-        Result := 0;
-        Exit;
-      end;
-
-      case I of
-        0: Result := Part shl 24;
-        1: Result := Result or (Part shl 16);
-        2: Result := Result or (Part shl 8);
-        3: Result := Result or Part;
-      end;
-
-    end;
-
-  finally
-    List.Free;
-  end;
+  if (Current.Major = 6) and (Installed.Major = 5) then
+    {Version 6 locks down admin bin directory}
+    Result := False
+  else if (Current.Major >= 5) and (Installed.Major = 4) then
+    {Version 5 only drops support for XP}
+    Result := False
+  else
+    Result := Current.Major <> Installed.Major;
 
 end;
 
 
-function VersionGetConflict(VerCurrent, VerExisting: String): Boolean;
-var
-  Current: Cardinal;
-  Existing: Cardinal;
-
+function VersionGetInfo(const Version: String): TVersionInfo;
 begin
 
-  Current := (StrToVer(VerCurrent) shr 24) and $ff;
-  Existing := (StrToVer(VerExisting) shr 24) and $ff;
+  Result.Major := 0;
+  Result.Minor := 0;
+  Result.Revision := 0;
+  Result.Build := 0;
+  Result.Num := 0;
 
-  if (Current = 6) and (Existing = 5) then
-    {Version 6 locks down admin bin directory}
-    Result := False
-  else if (Current = 5) and (Existing = 4) then
-    {Version 5 only drops support for XP}
-    Result := False
-  else
-    Result := Current <> Existing;
+  if not IsEmpty(Version) and StrToVersion(Version, Result.Num) then
+    UnpackVersionComponents(Result.Num, Result.Major, Result.Minor, Result.Revision, Result.Build);
 
 end;
 
@@ -4457,25 +4436,20 @@ start of the php check routines. The Config values are later overwritten from
 values obtained from PHP itself, using PHP_VERSION_ID that is availabe from 5.2.7}
 procedure SetPhpVersionInfo(var Config: TConfigRec);
 var
-  VersionMS: Cardinal;
-  VersionLS: Cardinal;
-  Major: Integer;
-  Minor: Integer;
-  Release: Integer;
+  Major: Word;
+  Minor: Word;
+  Release: Word;
+  Build: Word;
 
 begin
 
   Debug('Reading VersionInfo data from exe');
 
   {The data may not exist - Cygwin for example}
-  if GetVersionNumbers(Config.PhpExe, VersionMS, VersionLS) then
+  if GetVersionComponents(Config.PhpExe, Major, Minor, Release, Build) then
   begin
-    Major := (VersionMS shr 16) and $ffff;
-    Minor := VersionMS and $ffff;
-    Release := (VersionLS shr 16) and $ffff;
-
     Config.PhpVersion := Format('%d.%d.%d', [Major, Minor, Release]);
-    Config.PhpId := (Major * 10000) + (Minor * 100) + Release;
+    Config.PhpId := (Integer(Major) * 10000) + (Integer(Minor) * 100) + Integer(Release);
   end;
 
   Debug(Format('Config: version=%s, id=%d', [Config.PhpVersion, Config.PhpId]));
@@ -5472,7 +5446,7 @@ begin
 end;
 
 
-function OptionsCheckExisting(Rec: TExistingRec): Boolean;
+function OptionsCheckExisting(Existing: TExistingRec): Boolean;
 var
   DebugMsg: String;
   S: String;
@@ -5485,20 +5459,20 @@ begin
     Result := True;
     DebugMsg := 'Setup will install {#SetupVersion} in Developer Mode';
 
-    if not GExistingRec.Installed then
+    if not Existing.Installed then
       Debug(DebugMsg)
     else
-      Debug(Format('%s alongside existing version %s', [DebugMsg, Rec.Version]));
+      Debug(Format('%s alongside existing version %s', [DebugMsg, Existing.Version]));
 
     Exit;
   end;
 
-  Result := not Rec.Conflict;
+  Result := not Existing.Conflict;
   DebugMsg := 'Setup %s install {#SetupVersion} over existing version %s';
 
   if not Result then
   begin
-    Debug(Format(DebugMsg, ['cannot', Rec.Version]));
+    Debug(Format(DebugMsg, ['cannot', Existing.Version]));
 
     S := 'Sorry, but this installer is not compatible with the one used for the current installation.';
     AddPara(S, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
@@ -5507,8 +5481,8 @@ begin
   else
   begin
 
-    if GExistingRec.Installed then
-      Debug(Format(DebugMsg, ['will', Rec.Version]));
+    if Existing.Installed then
+      Debug(Format(DebugMsg, ['will', Existing.Version]));
 
   end;
 
@@ -5520,6 +5494,7 @@ var
   Base: Integer;
   S: String;
   Users: String;
+  OldVersion: TVersionInfo;
 
 begin
 
@@ -5589,8 +5564,9 @@ begin
     not happen unless the user data folders have been removed}
 
     S := 'Composer is already installed.';
+    OldVersion := VersionGetInfo('4.6.0');
 
-    if StrToVer(GExistingRec.Version) < StrToVer('4.6.0') then
+    if ComparePackedVersion(GExistingRec.Info.Num, OldVersion.Num) < 0 then
       S := S + ' You should uninstall it from the Control Panel first.'
     else
       S := S + ' You can uninstall it from the Control Panel later.';
