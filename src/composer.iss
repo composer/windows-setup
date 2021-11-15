@@ -25,6 +25,7 @@
 #define ParamDev "dev"
 #define ParamPhp "php"
 #define ParamProxy "proxy"
+#define ParamSetupUninstall "UNINSTALLFROMSETUP"
 #define IniSection "params"
 #define PHP_CHECK_ID "<ComposerSetup:>"
 
@@ -188,19 +189,21 @@ type
 
 type
   TVersionInfo = record
-    Major:    Word;
-    Minor:    Word;
-    Revision: Word;
-    Build:    Word;
-    Num:      Int64;
+    Major       : Word;
+    Minor       : Word;
+    Revision    : Word;
+    Build       : Word;
+    Num         : Int64;
   end;
 
 type
   TExistingRec = record
-    Installed   : Boolean;
-    Version     : String;
-    Info        : TVersionInfo;
-    Conflict    : Boolean;
+    Installed       : Boolean;
+    Version         : String;
+    Info            : TVersionInfo;
+    Conflict        : Boolean;
+    Uninstaller     : String;
+    NeedsUninstall  : Boolean;
   end;
 
 type
@@ -436,7 +439,7 @@ procedure DebugPageName(Id: Integer); forward;
 function ExecCmd(Command: String; var Config: TConfigRec): Boolean; forward;
 function ExecPhp(Params: TPhpParams; var Config: TConfigRec): Boolean; forward;
 function FormatError(const Error, Filename: String): String; forward;
-procedure FormatExitCode(var Value: String; Config: TConfigRec); forward;
+procedure FormatExitCode(var Value: String; ExitCode: Integer); forward;
 function GetExecError(Config: TConfigRec): String; forward;
 function GetPhpParams(Config: TConfigRec; Params: TPhpParams): String; forward;
 function GetRegHive: Integer; forward;
@@ -447,7 +450,6 @@ procedure SetError(StatusCode: Integer; var Config: TConfigRec); forward;
 procedure SetErrorEx(StatusCode: Integer; var Config: TConfigRec; NewStatusCode: Integer); forward;
 procedure ShowErrorIfSilent; forward;
 procedure ShowErrorMessage(const Message: String); forward;
-function VersionGetConflict(Current, Installed: TVersionInfo): Boolean; forward;
 function VersionGetInfo(const Version: String): TVersionInfo; forward;
 
 {Exec output functions}
@@ -472,6 +474,7 @@ function IncludeUninstaller: Boolean; forward;
 function IsSystemUser: Boolean; forward;
 procedure RemoveSystemUserData; forward;
 procedure SaveInfData; forward;
+function UninstallExisting(var Error: String): Boolean; forward;
 function UnixifyShellFile(const Filename: String; var Error: String): Boolean; forward;
 procedure UpdateRegQuietUninstall; forward;
 
@@ -891,6 +894,9 @@ begin
 
   Debug('Running PrepareToInstall tasks...');
 
+  if not UninstallExisting(Result) then
+    Exit;
+
   if not UnixifyShellFile(GTmpFile.ComposerShell, Result) then
     Exit;
 
@@ -960,6 +966,7 @@ end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
+  ParamSetup: String;
   BinPath: String;
   BinDir: String;
   NoBin: Boolean;
@@ -971,6 +978,16 @@ begin
 
   if CurUninstallStep = usUninstall then
   begin
+
+    Debug('Uninstalling {#AppInstallName} {#SetupVersion} for user: ' + GFlags.UserName);
+    ParamSetup := ExpandConstant('{param:{#ParamSetupUninstall}}');
+
+    {If we are uninstalling from Setup we need to keep user data and paths}
+    if not IsEmpty(ParamSetup) then
+    begin
+      Debug(Format('Called from setup (version %s): Path changes skipped', [ParamSetup]));
+      Exit;
+    end;
 
     {We must call this in usUninstall as we need to know if the user data
     folders still exist}
@@ -1046,7 +1063,9 @@ function InitGetExisting: TExistingRec;
 var
   Key: String;
   Hive: Integer;
-  CurrentVersion: TVersionInfo;
+  UninsExe: String;
+  CurrentInfo: TVersionInfo;
+  UninstallableInfo: TVersionInfo;
 
 begin
 
@@ -1055,6 +1074,8 @@ begin
   Result.Version := GetPreviousData('{#PrevDataVersion}', '');
   Result.Installed := NotEmpty(Result.Version);
   Result.Conflict := False;
+  Result.Uninstaller := '';
+  Result.NeedsUninstall := False;
 
   if not Result.Installed then
   begin
@@ -1074,9 +1095,37 @@ begin
   if not Result.Installed then
     Exit;
 
-  {Check if there is a conflict}
-  CurrentVersion := VersionGetInfo('{#SetupVersion}');
-  Result.Conflict := VersionGetConflict(CurrentVersion, Result.Info);
+  {Check if there is a conflict and the user needs to uninstall the existing
+  setup. Version 4 is the earliest that can be safely overwritten}
+  if Result.Info.Major < 4 then
+  begin
+    Result.Conflict := True;
+    Exit;
+  end;
+
+  {See if we can uninstall the existing setup}
+  UninstallableInfo := VersionGetInfo('6.3.0');
+
+  if (ComparePackedVersion(Result.Info.Num, UninstallableInfo.Num)) < 0 then
+    Exit;
+
+  {Get the uninstaller string from the registry.}
+  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppId}_is1';
+
+  if RegQueryStringValue(HKA, Key, 'UninstallString', UninsExe) then
+  begin
+    UninsExe := RemoveQuotes(UninsExe);
+
+    {Occasionally Uninstall registry keys remain after an uninstall}
+    if not FileExists(UninsExe) then
+      Exit;
+
+    Result.Uninstaller := UninsExe;
+  end;
+
+  {For future use, check if the existing setup must be uninstalled}
+  CurrentInfo := VersionGetInfo('{#SetupVersion}');
+  Result.NeedsUninstall := False;
 
 end;
 
@@ -1498,11 +1547,11 @@ begin
 end;
 
 
-procedure FormatExitCode(var Value: String; Config: TConfigRec);
+procedure FormatExitCode(var Value: String; ExitCode: Integer);
 begin
 
-  if Config.ExitCode <> 0 then
-    Value := Format('%s [exit code %d]', [Value, Config.ExitCode]);
+  if ExitCode <> 0 then
+    Value := Format('%s [exit code %d]', [Value, ExitCode]);
 
 end;
 
@@ -1530,7 +1579,7 @@ begin
   end;
 
   Error := Format('%s did not run correctly', [Prog]);
-  FormatExitCode(Error, Config);
+  FormatExitCode(Error, Config.ExitCode);
 
   if StringChangeEx(SysError, '%1', '%s', True) = 1 then
     SysError := Format(SysError, [Filename]);
@@ -1700,21 +1749,6 @@ end;
 procedure ShowErrorMessage(const Message: String);
 begin
   SuppressibleMsgBox(Message, mbCriticalError, MB_OK, IDOK);
-end;
-
-
-function VersionGetConflict(Current, Installed: TVersionInfo): Boolean;
-begin
-
-  if (Current.Major = 6) and (Installed.Major = 5) then
-    {Version 6 locks down admin bin directory}
-    Result := False
-  else if (Current.Major >= 5) and (Installed.Major = 4) then
-    {Version 5 only drops support for XP}
-    Result := False
-  else
-    Result := Current.Major <> Installed.Major;
-
 end;
 
 
@@ -2169,6 +2203,49 @@ begin
   SetIniString('{#IniSection}', '{#ParamDev}', DevModeDir, GParamsRec.SaveInf);
   SetIniString('{#IniSection}', '{#ParamPhp}', GConfigRec.PhpExe, GParamsRec.SaveInf);
   SetIniString('{#IniSection}', '{#ParamProxy}', Proxy, GParamsRec.SaveInf);
+
+end;
+
+
+{Uninstalls any existing Setup if required}
+function UninstallExisting(var Error: String): Boolean;
+var
+  ParamUninstall: String;
+  Params: String;
+  CmdLine: String;
+  Success: Boolean;
+  ExitCode: Integer;
+  Msg: String;
+
+begin
+
+  Result := True;
+
+  {We do not uninstall anything in dev mode}
+  if GFlags.DevInstall or IsEmpty(GExistingRec.Uninstaller) then
+    Exit;
+
+  Msg := Format('Uninstalling {#AppInstallName} %s', [GExistingRec.Version]);
+  Debug(Format('%s: %s', [Msg, GExistingRec.Uninstaller]));
+
+  ParamUninstall := '/{#ParamSetupUninstall}={#SetupVersion}';
+  Params := '/VERYSILENT /SUPPRESSMSGBOXES /LOG ' + ArgWin(ParamUninstall);
+  CmdLine := Format('%s %s', [ArgWin(GExistingRec.Uninstaller), Params]);
+  Success := Exec('>', CmdLine, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+
+  if Success and (ExitCode = 0) then
+    Exit;
+
+  AddStr(Msg, ' failed.');
+
+  if GExistingRec.NeedsUninstall then
+  begin
+    Error := Msg + ' Please uninstall it from the Control Panel.';
+    Result := False;
+  end;
+
+  FormatExitCode(Msg, ExitCode);
+  Debug(Msg);
 
 end;
 
@@ -3662,7 +3739,7 @@ begin
     ERR_CMD_EXIT:
     begin
       Error := 'It returned the wrong exit code';
-      FormatExitCode(Error, Config);
+      FormatExitCode(Error, Config.ExitCode);
       AddLine(Error, Format('GetLastError: %s.', [SysErrorMessage(Config.ExitCode)]));
       Output := Config.Output;
       GetErrorAutorun(Help, Config);
@@ -3969,7 +4046,7 @@ function FormatPhpError(Config: TConfigRec; ShowIni: Boolean; Message: String): 
 begin
 
   Result := 'The PHP exe file you specified did not run correctly';
-  FormatExitCode(Result, Config);
+  FormatExitCode(Result, Config.ExitCode);
   Result := FormatError(Result, Config.PhpExe);
 
   if ShowIni then
@@ -5023,7 +5100,7 @@ begin
     CommonErrors := GetInstallerCommonErrors(Config);
 
     Result := 'The Composer installer script was not successful';
-    FormatExitCode(Result, Config);
+    FormatExitCode(Result, Config.ExitCode);
     AddStr(Result, '.');
 
     if NotEmpty(CommonErrors) then
@@ -5047,7 +5124,7 @@ var
 begin
 
   Result := 'The Composer installer script did not run correctly';
-  FormatExitCode(Result, Config);
+  FormatExitCode(Result, Config.ExitCode);
 
   {Failsafe - deal with missing phar/wrong exit code first}
   if (Config.ExitCode = 0) and ComposerPharMissing() then
@@ -5468,22 +5545,26 @@ begin
   end;
 
   Result := not Existing.Conflict;
-  DebugMsg := 'Setup %s install {#SetupVersion} over existing version %s';
 
   if not Result then
   begin
-    Debug(Format(DebugMsg, ['cannot', Existing.Version]));
+    DebugMsg := 'Setup cannot install {#SetupVersion} over existing version %s';
+    Debug(Format(DebugMsg, [Existing.Version]));
 
     S := 'Sorry, but this installer is not compatible with the one used for the current installation.';
     AddPara(S, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
     ShowErrorMessage(S);
   end
-  else
+  else if Existing.Installed then
   begin
+    DebugMsg := 'Setup will install {#SetupVersion} %s existing version %s';
 
-    if Existing.Installed then
-      Debug(Format(DebugMsg, ['will', Existing.Version]));
+    if isEmpty(Existing.Uninstaller) then
+      S := 'over'
+    else
+      S := 'and will uninstall';
 
+    Debug(Format(DebugMsg, [S, Existing.Version]));
   end;
 
 end;
