@@ -1,9 +1,8 @@
 ## Unreleased
-
-## v6.3.0
-2021-11-14
-* Removed approval request for ini updates, which now happen automatically and are shown to the user
-on the Ready to Install page.
+* Added existing version uninstallation. This is done silently in the background just before the
+main installation and creates an Uninstall Log in the temp directory.
+* Removed approval page for ini updates, which now happen automatically and are shown to the user on
+the Ready to Install page.
 * Reworked ini update handling to fix `extension_dir` errors.
 * Improved PHP checks and changed to using runphp for all scripts.
 * Added output capturing from runphp using cmd.exe.
