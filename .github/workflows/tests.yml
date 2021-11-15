@@ -19,7 +19,7 @@ jobs:
         php-versions: ['5.5', '8.1']
 
     env:
-      SETUP_CMD: builds\output\Composer-Setup.dev.exe /VERYSILENT /SUPPRESSMSGBOXES /DEV=C:\composer
+      SETUP_CMD: builds\output\Composer-Setup.dev.exe /VERYSILENT /SUPPRESSMSGBOXES
       LOG_DIR: C:\install-logs
 
     defaults:
