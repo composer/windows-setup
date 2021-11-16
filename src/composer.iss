@@ -3,6 +3,11 @@
   #include "version.iss"
 #endif
 
+; Version check, will also fail on bad value
+#if StrToVersion(SetupVersion) == 0
+  #pragma error "SetupVersion is missing"
+#endif
+
 #define AppId "{7315AF68-E777-496A-A6A2-4763A98ED35A}"
 #define AppInstallName "ComposerSetup"
 #define AppDescription "Composer - PHP Dependency Manager"
@@ -22,10 +27,13 @@
 #define PrevDataApp "AppDir"
 #define PrevDataBin "BinDir"
 #define PrevDataVersion "Version"
-#define ParamDev "dev"
-#define ParamPhp "php"
-#define ParamProxy "proxy"
+
+#define ParamDev "DEV"
+#define ParamPhp "PHP"
+#define ParamProxy "PROXY"
+#define ParamDelete "DELETE"
 #define ParamSetupUninstall "UNINSTALLFROMSETUP"
+
 #define IniSection "params"
 #define PHP_CHECK_ID "<ComposerSetup:>"
 
@@ -500,7 +508,7 @@ function EnvChangeToString(Rec: TEnvChangeRec; const Spacing: String): String; f
 function EnvGetHiveName(Hive: Integer): String; forward;
 function EnvGetMasked(Name, Value: String): String; forward;
 function EnvListChanges(List: TEnvChangeList): String; forward;
-function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Integer; forward;
+function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Boolean; forward;
 procedure EnvRegisterChange(Hive, Action: Integer; const Name, Value: String; Show: Boolean); forward;
 procedure EnvRevokeChanges(List: TEnvChangeList); forward;
 procedure EnvSortMakeChanges(var List: TEnvChangeList); forward;
@@ -894,16 +902,17 @@ begin
 
   Debug('Running PrepareToInstall tasks...');
 
-  if not UninstallExisting(Result) then
-    Exit;
-
   if not UnixifyShellFile(GTmpFile.ComposerShell, Result) then
     Exit;
 
-  RemoveSystemUserData();
-
   {Any failures will be reverted in DeinitializeSetup}
-  EnvMakeChanges(GEnvChanges, Result);
+  if not EnvMakeChanges(GEnvChanges, Result) then
+    Exit;
+
+  if not UninstallExisting(Result) then
+    Exit;
+
+  RemoveSystemUserData();
 
 end;
 
@@ -1021,7 +1030,7 @@ begin
 
     end;
 
-    if EnvMakeChanges(GEnvChanges, Error) = ENV_FAILED then
+    if not EnvMakeChanges(GEnvChanges, Error) then
       ShowErrorMessage(Error);
 
     {Call NotifyEnvironmentChange here since the Uninstall Form is showing.
@@ -1139,8 +1148,8 @@ begin
   Result.Dev := ExpandConstant('{param:{#ParamDev}}');
   Result.Php := ExpandConstant('{param:{#ParamPhp}}');
   Result.Proxy := ExpandConstant('{param:{#ParamProxy}}');
-  Result.SaveInf := ExpandFilename(ExpandConstant('{param:saveinf}'));
-  LoadInf := ExpandFilename(ExpandConstant('{param:loadinf}'));
+  Result.SaveInf := ExpandFilename(ExpandConstant('{param:SAVEINF}'));
+  LoadInf := ExpandFilename(ExpandConstant('{param:LOADINF}'));
 
   if NotEmpty(LoadInf) then
   begin
@@ -2874,13 +2883,14 @@ begin
 end;
 
 
-function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Integer;
+function EnvMakeChanges(var List: TEnvChangeList; var Error: String): Boolean;
 var
   I: Integer;
+  Status: Integer;
 
 begin
 
-  Result := ENV_NONE;
+  Result := True;
   EnvSortMakeChanges(List);
 
   for I := 0 to GetArrayLength(List) - 1 do
@@ -2888,20 +2898,21 @@ begin
 
     {Modify the environemnt}
     if List[I].Action = ENV_ADD then
-      Result := EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Masked)
+      Status := EnvAdd(List[I].Hive, List[I].Name, List[I].Value, List[I].Masked)
     else
-      Result := EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Masked);
+      Status := EnvRemove(List[I].Hive, List[I].Name, List[I].Value, List[I].Masked);
 
     {Check the result}
-    if Result = ENV_CHANGED then
+    if Status = ENV_CHANGED then
     begin
       List[I].Done := True;
       GFlags.EnvChanged := True;
     end
-    else if Result = ENV_FAILED then
+    else if Status = ENV_FAILED then
     begin
       {Any unsuccessful changes will be reverted if there is an error}
       Error := 'Error: ' + EnvChangeToString(List[I], '');
+      Result := False;
       Exit;
     end;
 

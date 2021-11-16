@@ -503,7 +503,7 @@ var
 begin
 
   Result := DELETE_NONE;
-  Param := ExpandConstant('{param:delete}');
+  Param := ExpandConstant('{param:{#ParamDelete}}');
 
   if CompareText(Param, 'local') = 0 then
     Result := DELETE_LOCAL
