@@ -2228,9 +2228,12 @@ begin
 
   Result := True;
 
-  {We do not uninstall anything in dev mode}
-  if GFlags.DevInstall or IsEmpty(GExistingRec.Uninstaller) then
+  if IsEmpty(GExistingRec.Uninstaller) then
+  begin
+    if GExistingRec.Installed then
+      Debug(Format('{#AppInstallName} %s is too old to be uninstalled', [GExistingRec.Version]));
     Exit;
+  end;
 
   Msg := Format('Uninstalling {#AppInstallName} %s', [GExistingRec.Version]);
   Debug(Format('%s: %s', [Msg, GExistingRec.Uninstaller]));
@@ -5539,42 +5542,46 @@ var
 
 begin
 
-  {Deal with Dev mode first as it always succeeds}
-  if GFlags.DevInstall then
+  {Deal with conflict as it always fails if not in dev mode}
+  if Existing.Conflict and not GFlags.DevInstall then
   begin
-    Result := True;
-    DebugMsg := 'Setup will install {#SetupVersion} in Developer Mode';
-
-    if not Existing.Installed then
-      Debug(DebugMsg)
-    else
-      Debug(Format('%s alongside existing version %s', [DebugMsg, Existing.Version]));
-
-    Exit;
-  end;
-
-  Result := not Existing.Conflict;
-
-  if not Result then
-  begin
-    DebugMsg := 'Setup cannot install {#SetupVersion} over existing version %s';
-    Debug(Format(DebugMsg, [Existing.Version]));
+    Result := False;
+    Debug('Setup cannot install {#SetupVersion} over existing version ' + Existing.Version);
 
     S := 'Sorry, but this installer is not compatible with the one used for the current installation.';
     AddPara(S, 'To avoid any conflicts, please uninstall Composer from the Control Panel first.');
     ShowErrorMessage(S);
-  end
-  else if Existing.Installed then
-  begin
-    DebugMsg := 'Setup will install {#SetupVersion} %s existing version %s';
 
-    if isEmpty(Existing.Uninstaller) then
+    Exit;
+  end;
+
+  if not GFlags.DevInstall then
+    S := 'Standard'
+  else
+    S := 'Developer';
+
+  DebugMsg := Format('Setup will install {#SetupVersion} in %s Mode', [S]);
+
+  if not Existing.Installed then
+  begin
+    Debug(DebugMsg);
+    Exit;
+  end;
+
+  AddStr(DebugMsg, ' %s existing version %s');
+
+  if not IsEmpty(Existing.Uninstaller) then
+    S := 'and will uninstall'
+  else
+  begin
+    if not GFlags.DevInstall then
       S := 'over'
     else
-      S := 'and will uninstall';
-
-    Debug(Format(DebugMsg, [S, Existing.Version]));
+      S := 'alongside';
   end;
+
+  Debug(Format(DebugMsg, [S, Existing.Version]));
+  Result := True;
 
 end;
 
@@ -5658,8 +5665,10 @@ begin
 
     if ComparePackedVersion(GExistingRec.Info.Num, OldVersion.Num) < 0 then
       S := S + ' You should uninstall it from the Control Panel first.'
+    else if IsEmpty(GExistingRec.Uninstaller) then
+      S := S + ' You can uninstall it from the Control Panel later.'
     else
-      S := S + ' You can uninstall it from the Control Panel later.';
+      S := S + ' It will be uninstalled automatically.';
 
     GOptionsPage.DevInfo.Caption := S;
 
