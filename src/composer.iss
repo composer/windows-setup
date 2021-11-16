@@ -1062,7 +1062,6 @@ end;
 function InitGetExisting: TExistingRec;
 var
   Key: String;
-  Hive: Integer;
   UninsExe: String;
   CurrentInfo: TVersionInfo;
   UninstallableInfo: TVersionInfo;
@@ -1079,14 +1078,13 @@ begin
 
   if not Result.Installed then
   begin
-    Hive := GetRegHive();
     Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\Composer_is1';
 
-    if RegKeyExists(Hive, Key) then
+    if RegKeyExists(HKA, Key) then
     begin
       Result.Installed := True;
       {We started storing version info with v2.7, so this could be empty}
-      RegQueryStringValue(Hive, Key, 'Inno Setup CodeFile: {#PrevDataVersion}', Result.Version);
+      RegQueryStringValue(HKA, Key, 'Inno Setup CodeFile: {#PrevDataVersion}', Result.Version);
     end;
   end;
 
