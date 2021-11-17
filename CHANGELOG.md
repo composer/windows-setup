@@ -1,4 +1,7 @@
 ## Unreleased
+
+## v6.3.0
+2021-11-17
 * Added existing version uninstallation. This is done silently in the background just before the
 main installation and creates an Uninstall Log in the temp directory.
 * Removed approval page for ini updates, which now happen automatically and are shown to the user on
