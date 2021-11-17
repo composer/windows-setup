@@ -29,6 +29,7 @@ function SearchPath(SafeList: TSafeList; const Cmd: String): String; forward;
 function SearchPathEx(SafeList: TSafeList; const Cmd: String; var Index: Integer): String; forward;
 procedure DbgEnv(Action, Hive: Integer; Name, Value, Masked: String); forward;
 procedure DbgPath(Action, Hive: Integer; Value: String); forward;
+procedure DbgPathEx(Action, Hive: Integer; Value: String; Skipped: Boolean); forward;
 procedure DbgError(Name: String); forward;
 procedure NotifyEnvironmentChange; forward;
 
@@ -159,6 +160,7 @@ begin
   if DirectoryInPath(SafeDirectory, SafeList) then
   begin
     Result := ENV_NONE;
+    DbgPathEx(ENV_ADD, Hive, SafeDirectory, True);
     Exit;
   end;
 
@@ -215,6 +217,7 @@ begin
   if not GetRawPath(Hive, CurrentPath) then
   begin
     Result := ENV_NONE;
+    DbgPathEx(ENV_REMOVE, Hive, SafeDirectory, True);
     Exit;
   end;
 
@@ -241,7 +244,10 @@ begin
 
   {See if we found the entry we want to remove}
   if not FoundEntry then
-    Result := ENV_NONE
+  begin
+    Result := ENV_NONE;
+    DbgPathEx(ENV_REMOVE, Hive, SafeDirectory, True);
+  end
   else
     Result := WriteRegistryPath(Hive, Key, NewPath);
 
@@ -583,18 +589,42 @@ end;
 
 
 procedure DbgPath(Action, Hive: Integer; Value: String);
+begin
+  DbgPathEx(Action, Hive, Value, False);
+end;
+
+procedure DbgPathEx(Action, Hive: Integer; Value: String; Skipped: Boolean);
 var
   Path: String;
+  Entry: String;
   Prefix: String;
+  Info: String;
 
 begin
 
   Path := Format('%s\%s\%s', [GetHiveName(Hive), GetPathKeyForHive(Hive), ENV_KEY_PATH]);
+  Entry := Format('%s%s%s', [#39, Value, #39]);
 
   if Action = ENV_ADD then
-    Prefix := Format('Adding %s%s%s to', [#39, Value, #39])
+  begin
+
+    if not Skipped then
+      Info := 'Adding'
+    else
+      Info := 'Skipped adding';
+
+    Prefix := Format('%s %s to', [Info, Entry]);
+  end
   else
-    Prefix := Format('Removing %s%s%s from', [#39, Value, #39]);
+  begin
+
+    if not Skipped then
+      Info := 'Removing'
+    else
+      Info := 'Skipped removing';
+
+    Prefix := Format('%s %s from', [Info, Entry]);
+  end;
 
   Debug(Format('%s [%s]', [Prefix, Path]));
 

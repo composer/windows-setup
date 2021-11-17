@@ -276,7 +276,7 @@ type
     Value     : String;
     Masked    : String;
     Show      : Boolean;
-    Done      : Boolean;
+    Changed   : Boolean;
   end;
 
 type
@@ -2803,27 +2803,40 @@ end;
 
 procedure EnvDebugChanges(List: TEnvChangeList; IsRevoke: Boolean);
 var
+  I: Integer;
   Count: Integer;
   Action: String;
   Changes: String;
 
 begin
 
-  Count := Length(List);
-
   if IsRevoke then
-    Action := 'Revoking'
+  begin
+    Action := 'Revoking';
+    Count := 0;
+
+    for I := 0 to Length(List) -1 do
+    begin
+
+      if List[I].Changed then
+        Inc(Count);
+
+    end;
+  end
   else
+  begin
     Action := 'Making';
+    Count := Length(List);
+  end;
 
   case Count of
-    0: Changes := 'no changes required';
+    0: Changes := 'no changes';
     1: Changes := '1 change'
   else
     Changes := Format('%d changes', [Count]);
   end;
 
-  Debug(Format('%s changes to the environment: %s required', [Action, Changes]));
+  Debug(Format('%s changes to the environment: %s registered', [Action, Changes]));
 
 end;
 
@@ -2937,7 +2950,7 @@ begin
     {Check the result}
     if Status = ENV_CHANGED then
     begin
-      List[I].Done := True;
+      List[I].Changed := True;
       GFlags.EnvChanged := True;
     end
     else if Status = ENV_FAILED then
@@ -2971,7 +2984,7 @@ begin
   GEnvChanges[Next].Value := Value;
   GEnvChanges[Next].Masked := EnvGetMasked(Name, Value);
   GEnvChanges[Next].Show := Show;
-  GEnvChanges[Next].Done := False;
+  GEnvChanges[Next].Changed := False;
 
   Debug('Registering: ' + EnvChangeToString(GEnvChanges[Next], ''));
 
@@ -2994,7 +3007,7 @@ begin
   begin
 
     {Ignore entries that haven't been processed}
-    if not List[I].Done then
+    if not List[I].Changed then
       Continue;
 
     {Reverse the action}
