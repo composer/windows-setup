@@ -505,6 +505,7 @@ function GetPathExt(Hive: Integer; var Value: String): Boolean; forward;
 {Environment change functions}
 function EnvChangeIsRegistered(Hive, Action: Integer; const Name, Value: String): Boolean; forward;
 function EnvChangeToString(Rec: TEnvChangeRec; const Spacing: String): String; forward;
+procedure EnvDebugChanges(List: TEnvChangeList; IsRevoke: Boolean); forward;
 function EnvGetHiveName(Hive: Integer): String; forward;
 function EnvGetMasked(Name, Value: String): String; forward;
 function EnvListChanges(List: TEnvChangeList): String; forward;
@@ -900,7 +901,7 @@ begin
 
   Result := '';
 
-  Debug('Running PrepareToInstall tasks...');
+  Debug('Running PrepareToInstall tasks');
 
   if not UnixifyShellFile(GTmpFile.ComposerShell, Result) then
     Exit;
@@ -2217,45 +2218,44 @@ end;
 {Uninstalls any existing Setup if required}
 function UninstallExisting(var Error: String): Boolean;
 var
+  Name: String;
+  WorkingDir: String;
   ParamUninstall: String;
   Params: String;
-  CmdLine: String;
   Success: Boolean;
   ExitCode: Integer;
-  Msg: String;
 
 begin
 
   Result := True;
+  Name := Format('{#AppInstallName} %s', [GExistingRec.Version]);
 
   if IsEmpty(GExistingRec.Uninstaller) then
   begin
     if GExistingRec.Installed then
-      Debug(Format('{#AppInstallName} %s is too old to be uninstalled', [GExistingRec.Version]));
+      Debug(Name + ' is too old to be uninstalled');
     Exit;
   end;
 
-  Msg := Format('Uninstalling {#AppInstallName} %s', [GExistingRec.Version]);
-  Debug(Format('%s: %s', [Msg, GExistingRec.Uninstaller]));
+  Debug('Uninstalling ' + Name);
+  WorkingDir := GetCurrentDir();
 
   ParamUninstall := '/{#ParamSetupUninstall}={#SetupVersion}';
   Params := '/VERYSILENT /SUPPRESSMSGBOXES /LOG ' + ArgWin(ParamUninstall);
-  CmdLine := Format('%s %s', [ArgWin(GExistingRec.Uninstaller), Params]);
-  Success := Exec('>', CmdLine, '', SW_HIDE, ewWaitUntilTerminated, ExitCode);
+
+  DebugExecBegin(GExistingRec.Uninstaller, Params, WorkingDir);
+  Success := Exec(GExistingRec.Uninstaller, Params, WorkingDir, SW_HIDE, ewWaitUntilTerminated, ExitCode);
+  DebugExecEnd(Success, ExitCode);
 
   if Success and (ExitCode = 0) then
     Exit;
 
-  AddStr(Msg, ' failed.');
-
   if GExistingRec.NeedsUninstall then
   begin
-    Error := Msg + ' Please uninstall it from the Control Panel.';
     Result := False;
+    Error := Format('Unable to remove existing version (%s).', [Name]);
+    AddPara(Error, 'Please uninstall Composer from the Control Panel.');
   end;
-
-  FormatExitCode(Msg, ExitCode);
-  Debug(Msg);
 
 end;
 
@@ -2801,6 +2801,33 @@ begin
 end;
 
 
+procedure EnvDebugChanges(List: TEnvChangeList; IsRevoke: Boolean);
+var
+  Count: Integer;
+  Action: String;
+  Changes: String;
+
+begin
+
+  Count := Length(List);
+
+  if IsRevoke then
+    Action := 'Revoking'
+  else
+    Action := 'Making';
+
+  case Count of
+    0: Changes := 'no changes required';
+    1: Changes := '1 change'
+  else
+    Changes := Format('%d changes', [Count]);
+  end;
+
+  Debug(Format('%s changes to the environment: %s required', [Action, Changes]));
+
+end;
+
+
 {Returns a friendly name for the registry hive}
 function EnvGetHiveName(Hive: Integer): String;
 begin
@@ -2894,6 +2921,8 @@ var
 begin
 
   Result := True;
+
+  EnvDebugChanges(List, False);
   EnvSortMakeChanges(List);
 
   for I := 0 to GetArrayLength(List) - 1 do
@@ -2959,6 +2988,7 @@ begin
   be seriously wrong with the system if we need to call this and we fail}
 
   EnvSortRevokeChanges(List);
+  EnvDebugChanges(List, True);
 
   for I := 0 to GetArrayLength(List) - 1 do
   begin
@@ -5555,6 +5585,9 @@ begin
     Exit;
   end;
 
+  {Everything else is to report the relevant log message}
+  Result := True;
+
   if not GFlags.DevInstall then
     S := 'Standard'
   else
@@ -5581,7 +5614,6 @@ begin
   end;
 
   Debug(Format(DebugMsg, [S, Existing.Version]));
-  Result := True;
 
 end;
 
@@ -5668,7 +5700,7 @@ begin
     else if IsEmpty(GExistingRec.Uninstaller) then
       S := S + ' You can uninstall it from the Control Panel later.'
     else
-      S := S + ' It will be uninstalled automatically.';
+      S := S + ' It will be removed during this installation.';
 
     GOptionsPage.DevInfo.Caption := S;
 
