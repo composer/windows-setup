@@ -3,10 +3,16 @@
 dir=$(cd "${0%[/\\]*}" > /dev/null; pwd)
 
 if [ -d /proc/cygdrive ]; then
-    case $(which php) in
-        $(readlink -n /proc/cygdrive)/*)
-            # We are in Cygwin using Windows php, so the path must be translated
-            dir=$(cygpath -m "$dir");
+    cygwin_root=$(cygpath -m /)
+    php_bin=$(cygpath -m "$(which php)")
+
+    case "$php_bin" in
+        "$cygwin_root"/*)
+            # We are using Cygwin PHP, no action necessary
+            ;;
+        *)
+            # We are using Windows PHP, so the path must be translated
+            dir=$(cygpath -m "$dir")
             ;;
     esac
 fi
