@@ -1,6 +1,7 @@
 #!/bin/sh
 
-dir=$(cd "${0%[/\\]*}" > /dev/null; pwd)
+self="$(readlink -m "$0")"
+dir=$(cd "${self%[/\\]*}" > /dev/null; pwd)
 
 if [ -d /proc/cygdrive ]; then
     cygwin_root=$(cygpath -m /)
