@@ -36,7 +36,7 @@ jobs:
 
       - name: Compile Composer-Setup
         run: iscc src\composer.iss
-        shell: pwsh
+        shell: cmd
 
       - name: Build Chocolatey package
         if: matrix.install == 'choco'
@@ -44,8 +44,8 @@ jobs:
 
       - name: Install Composer-Setup.exe
         if: matrix.install == 'exe'
-        run: .\builds\output\Composer-Setup.dev.exe /VERYSILENT /SUPPRESSMSGBOXES /DEV=C:\composer /LOG=C:\install.txt
-        shell: pwsh
+        run: builds\output\Composer-Setup.dev.exe /VERYSILENT /SUPPRESSMSGBOXES /DEV=C:\composer /LOG=C:\install.txt
+        shell: cmd
 
       - name: Install Chocolatey package
         if: matrix.install == 'choco'
@@ -70,7 +70,7 @@ jobs:
 
       - name: Run
         run: composer --version
-        shell: pwsh
+        shell: cmd
 
       - name: Run in bash
         run: composer --version
