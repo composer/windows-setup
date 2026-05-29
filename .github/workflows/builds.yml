@@ -7,6 +7,13 @@ on:
     paths-ignore:
       - '**.md'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-deploy:
     name: Build & deploy
@@ -22,13 +29,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          persist-credentials: false
           fetch-depth: 1
 
       - name: Compile Composer-Setup
         run: iscc src\composer.iss
-        shell: cmd
+        shell: pwsh
 
       - name: Build Chocolatey package
         if: matrix.install == 'choco'
@@ -36,8 +44,8 @@ jobs:
 
       - name: Install Composer-Setup.exe
         if: matrix.install == 'exe'
-        run: builds\output\Composer-Setup.dev.exe /VERYSILENT /SUPPRESSMSGBOXES /DEV=C:\composer /LOG=C:\install.txt
-        shell: cmd
+        run: .\builds\output\Composer-Setup.dev.exe /VERYSILENT /SUPPRESSMSGBOXES /DEV=C:\composer /LOG=C:\install.txt
+        shell: pwsh
 
       - name: Install Chocolatey package
         if: matrix.install == 'choco'
@@ -45,7 +53,7 @@ jobs:
         run: choco upgrade -y composer --source .\chocolatey\local --params '"/Dev:C:\composer"' --ia '"/LOG=C:\install.txt"'
 
       - name: Upload install log
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: install-${{ matrix.install }}-log
           path: C:\install.txt
@@ -62,7 +70,7 @@ jobs:
 
       - name: Run
         run: composer --version
-        shell: cmd
+        shell: pwsh
 
       - name: Run in bash
         run: composer --version

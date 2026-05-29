@@ -7,6 +7,13 @@ on:
     paths-ignore:
       - '**.md'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ini-tests:
     name: Ini Tests
@@ -28,12 +35,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          persist-credentials: false
           fetch-depth: 1
 
       - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@7c071dfe9dc99bdf297fa79cb49ea005b9fcadbc # 2.37.1
         with:
           php-version: ${{ matrix.php-versions }}
           extensions: none
@@ -42,28 +50,28 @@ jobs:
         run: iscc src\composer.iss
 
       - name: Create log directory
-        run: mkdir ${{ env.LOG_DIR }}
+        run: mkdir %LOG_DIR%
 
       - name: Setup no-extensions
         run: php .github\workflows\ini-util.php --no-extensions
 
       - name: Test no-extensions
-        run:  ${{ env.SETUP_CMD }} /LOG=${{ env.LOG_DIR }}/no-extensions.txt
+        run:  %SETUP_CMD% /LOG=%LOG_DIR%/no-extensions.txt
 
       - name: Setup no-ini
         run: php .github\workflows\ini-util.php --no-ini
 
       - name: Test no-ini
-        run:  ${{ env.SETUP_CMD }} /LOG=${{ env.LOG_DIR }}/no-ini.txt
+        run:  %SETUP_CMD% /LOG=%LOG_DIR%/no-ini.txt
 
       - name: Setup wrong-extdir
         run: php .github\workflows\ini-util.php --wrong-extdir
 
       - name: Test wrong-extdir
-        run: ${{ env.SETUP_CMD }} /LOG=${{ env.LOG_DIR }}/wrong-extdir.txt
+        run: %SETUP_CMD% /LOG=%LOG_DIR%/wrong-extdir.txt
 
       - name: Upload install logs
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() }}
         with:
           name: install-${{ matrix.php-versions }}-log
