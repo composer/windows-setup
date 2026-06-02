@@ -4610,7 +4610,7 @@ begin
   if not IniFileUpdate(ModIni, Config, Params) then
     Exit;
 
-  Result := FileCopy(GTmpFile.Ini, ModIni.IniFile, False);
+  Result := CopyFile(GTmpFile.Ini, ModIni.IniFile, False);
   IniDebugFileAction(Result, True, ModIni);
 
   if Result then
@@ -4798,7 +4798,7 @@ begin
     Success := not FileExists(IniFile);
   end
   else
-    Success := FileCopy(GTmpFile.IniBackup, IniFile, False);
+    Success := CopyFile(GTmpFile.IniBackup, IniFile, False);
 
   IniDebugFileAction(Success, False, GModIniRec);
 
@@ -4871,7 +4871,7 @@ begin
   begin
 
     {Make a backup for the user in the php directory, in case something goes wrong}
-    Result := FileCopy(ModIni.IniFile, ModIni.UserBackup, False);
+    Result := CopyFile(ModIni.IniFile, ModIni.UserBackup, False);
 
     if not Result then
       Debug(Format('Error: Failed to backup existing ini: %s', [ModIni.IniFile]));
