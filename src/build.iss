@@ -12,5 +12,4 @@
 [Setup]
 OutputDir={#OutputDir}
 OutputBaseFilename={#OutputBaseFilename}
-SignTool={#SignTool} {#SignExe} {#SignSha1} $f
-SignTool={#SignTool} {#SignExe} {#SignSha2} $f
+SignTool={#SignTool} {#SignExe} {#SignSha256} $f

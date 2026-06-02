@@ -13,12 +13,8 @@
 ; Developer Command Prompt and typing 'where signtool'.
 #define SignExe '"path\to\signtool.exe"'
 
-; SignSha1 and SignSha2 defines are used by the [Setup]: SignTool directives in build.iss.
-
-; Use a sha1 timestamping service
-#define SignSha1 "sign /a /fd sha1 /t http://timestamp.comodoca.com/authenticode"
-
-; Append sha256 signature
-#define SignSha2 "sign /a /fd sha256 /tr http://time.certum.pl/ /td sha256 /as"
+; SignSha256 define is used by the [Setup]: SignTool directives in build.iss.
+; Use sha256 signature
+#define SignSha256 "sign /a /fd sha256 /tr http://time.certum.pl/ /td sha256 /as"
 
 #include "composer.iss"

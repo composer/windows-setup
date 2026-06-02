@@ -431,13 +431,10 @@ var
 
 begin
 
-  Form.Main := CreateCustomForm();
+  Form.Main := CreateCustomForm(ScaleX(380), ScaleY(255), False, False);
   Form.Main.Font.Size := 9;
-
-  Form.Main.ClientWidth := ScaleX(380);
-  Form.Main.ClientHeight := ScaleY(255);
   Form.Main.Caption := 'Delete User Data';
-  Form.Main.FlipSizeAndCenterIfNeeded(True, UninstallProgressForm, False);
+  Form.Main.FlipAndCenterIfNeeded(True, UninstallProgressForm, False);
 
   Left := ScaleX(20);
   Width := Form.Main.ClientWidth - (Left * 2);
